@@ -129,7 +129,7 @@ describe('portLegacySettings', () => {
           enabled: false,
           sound: false,
           osNotifications: false,
-          soundFocusMode: 'unfocused',
+          soundFocusMode: 'always',
         },
         defaultProvider: 'codex',
         review: { prompt: '  Review this worktree carefully.  ' },
@@ -215,7 +215,7 @@ describe('portLegacySettings', () => {
       enabled: false,
       sound: false,
       osNotifications: false,
-      soundFocusMode: 'unfocused',
+      soundFocusMode: 'always',
     });
     expect(readRawSetting(appSqlite, 'defaultAgent')).toBe('codex');
     expect(readRawSetting(appSqlite, 'reviewPrompt')).toBeNull();
