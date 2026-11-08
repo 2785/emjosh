@@ -36,16 +36,23 @@ const config: Configuration = {
       NSLocalNetworkUsageDescription: `${PRODUCT_NAME} needs local network access to connect to SSH hosts on your network.`,
     },
   },
-  // A zip of the unpacked app, built on a Mac (scripts/package-personal-win.sh). No installer and no
-  // exe resource edits (both need Wine there), and no signing: upstream's Azure signing is
-  // Emdash's account.
+  // An NSIS installer built on a Mac (scripts/package-personal.sh, EMJOSH_TARGET=win). The exe's
+  // icon and version info are written by resedit there, since electron-builder's rcedit needs
+  // Wine on a Mac. Unsigned: upstream's Azure signing is Emdash's account.
   win: {
     ...base.win,
-    icon: 'src/assets/images/emjosh/emjosh.png',
-    artifactName: `${PRODUCT_NAME}-win-x64.\${ext}`,
-    target: [{ target: 'zip', arch: ['x64'] }],
+    icon: 'src/assets/images/emjosh/emjosh.ico',
+    target: [{ target: 'nsis', arch: ['x64'] }],
     azureSignOptions: undefined,
     signAndEditExecutable: false,
+  },
+  // The unified NSIS bundle runs natively on Apple Silicon; the default one's makensis is Intel-only.
+  toolsets: { ...base.toolsets, nsis: '1.2.1' },
+  nsis: {
+    ...base.nsis,
+    artifactName: `${PRODUCT_NAME}-win-x64-setup.\${ext}`,
+    shortcutName: PRODUCT_NAME,
+    uninstallDisplayName: PRODUCT_NAME,
   },
   linux: {
     ...base.linux,

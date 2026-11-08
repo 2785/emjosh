@@ -29,7 +29,17 @@ if [ -n "$missing" ]; then
 fi
 
 if [ "${EMJOSH_TARGET:-mac}" = win ]; then
-  pnpm exec electron-builder --win --x64 --publish never --config electron-builder.personal.config.ts
+  config='electron-builder.personal.config.ts'
+  pnpm exec electron-builder --win --x64 --dir --publish never --config "$config"
+  # Icon and version info: electron-builder writes them with rcedit, which needs Wine on a Mac.
+  exe='release/win-unpacked/Emjosh.exe'
+  npx --yes resedit-cli --in "$exe" --out "$exe" \
+    --icon 1,src/assets/images/emjosh/emjosh.ico \
+    --product-name Emjosh --file-description Emjosh --company-name Emjosh \
+    --internal-name Emjosh --original-filename Emjosh.exe \
+    --product-version "$EMJOSH_VERSION.0" --file-version "$EMJOSH_VERSION.0"
+  pnpm exec electron-builder --win --x64 --prepackaged release/win-unpacked --publish never \
+    --config "$config"
   exit 0
 fi
 pnpm exec electron-builder --mac --publish never --config electron-builder.personal.config.ts

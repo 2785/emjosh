@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Builds Emjosh for 64-bit Windows into release/win-x64/Emjosh-win-x64.zip, on a Mac. Works in a
-# scratch copy so this checkout's node_modules keep the host's native modules. JavaScript builds
-# natively; the Windows native modules come prebuilt: node-pty ships them, better-sqlite3
-# publishes Electron builds, and @parcel/watcher has a per-platform package.
+# Builds the Emjosh installer for 64-bit Windows into release/win-x64/Emjosh-win-x64-setup.exe, on
+# a Mac. Works in a scratch copy so this checkout's node_modules keep the host's native modules.
+# JavaScript builds natively; the Windows native modules come prebuilt: node-pty ships them,
+# better-sqlite3 publishes Electron builds, and @parcel/watcher has a per-platform package.
 #
 # Builds the checked-out commit plus uncommitted changes to tracked files (not untracked ones).
 set -euo pipefail
@@ -53,7 +53,8 @@ for addon in better-sqlite3/build/Release/better_sqlite3.node \
 done
 file -b release/win-unpacked/Emjosh.exe | grep -q 'PE32+.*x86-64'
 
-cp release/Emjosh-win-x64.zip "$OUT/"
+file -b release/Emjosh-win-x64-setup.exe | grep -q 'PE32.*Nullsoft'
+cp release/Emjosh-win-x64-setup.exe "$OUT/"
 cd /
 rm -rf "$WORK"
-echo "Built $OUT/Emjosh-win-x64.zip"
+echo "Built $OUT/Emjosh-win-x64-setup.exe"
