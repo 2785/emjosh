@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 
 APP="release/mac-arm64/Emjosh.app"
 [ "${EMJOSH_MAC_ARCH:-arm64}" = x64 ] && APP="release/mac/Emjosh.app"
+# EMJOSH_TARGET=win packages the Windows zip instead (scripts/package-personal-win.sh sets it).
 
 # Emjosh's version: given by scripts/release.sh, else the latest release, else 0.0.1, older
 # than any release (0.0.0 would fall back to upstream's version).
@@ -27,6 +28,10 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
+if [ "${EMJOSH_TARGET:-mac}" = win ]; then
+  pnpm exec electron-builder --win --x64 --publish never --config electron-builder.personal.config.ts
+  exit 0
+fi
 pnpm exec electron-builder --mac --publish never --config electron-builder.personal.config.ts
 
 # Prefer an Apple Development identity (free with an Apple ID): its Team ID gives keychain items

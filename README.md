@@ -68,9 +68,9 @@ problems to them.
   sidebar (darker in dark mode, brighter in light mode) so the window is easy to spot.
 - **Remembered link choice.** "Open link?" can remember in-app vs. default browser
   (Settings → Interface → *Open links in*).
-- **Its own app, on macOS and Linux.** `Emjosh.app` (or the Linux AppImage) installs next to
-  Emdash, with its own data (`~/Library/Application Support/emjosh`), keychain entry, and
-  icon. It updates from [Emjosh releases](https://github.com/2785/emjosh/releases), never from
+- **Its own app, on macOS, Linux, and Windows.** It installs next to Emdash, with its own data
+  (`~/Library/Application Support/emjosh` on macOS), keychain entry, and icon. On macOS and
+  Linux it updates from [Emjosh releases](https://github.com/2785/emjosh/releases), never from
   Emdash's.
 - **Reload button.** When a new release has been downloaded, or you've built one yourself,
   the sidebar shows *Reload · new build* (also Emjosh → Reload Emjosh); click it to restart on
@@ -109,6 +109,14 @@ Keep it somewhere you can write to (for example `~/Applications`): updates repla
 Some distributions need `libfuse2` to run AppImages. On Ubuntu 24.04 and later, AppArmor
 blocks the Chromium sandbox that Electron apps use; if Emjosh exits with a sandbox error,
 start it with `--no-sandbox`.
+
+### Windows (x64)
+
+Download `Emjosh-win-x64.zip` from the
+[latest release](https://github.com/2785/emjosh/releases/latest), unzip it somewhere permanent
+(for example `%LOCALAPPDATA%\Programs\Emjosh`), and run `Emjosh.exe`. The build isn't signed, so
+SmartScreen warns on first launch: *More info* → *Run anyway*. Windows copies don't update
+themselves yet; download each new release.
 
 ### Coming from Emdash (macOS)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Builds Emjosh (macOS arm64 and Intel, Linux x64 in a container) from merged main and publishes
-# it as a GitHub release of 2785/emjosh, where installed copies pick it up
-# (src/main/host/updates/personal-update.ts).
+# Builds Emjosh (macOS arm64 and Intel, Linux x64 in a container, Windows x64) from merged main
+# and publishes it as a GitHub release of 2785/emjosh, where installed macOS and Linux copies pick
+# it up (src/main/host/updates/personal-update.ts). Windows copies don't update themselves yet.
 #
 #   pnpm run release            # next patch version (the first release is 0.1.0)
 #   pnpm run release minor      # or: major, or an explicit version such as 1.0.0
@@ -15,6 +15,7 @@ OUT='release/publish'
 ZIP_NAME='Emjosh-mac-arm64.zip'
 INTEL_APP='release/mac-x64/Emjosh.app'
 INTEL_ZIP_NAME='Emjosh-mac-x64.zip'
+WINDOWS_ZIP='release/win-x64/Emjosh-win-x64.zip'
 APPIMAGE='release/linux-x64/Emjosh-linux-x64.AppImage'
 LINUX_CONTEXT="${EMJOSH_LINUX_DOCKER_CONTEXT:-colima-emjosh-linux}"
 # Keep in sync with PERSONAL_MANIFEST_ASSET in src/main/host/updates/personal-update.ts.
@@ -62,6 +63,7 @@ echo "Releasing Emjosh $version (${latest:+after $latest, }commit ${commit:0:9})
 
 EMJOSH_VERSION="$version" pnpm run package:personal
 EMJOSH_VERSION="$version" pnpm run package:personal:mac-x64
+EMJOSH_VERSION="$version" pnpm run package:personal:win
 [ -n "${EMJOSH_SKIP_LINUX:-}" ] || EMJOSH_VERSION="$version" pnpm run package:personal:linux
 
 # Installed copies only accept updates signed by the identity they were signed with, so every
@@ -80,7 +82,8 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/$ZIP_NAME"
 ditto -c -k --sequesterRsrc --keepParent "$INTEL_APP" "$OUT/$INTEL_ZIP_NAME"
-assets=("$OUT/$ZIP_NAME" "$OUT/$INTEL_ZIP_NAME")
+cp "$WINDOWS_ZIP" "$OUT/"
+assets=("$OUT/$ZIP_NAME" "$OUT/$INTEL_ZIP_NAME" "$OUT/$(basename "$WINDOWS_ZIP")")
 if [ -z "${EMJOSH_SKIP_LINUX:-}" ]; then
   cp "$APPIMAGE" "$OUT/"
   assets+=("$OUT/$(basename "$APPIMAGE")")

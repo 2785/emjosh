@@ -36,6 +36,17 @@ const config: Configuration = {
       NSLocalNetworkUsageDescription: `${PRODUCT_NAME} needs local network access to connect to SSH hosts on your network.`,
     },
   },
+  // A zip of the unpacked app, built on a Mac (scripts/package-personal-win.sh). No installer and no
+  // exe resource edits (both need Wine there), and no signing: upstream's Azure signing is
+  // Emdash's account.
+  win: {
+    ...base.win,
+    icon: 'src/assets/images/emjosh/emjosh.png',
+    artifactName: `${PRODUCT_NAME}-win-x64.\${ext}`,
+    target: [{ target: 'zip', arch: ['x64'] }],
+    azureSignOptions: undefined,
+    signAndEditExecutable: false,
+  },
   linux: {
     ...base.linux,
     icon: 'src/assets/images/emjosh/emjosh.png',
