@@ -10,7 +10,7 @@ let settings: NotificationSettings = {
   sound: true,
   customSoundPath: '',
   osNotifications: true,
-  soundFocusMode: 'always',
+  soundFocusMode: 'unfocused',
 };
 const customAudioCache = new Map<string, string>();
 let activePreviewAudio: HTMLAudioElement | null = null;

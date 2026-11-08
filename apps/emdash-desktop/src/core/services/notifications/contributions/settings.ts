@@ -21,6 +21,7 @@ export const notificationSettingsContribution = defineSettingsContribution<
     sound: true,
     customSoundPath: '',
     osNotifications: true,
-    soundFocusMode: 'always',
+    // Notifications are for when you're elsewhere; in Emjosh you can see the agent finish.
+    soundFocusMode: 'unfocused',
   },
 });

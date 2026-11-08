@@ -64,7 +64,7 @@ const NotificationSettingsCard: React.FC = () => {
     sound: true,
     customSoundPath: '',
     osNotifications: true,
-    soundFocusMode: 'always',
+    soundFocusMode: 'unfocused',
   };
   const customSoundPath = currentNotifications.customSoundPath?.trim() ?? '';
 
@@ -195,11 +195,11 @@ const NotificationSettingsCard: React.FC = () => {
                   <ResetToDefaultButton
                     visible={isFieldOverridden('soundFocusMode')}
                     defaultLabel="always"
-                    onReset={() => resetNotificationField('soundFocusMode', 'always')}
+                    onReset={() => resetNotificationField('soundFocusMode', 'unfocused')}
                     disabled={loading}
                   />
                   <Select.Root
-                    value={notifications?.soundFocusMode ?? 'always'}
+                    value={notifications?.soundFocusMode ?? 'unfocused'}
                     onValueChange={(next) =>
                       updateNotifications({ soundFocusMode: next as 'always' | 'unfocused' })
                     }

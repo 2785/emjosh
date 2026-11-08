@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { notificationSettingsContribution } from '../contributions/settings';
 import { defaultRoutingPolicy, type NotificationRoutingSettings } from './routing';
 import type { AppNotification } from './schemas';
 
@@ -29,6 +30,16 @@ const settings: NotificationRoutingSettings = {
 };
 
 describe('defaultRoutingPolicy', () => {
+  it('by default notifies only while the app is unfocused, sound included', () => {
+    const defaults = notificationSettingsContribution.defaults as NotificationRoutingSettings;
+    expect(
+      defaultRoutingPolicy(baseNotification, { appFocused: true, settings: defaults })
+    ).toEqual({ system: false, sound: false });
+    expect(
+      defaultRoutingPolicy(baseNotification, { appFocused: false, settings: defaults })
+    ).toEqual({ system: true, sound: true });
+  });
+
   it('routes system notifications only when the app is unfocused', () => {
     expect(defaultRoutingPolicy(baseNotification, { appFocused: false, settings })).toEqual({
       system: true,
