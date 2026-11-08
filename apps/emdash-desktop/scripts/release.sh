@@ -15,7 +15,7 @@ OUT='release/publish'
 ZIP_NAME='Emjosh-mac-arm64.zip'
 INTEL_APP='release/mac-x64/Emjosh.app'
 INTEL_ZIP_NAME='Emjosh-mac-x64.zip'
-WINDOWS_ZIP='release/win-x64/Emjosh-win-x64.zip'
+WINDOWS_INSTALLER='release/win-x64/Emjosh-win-x64-setup.exe'
 APPIMAGE='release/linux-x64/Emjosh-linux-x64.AppImage'
 LINUX_CONTEXT="${EMJOSH_LINUX_DOCKER_CONTEXT:-colima-emjosh-linux}"
 # Keep in sync with PERSONAL_MANIFEST_ASSET in src/main/host/updates/personal-update.ts.
@@ -82,8 +82,8 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$OUT/$ZIP_NAME"
 ditto -c -k --sequesterRsrc --keepParent "$INTEL_APP" "$OUT/$INTEL_ZIP_NAME"
-cp "$WINDOWS_ZIP" "$OUT/"
-assets=("$OUT/$ZIP_NAME" "$OUT/$INTEL_ZIP_NAME" "$OUT/$(basename "$WINDOWS_ZIP")")
+cp "$WINDOWS_INSTALLER" "$OUT/"
+assets=("$OUT/$ZIP_NAME" "$OUT/$INTEL_ZIP_NAME" "$OUT/$(basename "$WINDOWS_INSTALLER")")
 if [ -z "${EMJOSH_SKIP_LINUX:-}" ]; then
   cp "$APPIMAGE" "$OUT/"
   assets+=("$OUT/$(basename "$APPIMAGE")")

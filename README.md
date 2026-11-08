@@ -112,11 +112,10 @@ start it with `--no-sandbox`.
 
 ### Windows (x64)
 
-Download `Emjosh-win-x64.zip` from the
-[latest release](https://github.com/2785/emjosh/releases/latest), unzip it somewhere permanent
-(for example `%LOCALAPPDATA%\Programs\Emjosh`), and run `Emjosh.exe`. The build isn't signed, so
-SmartScreen warns on first launch: *More info* → *Run anyway*. Windows copies don't update
-themselves yet; download each new release.
+Download `Emjosh-win-x64-setup.exe` from the
+[latest release](https://github.com/2785/emjosh/releases/latest) and run it. The installer isn't
+signed, so SmartScreen warns first: *More info* → *Run anyway*. Windows copies don't update
+themselves yet; run each new release's installer to update.
 
 ### Coming from Emdash (macOS)
 
