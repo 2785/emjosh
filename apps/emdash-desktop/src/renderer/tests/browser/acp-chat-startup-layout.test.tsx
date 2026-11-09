@@ -152,6 +152,10 @@ vi.mock('@core/manifests/browser/project-availability-ui', () => ({
   projectAvailabilityUi: { getLiveActionDisabledReason: () => undefined },
 }));
 vi.mock('@core/manifests/browser/modal-api', () => ({ openModal: vi.fn() }));
+// The composer reads the follow-up mode; these tests exercise the queueing behavior.
+vi.mock('@core/features/settings/api/browser/use-app-settings-key', () => ({
+  useAppSettingsKey: (key: string) => ({ value: key === 'followUpMode' ? 'queue' : undefined }),
+}));
 vi.mock('@core/features/conversations/browser/acp/transcript-file-commands', () => ({
   createTranscriptFileCommands: () => ({}),
 }));

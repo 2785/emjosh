@@ -1,7 +1,12 @@
 import { formatHostRef } from '@emdash/core/primitives/host/api';
 import type { AgentProviderId } from '@emdash/plugins/agents/types';
 import { ChatComposer } from '@emdash/ui/react/components';
-import type { CommandItem, MentionItem, PromptEditorRef } from '@emdash/ui/react/components';
+import type {
+  CommandItem,
+  ComposerAttachment,
+  MentionItem,
+  PromptEditorRef,
+} from '@emdash/ui/react/components';
 import { Field, Switch } from '@emdash/ui/react/primitives';
 import {
   useCallback,
@@ -59,6 +64,9 @@ export type InitialConversationState = {
   projectId?: string;
   prompt: string;
   setPrompt: Dispatch<SetStateAction<string>>;
+  /** Images pasted or dropped into the first message (chat conversations only). */
+  images: ComposerAttachment[];
+  setImages: Dispatch<SetStateAction<ComposerAttachment[]>>;
   issueContext: string | null;
   setIssueContext: (ctx: string | null) => void;
   autoApprove: boolean;
@@ -99,6 +107,7 @@ export function useInitialConversationState(
   const { providerId, setProviderOverride } = useEffectiveProvider(connectionId, initialProvider);
   const { data: agents } = useAgents(hostRefFromConnectionId(connectionId));
   const [prompt, setPrompt] = useState('');
+  const [images, setImages] = useState<ComposerAttachment[]>([]);
   const [issueContext, setIssueContext] = useState<string | null>(null);
   const capabilities = agents?.find((agent) => agent.id === providerId)?.capabilities;
   const launchSettings = useConversationLaunchSettings(
@@ -122,6 +131,7 @@ export function useInitialConversationState(
     setProviderOverride(null);
     if (resetPromptOnProjectChange) {
       setPrompt('');
+      setImages([]);
     }
     setIssueContext(null);
     setIssueContextEditorOpen(false);
@@ -147,6 +157,8 @@ export function useInitialConversationState(
     projectId,
     prompt,
     setPrompt,
+    images,
+    setImages,
     issueContext,
     setIssueContext,
     autoApprove,
@@ -232,6 +244,8 @@ interface InitialConversationFieldProps {
   textareaClassName?: string;
   showAutoApproveToggle?: boolean;
   requirePromptDelivery?: boolean;
+  /** Enter (without Shift) calls this instead of starting a new line. */
+  onSubmit?: () => void;
 }
 
 export function InitialConversationField({
@@ -243,6 +257,7 @@ export function InitialConversationField({
   textareaClassName,
   showAutoApproveToggle = true,
   requirePromptDelivery = false,
+  onSubmit,
 }: InitialConversationFieldProps) {
   const autoApproveSwitchId = useId();
   const editorApiRef = useRef<PromptEditorRef | null>(null);
@@ -442,13 +457,16 @@ export function InitialConversationField({
         ) : null}
 
         <ChatComposer
-          canSubmit={false}
+          canSubmit={!!onSubmit}
           showSubmitButton={false}
           placeholder={
             placeholder ?? 'Describe what the agent should do, or use / to select a prompt...'
           }
-          onSubmit={() => {}}
+          onSubmit={() => onSubmit?.()}
           onInputChange={handleComposerInputChange}
+          {...(state.useChatUi
+            ? { attachments: state.images, onAttachmentsChange: state.setImages }
+            : {})}
           disabled={!canDeliverInitialPrompt}
           editorApiRef={editorApiRef}
           renderMentionIcon={renderMentionIcon}

@@ -3,9 +3,11 @@ import { type TaskNameState } from '@core/features/tasks/api/browser/create-task
 
 interface TaskNameFieldProps {
   state: TaskNameState;
+  /** Enter calls this, e.g. to create the task. */
+  onSubmit?: () => void;
 }
 
-export function TaskNameField({ state }: TaskNameFieldProps) {
+export function TaskNameField({ state, onSubmit }: TaskNameFieldProps) {
   const { taskName, placeholder, handleTaskNameChange, showSlugHint } = state;
 
   return (
@@ -18,6 +20,12 @@ export function TaskNameField({ state }: TaskNameFieldProps) {
         placeholder={placeholder || 'Task name...'}
         className="px-0 text-lg!"
         onChange={(e) => handleTaskNameChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (!onSubmit || e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.nativeEvent.isComposing)
+            return;
+          e.preventDefault();
+          onSubmit();
+        }}
       />
       {showSlugHint && (
         <p className="text-muted-foreground mt-1 text-xs">

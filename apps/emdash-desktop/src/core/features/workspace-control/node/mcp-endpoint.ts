@@ -16,7 +16,7 @@ export type ControlEndpointInfo = { url: string; token: string };
 /** Added to agents' system prompts by MCP clients such as Claude Code. */
 export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace: a branch and worktree of one repository with its own agent chat. These tools manage workspaces and initiatives (groups of workspaces across repositories working towards one goal). Use them as described below without waiting to be asked.
 
-- Name your workspace once, first. New workspaces get placeholder names such as "dull-geese-try". As soon as you understand the task, before starting the work, call rename_workspace with a short name for it (for example "remove-sandbox-access-expiry"). Later messages are almost always follow-ups to that work (corrections, details, related questions), so keep the name; rename again only if the user asks, or the conversation has pivoted to something with nothing in common with what the workspace started as.
+- Name your workspace once, first. New workspaces get placeholder names such as "dull-geese-try". As soon as you understand the task, before starting the work, call rename_workspace with a short name for it in plain words, the way you would title the work (for example "Remove sandbox access expiry"), not a branch-style slug. Later messages are almost always follow-ups to that work (corrections, details, related questions), so keep the name; rename again only if the user asks, or the conversation has pivoted to something with nothing in common with what the workspace started as.
 - Split work across repositories into an initiative. When the task also needs changes in other repositories (an API and its UI, a library and its users), don't make those changes from this workspace; you lead, and a workspace per repository does its part:
   - Call current_workspace. If it has no initiative, create one with create_initiative (it includes this workspace and delivers messages into every member's chat). If it has one, make sure its pushMessages is true, or call set_message_delivery, so the others actually receive what you send.
   - For each other repository (find it with list_projects), call create_workspace with that initiativeId and a self-contained prompt: the goal, that repository's part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative led by your workspace (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
@@ -81,7 +81,10 @@ export function buildControlMcpServer(
         'Name the workspace this conversation runs in after its work. Replaces only the ' +
         'generated placeholder name unless override is true.',
       inputSchema: {
-        name: z.string().min(1).describe('Short name for the work, e.g. "fix-login-redirect".'),
+        name: z
+          .string()
+          .min(1)
+          .describe('Short name in plain words, e.g. "Fix login redirect" (not a branch name).'),
         override: z
           .boolean()
           .optional()

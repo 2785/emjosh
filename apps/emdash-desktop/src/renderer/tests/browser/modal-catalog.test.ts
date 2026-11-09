@@ -7,6 +7,8 @@ import { modalCatalog } from '@core/manifests/browser/modal-catalog';
 import type { ModalDismissed } from '@core/primitives/modals/react';
 
 const expectedModalIds = [
+  'initiativeFeedModal',
+  'initiativePickerModal',
   'addProjectModal',
   'addRemoteModal',
   'addSshConnModal',
