@@ -7,6 +7,7 @@ export interface TaskSettingsModel {
   deleteBranchByDefault: boolean;
   preserveNameCapitalization: boolean;
   includeIssueContextByDefault: boolean;
+  createWithEnter: boolean;
   loading: boolean;
   saving: boolean;
   isFieldOverridden: (
@@ -17,6 +18,7 @@ export interface TaskSettingsModel {
       | 'deleteBranchByDefault'
       | 'preserveNameCapitalization'
       | 'includeIssueContextByDefault'
+      | 'createWithEnter'
   ) => boolean;
   updateAutoGenerateName: (next: boolean) => void;
   updateAutoTrustWorktrees: (next: boolean) => void;
@@ -24,12 +26,14 @@ export interface TaskSettingsModel {
   updateDeleteBranchByDefault: (next: boolean) => void;
   updatePreserveNameCapitalization: (next: boolean) => void;
   updateIncludeIssueContextByDefault: (next: boolean) => void;
+  updateCreateWithEnter: (next: boolean) => void;
   resetAutoGenerateName: () => void;
   resetAutoTrustWorktrees: () => void;
   resetCreateBranchAndWorktree: () => void;
   resetDeleteBranchByDefault: () => void;
   resetPreserveNameCapitalization: () => void;
   resetIncludeIssueContextByDefault: () => void;
+  resetCreateWithEnter: () => void;
 }
 
 export function useTaskSettings(): TaskSettingsModel {
@@ -49,6 +53,7 @@ export function useTaskSettings(): TaskSettingsModel {
     deleteBranchByDefault: tasks?.deleteBranchByDefault ?? false,
     preserveNameCapitalization: tasks?.preserveNameCapitalization ?? false,
     includeIssueContextByDefault: tasks?.includeIssueContextByDefault ?? true,
+    createWithEnter: tasks?.createWithEnter ?? true,
     loading,
     saving,
     isFieldOverridden,
@@ -58,11 +63,13 @@ export function useTaskSettings(): TaskSettingsModel {
     updateDeleteBranchByDefault: (next) => update({ deleteBranchByDefault: next }),
     updatePreserveNameCapitalization: (next) => update({ preserveNameCapitalization: next }),
     updateIncludeIssueContextByDefault: (next) => update({ includeIssueContextByDefault: next }),
+    updateCreateWithEnter: (next) => update({ createWithEnter: next }),
     resetAutoGenerateName: () => resetField('autoGenerateName'),
     resetAutoTrustWorktrees: () => resetField('autoTrustWorktrees'),
     resetCreateBranchAndWorktree: () => resetField('createBranchAndWorktree'),
     resetDeleteBranchByDefault: () => resetField('deleteBranchByDefault'),
     resetPreserveNameCapitalization: () => resetField('preserveNameCapitalization'),
     resetIncludeIssueContextByDefault: () => resetField('includeIssueContextByDefault'),
+    resetCreateWithEnter: () => resetField('createWithEnter'),
   };
 }

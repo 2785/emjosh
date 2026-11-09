@@ -2,7 +2,7 @@ import { asAgentProviderId, type AgentProviderId } from '@emdash/plugins/agents/
 import { describe, expect, it } from 'vitest';
 import { emptyProviderSettings } from '@core/features/conversations/api/provider-settings';
 import type { InitialConversationState } from '@core/features/tasks/contributions/browser/task-config/initial-conversation-section';
-import { buildInitialConversation } from './build-create-task-params';
+import { buildInitialConversation, buildPendingFirstPrompt } from './build-create-task-params';
 
 const agent = asAgentProviderId;
 
@@ -21,6 +21,8 @@ function makeInitialConversationState(
     setProvider: () => {},
     prompt: 'Check this',
     setPrompt: () => {},
+    images: [],
+    setImages: () => {},
     issueContext: null,
     setIssueContext: () => {},
     autoApprove,
@@ -86,5 +88,44 @@ describe('buildInitialConversation', () => {
 
     expect(conversation?.type).toBe('pty');
     expect(conversation?.initialPrompt).toBeUndefined();
+  });
+});
+
+describe('first messages with images', () => {
+  // A 1x1 PNG.
+  const png =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  const image = {
+    id: 'a',
+    name: 'shot.png',
+    kind: 'image' as const,
+    previewUrl: png,
+    mimeType: 'image/png',
+  };
+
+  it('are sent by the new conversation instead of the initial queue', () => {
+    const state = makeInitialConversationState(agent('claude'), false, {
+      useChatUi: true,
+      images: [image, { ...image, id: 'b' }],
+    });
+
+    expect(buildInitialConversation(state)?.initialQueue).toBeUndefined();
+    const pending = buildPendingFirstPrompt(state);
+    expect(pending?.text).toBe('Check this');
+    expect(pending?.images.map((img) => [img.name, img.mimeType, img.data.byteLength > 0])).toEqual(
+      [
+        ['Image 1', 'image/png', true],
+        ['Image 2', 'image/png', true],
+      ]
+    );
+  });
+
+  it('leave text-only and terminal first messages as they were', () => {
+    const chat = makeInitialConversationState(agent('claude'), false, { useChatUi: true });
+    expect(buildPendingFirstPrompt(chat)).toBeNull();
+    expect(buildInitialConversation(chat)?.initialQueue).toEqual([{ text: 'Check this' }]);
+
+    const terminal = makeInitialConversationState(agent('claude'), false, { images: [image] });
+    expect(buildPendingFirstPrompt(terminal)).toBeNull();
   });
 });

@@ -29,6 +29,8 @@ export type TaskSettings = {
   deleteBranchByDefault: boolean;
   preserveNameCapitalization: boolean;
   includeIssueContextByDefault: boolean;
+  /** Enter creates the task from the New Task dialog; otherwise Cmd/Ctrl+Enter. */
+  createWithEnter: boolean;
 };
 
 export type FilesSettings = {

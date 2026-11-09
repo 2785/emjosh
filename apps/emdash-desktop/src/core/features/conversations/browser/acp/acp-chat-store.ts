@@ -31,6 +31,7 @@ import {
   getConversationsClient,
   type ConversationsClient,
 } from '@core/features/conversations/api/browser/client';
+import { takePendingFirstPrompt } from '@core/features/conversations/api/browser/pending-first-prompts';
 import { conversationRegistry } from '@core/features/conversations/api/browser/stores/conversation-registry';
 import {
   ACP_DRAFT_MAX_LENGTH,
@@ -666,6 +667,7 @@ export class AcpChatStore {
       if (this._historyRefreshRequested || this.chatState.transcript.needsHistory)
         this._requestHistoryRefresh();
       void this._rehydrateDraftAttachmentPreviews();
+      void this._deliverPendingFirstPrompt();
     } catch (error) {
       if (this._disposed || this._historyEpoch !== epoch) {
         if (clientSession && this.session !== clientSession) clientSession.dispose();
@@ -683,6 +685,31 @@ export class AcpChatStore {
         void this._refreshAuthStatus(providerId);
       }
     }
+  }
+
+  /** Sends a first prompt with images left by the new-task dialog (see pending-first-prompts). */
+  private async _deliverPendingFirstPrompt(): Promise<void> {
+    const prompt = takePendingFirstPrompt(this.conversationId);
+    if (!prompt) return;
+    const attachments: StoredPromptAttachment[] = [];
+    for (const image of prompt.images) {
+      const ref = await this.uploadAttachment({
+        name: image.name,
+        mimeType: image.mimeType,
+        data: image.data,
+      });
+      if (ref)
+        attachments.push({
+          type: 'attachment',
+          id: ref.id,
+          name: image.name,
+          mimeType: image.mimeType,
+        });
+    }
+    if (attachments.length < prompt.images.length) {
+      toast.error('Some images could not be attached to the first message');
+    }
+    await this._submitPrompt(crypto.randomUUID(), prompt.text, attachments, prompt.hiddenContext);
   }
 
   private _failBootstrap(error: AcpLoadError): void {

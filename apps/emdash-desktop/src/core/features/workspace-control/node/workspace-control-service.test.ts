@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  humanizeSlug,
   type ControlWorkspace,
   type WorkspaceControlDeps,
   WorkspaceControlService,
@@ -116,6 +117,18 @@ describe('WorkspaceControlService', () => {
       { name: '  Fix  login: AR/AP 1_1 ' }
     );
     expect(deps.renameWorkspace).toHaveBeenLastCalledWith('p1', 'self', 'Fix login: AR/AP 1_1');
+  });
+
+  it('turns branch-style names into words', async () => {
+    expect(humanizeSlug('investigate-jit-fund-reversal-subtype')).toBe(
+      'Investigate jit fund reversal subtype'
+    );
+    expect(humanizeSlug('KRAK-1029 SFTP filtering')).toBe('KRAK-1029 SFTP filtering');
+    expect(humanizeSlug('Fix login')).toBe('Fix login');
+
+    const { service, deps } = setup([workspace({ id: 'self', name: 'dull-geese-try' })]);
+    await service.renameWorkspace({ conversationId: 'conv-self' }, { name: 'fix-login-redirect' });
+    expect(deps.renameWorkspace).toHaveBeenCalledWith('p1', 'self', 'Fix login redirect');
   });
 
   it('keeps a chosen name unless overridden', async () => {

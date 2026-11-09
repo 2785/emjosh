@@ -1,10 +1,15 @@
 import { useCallback, useRef } from 'react';
+import { setPendingFirstPrompt } from '@core/features/conversations/api/browser/pending-first-prompts';
 import { getTaskManagerStore } from '@core/features/tasks/api/browser/task-state/task-selectors';
 import type { InitialConversationState } from '@core/features/tasks/contributions/browser/task-config/initial-conversation-section';
 import { taskViewDef } from '@core/features/tasks/contributions/views';
 import { log } from '@core/primitives/logging/browser/logger';
 import type { NavigateFnTyped } from '@core/primitives/navigation/browser/navigation-hooks';
-import { buildInitialConversation, deriveInitialStatus } from './build-create-task-params';
+import {
+  buildInitialConversation,
+  buildPendingFirstPrompt,
+  deriveInitialStatus,
+} from './build-create-task-params';
 import type { CreateTaskState } from './use-create-task-state';
 
 interface UseCreateTaskCallbackParams {
@@ -39,6 +44,9 @@ export function useCreateTaskCallback({
       return;
     }
     const id = crypto.randomUUID();
+    const conversation = buildInitialConversation(initialConversation);
+    const firstPrompt = buildPendingFirstPrompt(initialConversation);
+    if (conversation && firstPrompt) setPendingFirstPrompt(conversation.id, firstPrompt);
     void taskManager
       .createTask({
         id,
@@ -48,7 +56,7 @@ export function useCreateTaskCallback({
           name: state.taskName.effectiveTaskName,
           linkedIssue: state.linkedType === 'issue' ? (state.linkedIssue ?? undefined) : undefined,
           initialStatus: deriveInitialStatus(state.linkedType, state.linkedPR),
-          initialConversation: buildInitialConversation(initialConversation),
+          initialConversation: conversation,
         },
         workspaceConfig: state.workspaceConfig.resolvedConfig,
       })

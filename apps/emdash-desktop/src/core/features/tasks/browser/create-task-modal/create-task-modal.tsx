@@ -111,7 +111,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
     initialWorkspaceId
   );
 
-  const { includeIssueContextByDefault } = useTaskSettings();
+  const { includeIssueContextByDefault, createWithEnter } = useTaskSettings();
   const initialConversation = useInitialConversationState(selectedProjectId);
   const { navigate } = useNavigate();
 
@@ -133,6 +133,14 @@ export const CreateTaskModal = observer(function CreateTaskModal({
       : state.workspaceConfig.missingBranch
         ? MISSING_BRANCH_REASON
         : undefined;
+  // "Create tasks with Enter": Enter creates whenever the Create button would.
+  const createOnEnter =
+    createWithEnter &&
+    canCreate &&
+    !initialConversation.issueContextEditorOpen &&
+    !createDisabledReason
+      ? handleCreateTask
+      : undefined;
 
   return (
     <>
@@ -141,7 +149,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
       </Dialog.Header>
       <Dialog.Body>
         <div className="flex w-full flex-col gap-5">
-          <TaskNameField state={state.taskName} />
+          <TaskNameField state={state.taskName} onSubmit={createOnEnter} />
           <LinkedEntitySection
             state={state}
             hasAnyIssueIntegration={hasAnyIssueIntegration}
@@ -171,7 +179,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
                 {
                   value: 'conversation',
                   label: 'Initial Conversation',
-                  content: <ConversationField />,
+                  content: <ConversationField onSubmit={createOnEnter} />,
                 },
                 {
                   value: 'workspace',

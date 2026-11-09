@@ -88,6 +88,17 @@ export type WorkspaceControlDeps = {
   initiatives?: ControlInitiatives;
 };
 
+/**
+ * Workspace names are plain text; a branch-style slug ("investigate-jit-fund-reversal") becomes
+ * words ("Investigate jit fund reversal"). Anything else is kept as written.
+ */
+export function humanizeSlug(name: string): string {
+  const trimmed = name.trim();
+  if (!/^[a-z0-9]+(?:[-_][a-z0-9]+)+$/.test(trimmed)) return trimmed;
+  const words = trimmed.replace(/[-_]+/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 export class WorkspaceControlService {
   constructor(private readonly deps: WorkspaceControlDeps) {}
 
@@ -179,7 +190,7 @@ export class WorkspaceControlService {
     const siblings = all
       .filter((other) => other.projectId === workspace.projectId && other.id !== taskId)
       .map((other) => other.name);
-    const name = ensureUniqueTaskDisplayName(input.name, siblings);
+    const name = ensureUniqueTaskDisplayName(humanizeSlug(input.name), siblings);
     if (!name) throw new Error('The name has no usable characters.');
     if (name !== workspace.name) await this.deps.renameWorkspace(workspace.projectId, taskId, name);
     return { renamed: true, name };

@@ -17,6 +17,7 @@ import {
 } from '@core/features/workspace-control/node/mcp-endpoint';
 import {
   type ControlPullRequest,
+  humanizeSlug,
   type WorkspaceControlDeps,
   WorkspaceControlService,
 } from '@core/features/workspace-control/node/workspace-control-service';
@@ -308,7 +309,7 @@ export async function startWorkspaceControl(
       if (!fromBranch) throw new Error('Could not determine a base branch; pass baseBranch.');
 
       // The workspace shows the name as given; its branch needs the branch-safe form.
-      const name = formatTaskDisplayName(input.name ?? '') || generateRandom();
+      const name = formatTaskDisplayName(humanizeSlug(input.name ?? '')) || generateRandom();
       const branchName = resolveTaskBranchName({
         rawBranch: normalizeTaskName(name) || generateRandom(),
         branchPrefix: projectSettings.branchPrefix,

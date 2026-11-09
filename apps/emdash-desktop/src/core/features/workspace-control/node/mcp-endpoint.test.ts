@@ -95,6 +95,7 @@ describe('control MCP endpoint', () => {
     expect(client.getInstructions()).toContain('create_initiative');
     expect(client.getInstructions()).toContain('background shell loop');
     expect(client.getInstructions()).toContain('set_message_delivery');
+    expect(client.getInstructions()).toContain('not a branch-style slug');
     expect(client.getInstructions()).toContain("Don't do another workspace's work on its branch");
     const current = await client.callTool({ name: 'current_workspace', arguments: {} });
     expect(JSON.parse((current.content as { text: string }[])[0]!.text)).toMatchObject({

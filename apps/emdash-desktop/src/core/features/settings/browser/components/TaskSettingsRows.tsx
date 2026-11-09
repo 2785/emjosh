@@ -167,6 +167,32 @@ export const PreserveTaskNameCapitalizationRow: React.FC = () => {
   );
 };
 
+export const CreateWithEnterRow: React.FC = () => {
+  const taskSettings = useTaskSettings();
+
+  return (
+    <SettingRow
+      title="Create tasks with Enter"
+      description="In the New Task dialog, Enter creates the task and Shift+Enter starts a new line. When off, use Cmd/Ctrl+Enter."
+      control={
+        <>
+          <ResetToDefaultButton
+            visible={taskSettings.isFieldOverridden('createWithEnter')}
+            defaultLabel="on"
+            onReset={taskSettings.resetCreateWithEnter}
+            disabled={taskSettings.loading || taskSettings.saving}
+          />
+          <Switch
+            checked={taskSettings.createWithEnter}
+            disabled={taskSettings.loading || taskSettings.saving}
+            onCheckedChange={taskSettings.updateCreateWithEnter}
+          />
+        </>
+      }
+    />
+  );
+};
+
 export const IncludeIssueContextByDefaultRow: React.FC = () => {
   const taskSettings = useTaskSettings();
 

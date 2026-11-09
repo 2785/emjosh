@@ -43,6 +43,9 @@ problems to them.
   *Steer* (the default) hands your message (merged with anything queued) to the running agent
   right away, so it adjusts course without stopping; *Queue* (Emdash's behavior) waits for the
   turn to end. Agents that can't take messages mid-turn stop and run it next.
+- **Screenshots in new tasks.** Paste or drop images into the New Task dialog's first message;
+  they're sent with it once the chat starts. Enter creates the task (Shift+Enter for a new
+  line); switch back to Cmd/Ctrl+Enter in Settings → General → *Create tasks with Enter*.
 - **Inline attachment references.** Pasted or dropped images get an `[Image 1]` pill where
   your cursor is, and the agent sees which image is which; long pasted text collapses into a
   `[Snippet 1]` pill that still sends the full text in place.
