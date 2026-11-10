@@ -40,6 +40,10 @@ describe('control MCP endpoint', () => {
       callerContext,
       archiveWorkspace: async () => {},
       renameWorkspace: async () => {},
+      addProject: async () => ({ id: 'x', name: 'x', path: '/x' }),
+      cloneProject: async () => ({ id: 'x', name: 'x', path: '/x' }),
+      renameProject: async () => {},
+      removeProject: async () => {},
       createWorkspace: async () => ({ id: 'x', name: 'x', branch: 'x' }),
     });
     endpoint = await startControlMcpEndpoint({
@@ -75,8 +79,10 @@ describe('control MCP endpoint', () => {
 
     const tools = (await client.listTools()).tools.map((tool) => tool.name).sort();
     expect(tools).toEqual([
+      'add_project',
       'add_to_initiative',
       'archive_workspaces',
+      'clone_project',
       'create_initiative',
       'create_workspace',
       'current_workspace',
@@ -86,6 +92,8 @@ describe('control MCP endpoint', () => {
       'post_message',
       'read_messages',
       'remove_from_initiative',
+      'remove_project',
+      'rename_project',
       'rename_workspace',
       'set_message_delivery',
       'wait_for_messages',

@@ -19,7 +19,8 @@ problems to them.
 ### Agents managing workspaces
 
 - **Workspace tools for agents.** Every chat agent (and Claude in a terminal) gets an
-  `emjosh` MCP server: list projects and workspaces (branch, agent status, PR state),
+  `emjosh` MCP server: list, add, clone, rename, and remove projects; list workspaces (branch,
+  agent status, PR state),
   describe and rename its own workspace, create workspaces (a new branch and worktree whose
   first prompt starts right away), and archive others. Agents are told to name their workspace
   as soon as they know what it's for, and to start workspaces in an initiative for changes that

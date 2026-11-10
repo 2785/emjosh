@@ -73,6 +73,17 @@ export type ControlCaller = { conversationId: string | null };
 
 export type WorkspaceControlDeps = {
   listProjects(): Promise<ControlProject[]>;
+  /** Registers an existing local directory as a project. */
+  addProject(input: { path: string; name: string }): Promise<ControlProject>;
+  /** Clones a repository into `parentDirectory` (the repositories folder by default). */
+  cloneProject(input: {
+    repositoryUrl: string;
+    name: string;
+    parentDirectory?: string;
+  }): Promise<ControlProject>;
+  renameProject(projectId: string, name: string): Promise<void>;
+  /** Removes the project from Emjosh, with its workspaces; repository files stay. */
+  removeProject(projectId: string): Promise<void>;
   listWorkspaces(filter: {
     projectId?: string;
     includeArchived: boolean;
@@ -87,6 +98,26 @@ export type WorkspaceControlDeps = {
   onArchived?(caller: ControlCaller, workspaces: { id: string; name: string }[]): void;
   initiatives?: ControlInitiatives;
 };
+
+function baseName(path: string): string {
+  return (
+    path
+      .replace(/[\\/]+$/, '')
+      .split(/[\\/]/)
+      .pop() ?? path
+  );
+}
+
+/** "git@github.com:org/repo.git" or "https://github.com/org/repo" → "repo". */
+export function repositoryName(url: string): string {
+  return (
+    url
+      .replace(/[\\/]+$/, '')
+      .split(/[\\/:]/)
+      .pop()
+      ?.replace(/\.git$/, '') ?? ''
+  );
+}
 
 /**
  * Workspace names are plain text; a branch-style slug ("investigate-jit-fund-reversal") becomes
@@ -104,6 +135,70 @@ export class WorkspaceControlService {
 
   listProjects(): Promise<ControlProject[]> {
     return this.deps.listProjects();
+  }
+
+  addProject(input: { path: string; name?: string }): Promise<ControlProject> {
+    const path = input.path.trim();
+    if (!path) throw new Error('A project needs a path.');
+    return this.deps.addProject({ path, name: input.name?.trim() || baseName(path) });
+  }
+
+  cloneProject(input: {
+    repositoryUrl: string;
+    name?: string;
+    parentDirectory?: string;
+  }): Promise<ControlProject> {
+    const repositoryUrl = input.repositoryUrl.trim();
+    const name = input.name?.trim() || repositoryName(repositoryUrl);
+    if (!repositoryUrl || !name)
+      throw new Error('Pass a repository URL (and a name if it has none).');
+    return this.deps.cloneProject({
+      repositoryUrl,
+      name,
+      parentDirectory: input.parentDirectory?.trim() || undefined,
+    });
+  }
+
+  async renameProject(input: { projectId: string; name: string }): Promise<void> {
+    const name = input.name.trim();
+    if (!name) throw new Error('A project needs a name.');
+    await this.requireProject(input.projectId);
+    await this.deps.renameProject(input.projectId, name);
+  }
+
+  /**
+   * Removes a project from Emjosh. Refuses the caller's own project, and projects with open
+   * workspaces unless `includeWorkspaces`: their worktrees (and any uncommitted work in them)
+   * go with the project.
+   */
+  async removeProject(
+    caller: ControlCaller,
+    input: { projectId: string; includeWorkspaces?: boolean }
+  ): Promise<{ removed: boolean; reason?: string }> {
+    const project = await this.requireProject(input.projectId);
+    const workspaces = (
+      await this.deps.listWorkspaces({ projectId: project.id, includeArchived: false })
+    ).filter((workspace) => workspace.projectId === project.id);
+    const taskId = await this.callerTaskId(caller);
+    if (taskId && workspaces.some((workspace) => workspace.id === taskId)) {
+      return { removed: false, reason: "This conversation's own project can't be removed." };
+    }
+    if (workspaces.length > 0 && !input.includeWorkspaces) {
+      return {
+        removed: false,
+        reason:
+          `${project.name} has ${workspaces.length} open workspace(s), which would be removed ` +
+          'with their worktrees. Pass includeWorkspaces only if the user confirmed that.',
+      };
+    }
+    await this.deps.removeProject(project.id);
+    return { removed: true };
+  }
+
+  private async requireProject(projectId: string): Promise<ControlProject> {
+    const project = (await this.deps.listProjects()).find((p) => p.id === projectId);
+    if (!project) throw new Error(`Project '${projectId}' was not found.`);
+    return project;
   }
 
   async listWorkspaces(filter: {

@@ -19,7 +19,7 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - Name your workspace once, first. New workspaces get placeholder names such as "dull-geese-try". As soon as you understand the task, before starting the work, call rename_workspace with a short name for it in plain words, the way you would title the work (for example "Remove sandbox access expiry"), not a branch-style slug. Later messages are almost always follow-ups to that work (corrections, details, related questions), so keep the name; rename again only if the user asks, or the conversation has pivoted to something with nothing in common with what the workspace started as.
 - Split work across repositories into an initiative. When the task also needs changes in other repositories (an API and its UI, a library and its users), don't make those changes from this workspace; you lead, and a workspace per repository does its part:
   - Call current_workspace. If it has no initiative, create one with create_initiative (it includes this workspace and delivers messages into every member's chat). If it has one, make sure its pushMessages is true, or call set_message_delivery, so the others actually receive what you send.
-  - For each other repository (find it with list_projects), call create_workspace with that initiativeId and a self-contained prompt: the goal, that repository's part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative led by your workspace (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
+  - For each other repository (find it with list_projects; if it isn't a project yet, add it with add_project or clone_project), call create_workspace with that initiativeId and a self-contained prompt: the goal, that repository's part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative led by your workspace (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
   - Coordinate through the initiative: post_message changes of plan to the workspace concerned. With delivery on, their reports arrive in your chat as new messages, even after your turn ends, so you don't need to poll; call wait_for_messages only when you can't continue without an answer. App events in the feed tell you when a workspace finished a turn, needs approval, or failed.
   - Don't do another workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
 - If you were started as part of an initiative (current_workspace shows one and your first prompt names a lead), do your part, post_message to the lead when you finish, get blocked, or need a decision, and check read_messages before ending a turn so instructions sent mid-turn aren't missed.
@@ -49,6 +49,67 @@ export function buildControlMcpServer(
       inputSchema: {},
     },
     async () => json(await service.listProjects())
+  );
+
+  server.registerTool(
+    'add_project',
+    {
+      description:
+        'Add an existing local directory (usually a git repository) to Emjosh as a project, so ' +
+        'workspaces can be created in it.',
+      inputSchema: {
+        path: z.string().min(1).describe('Absolute path of the directory.'),
+        name: z.string().optional().describe("Project name; the directory's name when omitted."),
+      },
+    },
+    async (input) => json(await service.addProject(input))
+  );
+
+  server.registerTool(
+    'clone_project',
+    {
+      description:
+        "Clone a git repository and add it as a project. Uses the machine's git credentials.",
+      inputSchema: {
+        repositoryUrl: z.string().min(1).describe('HTTPS or SSH clone URL.'),
+        name: z.string().optional().describe("Project name; the repository's name when omitted."),
+        parentDirectory: z
+          .string()
+          .optional()
+          .describe("Directory to clone into; Emjosh's repositories folder when omitted."),
+      },
+    },
+    async (input) => json(await service.cloneProject(input))
+  );
+
+  server.registerTool(
+    'rename_project',
+    {
+      description: 'Rename a project in Emjosh (the directory on disk keeps its name).',
+      inputSchema: { projectId: z.string(), name: z.string().min(1) },
+    },
+    async (input) => {
+      await service.renameProject(input);
+      return json({ renamed: true });
+    }
+  );
+
+  server.registerTool(
+    'remove_project',
+    {
+      description:
+        'Remove a project from Emjosh. Its repository files stay on disk, but its workspaces ' +
+        '(and their worktrees, with any uncommitted work) are removed. Only when the user ' +
+        'explicitly asks; refuses projects with open workspaces unless includeWorkspaces is true.',
+      inputSchema: {
+        projectId: z.string(),
+        includeWorkspaces: z
+          .boolean()
+          .optional()
+          .describe('Also remove its open workspaces; only if the user confirmed that.'),
+      },
+    },
+    async (input) => json(await service.removeProject(caller, input))
   );
 
   server.registerTool(

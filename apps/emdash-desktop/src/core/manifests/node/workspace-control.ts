@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
 import type { Logger } from '@emdash/shared/logger';
 import type { ContractClient } from '@emdash/wire/rpc';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
@@ -9,6 +10,8 @@ import {
   startAcpConversationSession,
 } from '@core/features/conversations/node/wire-controller';
 import type { InitiativeMessage } from '@core/features/initiatives/api/contract';
+import { createProjectOperations } from '@core/features/projects/node/controller';
+import { createProjectFromRemote } from '@core/features/projects/node/operations/create-project-from-remote';
 import { formatTaskDisplayName, normalizeTaskName } from '@core/features/tasks/api/task-names';
 import { generateRandom } from '@core/features/tasks/node/name-generation/generateTaskName';
 import {
@@ -23,6 +26,7 @@ import {
 } from '@core/features/workspace-control/node/workspace-control-service';
 import { workspaceRegistryTable as workspaces } from '@core/features/workspaces/api/node/registry/workspace-registry';
 import { getProvisionedWorkspaceBranch } from '@core/features/workspaces/api/node/workspace-branch';
+import type { Project } from '@core/primitives/projects/api';
 import { resolveTaskBranchName } from '@core/primitives/tasks/api/resolve-task-branch-name';
 import { buildWorkspaceConfigFromPreset } from '@core/primitives/workspaces/api/build-workspace-config-from-preset';
 import { projects, tasks } from '@core/services/app-db/node/schema';
@@ -104,6 +108,23 @@ export async function startWorkspaceControl(
   }
 ): Promise<ControlMcpEndpoint> {
   const { db, taskService, telemetry, appSettings } = context;
+  const projectDependencies = {
+    db,
+    runtimes: context.runtimes,
+    placement: context.workspacePlacement,
+    projectDeletion: context.projectDeletion,
+    projectSettings: context.projectSettings,
+    projects: context.projects,
+    mintCloneCredentials: context.gitCredentials.mintCloneCredentials,
+  };
+  const projectOperations = createProjectOperations(projectDependencies);
+  const toControlProject = (project: Project) => ({
+    id: project.id,
+    name: project.name,
+    path: project.path,
+  });
+  const failure = (error: { type: string; message?: string }) =>
+    new Error(error.message ?? error.type);
   const log = extras.logger;
   const initiatives = getInitiativesService(db);
 
@@ -199,6 +220,41 @@ export async function startWorkspaceControl(
   };
 
   const deps: WorkspaceControlDeps = {
+    async addProject({ path, name }) {
+      const created = await projectOperations.createProject({ type: 'local', name, path });
+      if (!created.success) throw failure(created.error);
+      return toControlProject(created.data);
+    },
+
+    async cloneProject({ repositoryUrl, name, parentDirectory }) {
+      const destination = await projectOperations.resolveRepositoryDestination({
+        host: LOCAL_HOST_REF,
+        name,
+        chosenDir: parentDirectory,
+      });
+      if (!destination.success) throw failure(destination.error);
+      // Not a UI job: progress and creation-state updates have no listener.
+      const cloned = await createProjectFromRemote(
+        projectDependencies,
+        {
+          projectId: crypto.randomUUID(),
+          host: { type: 'local' },
+          mode: 'clone',
+          repositoryUrl,
+          targetPath: destination.data,
+          name,
+        },
+        { progress: () => {}, signal: new AbortController().signal } as never,
+        () => {}
+      );
+      if (!cloned.success) throw failure(cloned.error);
+      return toControlProject(cloned.data);
+    },
+
+    renameProject: (projectId, name) => projectOperations.renameProject(projectId, name),
+
+    removeProject: (projectId) => projectOperations.deleteProject(projectId),
+
     async listProjects() {
       const rows = await db
         .select({ id: projects.id, name: projects.name, path: workspaces.path })

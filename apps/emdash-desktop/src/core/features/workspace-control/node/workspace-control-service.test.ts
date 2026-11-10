@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   humanizeSlug,
+  repositoryName,
   type ControlWorkspace,
   type WorkspaceControlDeps,
   WorkspaceControlService,
@@ -23,7 +24,10 @@ function workspace(overrides: Partial<ControlWorkspace>): Omit<ControlWorkspace,
 
 function setup(rows: Omit<ControlWorkspace, 'pullRequest'>[]) {
   const deps = {
-    listProjects: vi.fn(async () => []),
+    listProjects: vi.fn(async () => [
+      { id: 'p1', name: 'api', path: '/repos/api' },
+      { id: 'p2', name: 'web', path: '/repos/web' },
+    ]),
     listWorkspaces: vi.fn(async ({ includeArchived }: { includeArchived: boolean }) =>
       includeArchived ? rows : rows.filter((row) => !row.archived)
     ),
@@ -37,6 +41,14 @@ function setup(rows: Omit<ControlWorkspace, 'pullRequest'>[]) {
     ),
     archiveWorkspace: vi.fn(async () => {}),
     renameWorkspace: vi.fn(async () => {}),
+    addProject: vi.fn(async (input: { path: string; name: string }) => ({ id: 'new', ...input })),
+    cloneProject: vi.fn(async (input: { repositoryUrl: string; name: string }) => ({
+      id: 'new',
+      name: input.name,
+      path: `/repos/${input.name}`,
+    })),
+    renameProject: vi.fn(async () => {}),
+    removeProject: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => ({ id: 'new', name: 'new', branch: 'new' })),
     onArchived: vi.fn(),
   } satisfies WorkspaceControlDeps;
@@ -149,6 +161,52 @@ describe('WorkspaceControlService', () => {
     await expect(service.renameWorkspace({ conversationId: null }, { name: 'x' })).rejects.toThrow(
       'Only an agent running in an Emjosh workspace'
     );
+  });
+
+  it('adds and clones projects, naming them after their directory or repository', async () => {
+    const { service, deps } = setup([]);
+
+    await service.addProject({ path: '/repos/payments/' });
+    expect(deps.addProject).toHaveBeenCalledWith({ path: '/repos/payments/', name: 'payments' });
+
+    await service.cloneProject({ repositoryUrl: 'git@github.com:org/ledger.git' });
+    expect(deps.cloneProject).toHaveBeenCalledWith({
+      repositoryUrl: 'git@github.com:org/ledger.git',
+      name: 'ledger',
+      parentDirectory: undefined,
+    });
+    expect(repositoryName('https://github.com/org/ui/')).toBe('ui');
+  });
+
+  it('renames only projects that exist', async () => {
+    const { service, deps } = setup([]);
+    await service.renameProject({ projectId: 'p1', name: '  API  ' });
+    expect(deps.renameProject).toHaveBeenCalledWith('p1', 'API');
+    await expect(service.renameProject({ projectId: 'nope', name: 'x' })).rejects.toThrow(
+      'was not found'
+    );
+  });
+
+  it('removes a project only without open workspaces, unless told, and never its own', async () => {
+    const { service, deps } = setup([
+      workspace({ id: 'self', projectId: 'p1' }),
+      workspace({ id: 'other', projectId: 'p2' }),
+    ]);
+    const caller = { conversationId: 'conv-self' };
+
+    await expect(
+      service.removeProject(caller, { projectId: 'p1', includeWorkspaces: true })
+    ).resolves.toMatchObject({ removed: false });
+    await expect(service.removeProject(caller, { projectId: 'p2' })).resolves.toMatchObject({
+      removed: false,
+      reason: expect.stringContaining('1 open workspace'),
+    });
+    expect(deps.removeProject).not.toHaveBeenCalled();
+
+    await expect(
+      service.removeProject(caller, { projectId: 'p2', includeWorkspaces: true })
+    ).resolves.toEqual({ removed: true });
+    expect(deps.removeProject).toHaveBeenCalledWith('p2');
   });
 
   it('describes the calling workspace', async () => {
