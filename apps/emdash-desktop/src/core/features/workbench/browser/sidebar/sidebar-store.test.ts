@@ -20,7 +20,7 @@ vi.mock('@core/features/conversations/browser/acp/acp-chat-panel', () => ({
 }));
 
 const initiativesState = vi.hoisted(() => ({
-  initiatives: [] as { id: string; name: string }[],
+  initiatives: [] as { id: string; name: string; leadTaskId?: string | null }[],
 }));
 vi.mock('@core/features/initiatives/api/browser/initiatives-store', () => ({
   getInitiativesStore: () => ({
@@ -347,6 +347,38 @@ describe('SidebarStore initiative grouping', () => {
       'api-1',
       'web-1',
       'api-2',
+    ]);
+  });
+
+  it("puts the initiative's lead first", () => {
+    initiativesState.initiatives = [{ id: 'i-accounts', name: 'Accounts v2', leadTaskId: 'web-1' }];
+    const manager = projectManagerWithTasks([
+      { id: 'api', createdAt: '2026-01-01T00:00:00.000Z', taskIds: ['api-1'] },
+      { id: 'web', createdAt: '2026-01-02T00:00:00.000Z', taskIds: ['web-1'] },
+    ]);
+    for (const [projectId, taskId] of [
+      ['api', 'api-1'],
+      ['web', 'web-1'],
+    ] as const) {
+      (
+        manager.projects.get(projectId) as unknown as {
+          context: {
+            context: {
+              get: (token: unknown) => { tasks: Map<string, { data: Record<string, unknown> }> };
+            };
+          };
+        }
+      ).context.context
+        .get(taskManagerStoreToken)
+        .tasks.get(taskId)!.data.initiativeId = 'i-accounts';
+    }
+    const store = new SidebarStore(manager);
+    store.setGroupBy('initiative');
+
+    expect(store.sidebarRows).toEqual([
+      { kind: 'initiative', initiativeId: 'i-accounts', label: 'Accounts v2', count: 2 },
+      { kind: 'task', projectId: 'web', taskId: 'web-1' },
+      { kind: 'task', projectId: 'api', taskId: 'api-1' },
     ]);
   });
 

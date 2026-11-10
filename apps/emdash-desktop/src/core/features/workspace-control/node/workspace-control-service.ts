@@ -59,6 +59,7 @@ export type ControlInitiatives = {
   get(id: string): Promise<Initiative | null>;
   create(name: string): Promise<Initiative>;
   update(id: string, changes: { pushMessages?: boolean }): Promise<void>;
+  setLead(initiativeId: string, taskId: string | null): Promise<void>;
   subscriptions(initiativeId: string, taskId: string): Promise<InitiativeSubscription[]>;
   subscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
   unsubscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
@@ -105,11 +106,22 @@ export type WorkspaceControlDeps = {
     includeArchived: boolean;
   }): Promise<Omit<ControlWorkspace, 'pullRequest'>[]>;
   pullRequestForBranch(projectId: string, branch: string): Promise<ControlPullRequest | null>;
-  callerContext(conversationId: string): Promise<{ taskId: string; provider: string } | null>;
+  /** `options`: the conversation's own session settings, such as its permission mode. */
+  callerContext(conversationId: string): Promise<{
+    taskId: string;
+    provider: string;
+    options?: Record<string, string | boolean>;
+  } | null>;
   archiveWorkspace(projectId: string, taskId: string): Promise<void>;
   renameWorkspace(projectId: string, taskId: string, name: string): Promise<void>;
   createWorkspace(
-    input: CreateWorkspaceInput & { provider: string | undefined }
+    input: CreateWorkspaceInput & {
+      provider: string | undefined;
+      /** Publish the branch to the remote (default true). */
+      pushBranch?: boolean;
+      /** Session settings for the first conversation, over the provider's saved preferences. */
+      options?: Record<string, string | boolean>;
+    }
   ): Promise<{ id: string; name: string; branch: string | null }>;
   onArchived?(caller: ControlCaller, workspaces: { id: string; name: string }[]): void;
   initiatives?: ControlInitiatives;
@@ -237,7 +249,7 @@ export class WorkspaceControlService {
 
   async currentWorkspace(
     caller: ControlCaller
-  ): Promise<(ControlWorkspace & { initiative: Initiative | null }) | null> {
+  ): Promise<(ControlWorkspace & { initiative: Initiative | null; isLead: boolean }) | null> {
     const taskId = await this.callerTaskId(caller);
     if (!taskId) return null;
     const all = await this.listWorkspaces({ includeArchived: true });
@@ -246,7 +258,7 @@ export class WorkspaceControlService {
     const initiative = workspace.initiativeId
       ? ((await this.deps.initiatives?.get(workspace.initiativeId)) ?? null)
       : null;
-    return { ...workspace, initiative };
+    return { ...workspace, initiative, isLead: initiative?.leadTaskId === taskId };
   }
 
   /** Archives workspaces (reversible); never the caller's own. */
@@ -307,13 +319,20 @@ export class WorkspaceControlService {
     return { renamed: true, name };
   }
 
-  async createWorkspace(caller: ControlCaller, input: CreateWorkspaceInput) {
+  async createWorkspace(
+    caller: ControlCaller,
+    input: CreateWorkspaceInput & { pushBranch?: boolean }
+  ) {
     const context = caller.conversationId
       ? await this.deps.callerContext(caller.conversationId)
       : null;
+    const provider = input.provider ?? context?.provider;
     const created = await this.deps.createWorkspace({
       ...input,
-      provider: input.provider ?? context?.provider,
+      provider,
+      // The new agent runs like the caller's (the same permission mode, above all), as far as
+      // they run the same agent.
+      ...(context?.options && provider === context.provider ? { options: context.options } : {}),
     });
     if (input.initiativeId) {
       const initiatives = this.requireInitiatives();
@@ -334,29 +353,93 @@ export class WorkspaceControlService {
     return this.requireInitiatives().list();
   }
 
-  /** Creates an initiative holding the given workspaces, plus the caller's unless excluded. */
+  /**
+   * Creates an initiative holding the given workspaces, plus the caller's unless excluded, and
+   * its lead: the given workspace, or else a new workspace started with the goal, whose only
+   * job is orchestrating the others.
+   */
   async createInitiative(
     caller: ControlCaller,
     input: {
       name: string;
+      goal?: string;
+      leadWorkspaceId?: string;
+      leadProjectId?: string;
       workspaceIds?: string[];
       includeCallingWorkspace?: boolean;
       pushMessages?: boolean;
     }
-  ): Promise<Initiative> {
+  ): Promise<{ initiative: Initiative; lead: { id: string; name: string; created: boolean } }> {
     const initiatives = this.requireInitiatives();
+    const context = caller.conversationId
+      ? await this.deps.callerContext(caller.conversationId)
+      : null;
+    const taskId = context?.taskId ?? null;
+    const all = await this.deps.listWorkspaces({ includeArchived: false });
+    const callerWorkspace = taskId ? all.find((workspace) => workspace.id === taskId) : undefined;
+    const existingLead = input.leadWorkspaceId
+      ? all.find((workspace) => workspace.id === input.leadWorkspaceId)
+      : undefined;
+    if (input.leadWorkspaceId && !existingLead) {
+      throw new Error(`Workspace '${input.leadWorkspaceId}' was not found.`);
+    }
+    const leadProjectId = input.leadProjectId ?? callerWorkspace?.projectId;
+    if (!existingLead && !leadProjectId) {
+      throw new Error('Pass leadProjectId (the project to start the lead workspace in).');
+    }
+    if (!existingLead && !input.goal?.trim()) {
+      throw new Error("Pass the goal: it is the new lead workspace's first prompt.");
+    }
+
     const initiative = await initiatives.create(input.name);
     // An agent creates an initiative to coordinate, which needs messages to reach the others'
     // chats; without delivery they only see messages they go looking for.
     await initiatives.update(initiative.id, { pushMessages: input.pushMessages ?? true });
-    const taskId = await this.callerTaskId(caller);
     const members = [
       ...(input.includeCallingWorkspace !== false && taskId ? [taskId] : []),
       ...(input.workspaceIds ?? []),
     ];
     if (members.length > 0)
       await initiatives.setTaskInitiative([...new Set(members)], initiative.id);
-    return (await initiatives.get(initiative.id)) ?? initiative;
+
+    const lead = existingLead
+      ? { id: existingLead.id, name: existingLead.name, created: false }
+      : {
+          ...(await this.createWorkspace(caller, {
+            projectId: leadProjectId!,
+            name: `${initiative.name} lead`,
+            prompt: leadPrompt({
+              initiative,
+              goal: input.goal!.trim(),
+              requester:
+                callerWorkspace && members.includes(callerWorkspace.id)
+                  ? { id: callerWorkspace.id, name: callerWorkspace.name }
+                  : null,
+            }),
+            initiativeId: initiative.id,
+            // The lead doesn't change code, so its branch has nothing to publish.
+            pushBranch: false,
+          })),
+          created: true,
+        };
+    await initiatives.setLead(initiative.id, lead.id);
+    return {
+      initiative: (await initiatives.get(initiative.id)) ?? initiative,
+      lead: { id: lead.id, name: lead.name, created: lead.created },
+    };
+  }
+
+  /** Makes a workspace of the caller's initiative (or the given one) its lead. */
+  async setInitiativeLead(
+    caller: ControlCaller,
+    input: { workspaceId: string; initiativeId?: string }
+  ): Promise<Initiative> {
+    const { initiativeId } = await this.messagingScope(caller, input.initiativeId);
+    const initiatives = this.requireInitiatives();
+    await initiatives.setLead(initiativeId, input.workspaceId);
+    const initiative = await initiatives.get(initiativeId);
+    if (!initiative) throw new Error(`Initiative '${initiativeId}' was not found.`);
+    return initiative;
   }
 
   async addToInitiative(input: { initiativeId: string; workspaceIds: string[] }) {
@@ -415,12 +498,25 @@ export class WorkspaceControlService {
   async listSubscriptions(
     caller: ControlCaller,
     input: { initiativeId?: string } = {}
-  ): Promise<{ initiativeId: string; subscriptions: InitiativeSubscription[] }> {
+  ): Promise<{
+    initiativeId: string;
+    leadWorkspaceId: string | null;
+    builtIn: string;
+    subscriptions: InitiativeSubscription[];
+  }> {
     const { initiativeId, taskId } = await this.messagingScope(caller, input.initiativeId);
     if (!taskId) throw new Error('Only a workspace in the initiative has subscriptions.');
+    const initiatives = this.requireInitiatives();
+    const leadWorkspaceId = (await initiatives.get(initiativeId))?.leadTaskId ?? null;
     return {
       initiativeId,
-      subscriptions: await this.requireInitiatives().subscriptions(initiativeId, taskId),
+      leadWorkspaceId,
+      builtIn:
+        leadWorkspaceId === taskId
+          ? 'You lead this initiative: you receive every message and status event in it.'
+          : "Messages addressed to you, the user's posts" +
+            (leadWorkspaceId ? ", and the lead's broadcasts." : '.'),
+      subscriptions: await initiatives.subscriptions(initiativeId, taskId),
     };
   }
 
@@ -486,4 +582,31 @@ export class WorkspaceControlService {
     if (!this.deps.initiatives) throw new Error('Initiatives are not available.');
     return this.deps.initiatives;
   }
+}
+
+/** First prompt of a workspace started to lead an initiative. */
+export function leadPrompt(input: {
+  initiative: Pick<Initiative, 'id' | 'name'>;
+  goal: string;
+  requester: { id: string; name: string } | null;
+}): string {
+  return [
+    `You lead the Emjosh initiative "${input.initiative.name}" (id ${input.initiative.id}). ` +
+      'You are its orchestrator, not a worker: plan the work, start a workspace for each part ' +
+      'with create_workspace (in whichever project the part belongs, this one included), ' +
+      'coordinate them through the initiative, and keep the user informed. You receive every ' +
+      'message and status event in the initiative, and every member receives your broadcasts.',
+    `Goal:\n${input.goal}`,
+    ...(input.requester
+      ? [
+          `Workspace "${input.requester.name}" (id ${input.requester.id}) asked for this ` +
+            'initiative and is a member. It may already be doing part of the work: check with ' +
+            'it before assigning that part elsewhere.',
+        ]
+      : []),
+    'Stay responsive. Messages from members are delivered into this chat but wait until your ' +
+      'current turn ends, so keep turns short. Do not do slow or non-trivial work yourself ' +
+      '(code changes, builds, test runs, long investigations); send it to a workspace. Do not ' +
+      'change code in this workspace.',
+  ].join('\n\n');
 }

@@ -570,6 +570,11 @@ export const initiatives = sqliteTable('initiatives', {
   name: text('name').notNull(),
   /** 1 = messages addressed to a task are also delivered into its agent conversation. */
   pushMessages: integer('push_messages').notNull().default(0),
+  /**
+   * The task orchestrating the initiative: it receives every message and event, and its
+   * broadcasts reach every member. Null for initiatives without one.
+   */
+  leadTaskId: text('lead_task_id'),
   createdAt: text('created_at')
     .notNull()
     .default(sql`CURRENT_TIMESTAMP`),

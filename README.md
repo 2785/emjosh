@@ -28,13 +28,17 @@ problems to them.
   merged" or "make workspaces in these four repos for the same change".
 - **Initiatives.** Optional groups of workspaces across repositories working towards one goal.
   Group the sidebar by initiative, add tasks from their context menu (*Initiative…*), or let
-  agents create and fill them.
-- **Workspaces talking to each other.** Each initiative has a message feed. Messaging is
-  opt-in: a workspace always gets messages addressed to it (and your posts from the feed), and
-  hears other workspaces' broadcasts or status events (finished, needs approval, failed) only
-  if it subscribed to them, from specific workspaces or all. With delivery on (the default for
+  agents create and fill them. When an agent creates one, it starts a separate **lead**
+  workspace that only orchestrates: it starts a workspace per part and hands off anything slow,
+  so messages to it don't wait behind long-running work. The lead heads its initiative in the
+  sidebar (crown icon); *Make initiative lead* in a task's context menu changes it.
+- **Workspaces talking to each other.** Each initiative has a message feed. The lead gets
+  everything; every workspace gets messages addressed to it, your posts from the feed, and the
+  lead's broadcasts, and hears other workspaces' broadcasts or status events (finished, needs
+  approval, failed) only if it subscribed to them. With delivery on (the default for
   initiatives agents create), what reaches a workspace arrives in its chat, labelled as coming
-  from the feed.
+  from the feed. Workspaces agents create start with the creating conversation's settings,
+  such as its permission mode, over your saved defaults for that agent.
 - **External agents.** Settings → General → *Connect an external agent* copies a
   `claude mcp add` command so a `claude` outside Emjosh can use the same tools while Emjosh
   is open.

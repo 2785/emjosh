@@ -154,8 +154,13 @@ export class SidebarStore {
     }
     const rows: SidebarRow[] = [];
     for (const initiative of initiatives) {
-      const members = grouped.get(initiative.id);
-      if (!members?.length) continue;
+      const unordered = grouped.get(initiative.id);
+      if (!unordered?.length) continue;
+      // The lead heads its initiative's list.
+      const members = [
+        ...unordered.filter((row) => row.kind === 'task' && row.taskId === initiative.leadTaskId),
+        ...unordered.filter((row) => row.kind !== 'task' || row.taskId !== initiative.leadTaskId),
+      ];
       rows.push(
         {
           kind: 'initiative',

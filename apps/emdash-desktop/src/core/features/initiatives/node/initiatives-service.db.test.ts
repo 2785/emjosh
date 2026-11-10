@@ -118,4 +118,46 @@ describe('InitiativesService', () => {
       )
     ).toEqual([]);
   });
+
+  it("delivers everything to the lead and the lead's broadcasts to every member", async () => {
+    const { id } = await service.create('Accounts v2');
+    await service.setTaskInitiative(['t2', 't3'], id);
+    await service.setLead(id, 't1');
+    expect(await service.get(id)).toMatchObject({ leadTaskId: 't1', taskIds: ['t1', 't2', 't3'] });
+
+    const lead = await service.post({ initiativeId: id, fromTaskId: 't1', body: 'plan' });
+    const between = await service.post({
+      initiativeId: id,
+      fromTaskId: 't2',
+      toTaskId: 't3',
+      body: 'contract',
+    });
+    const broadcast = await service.post({ initiativeId: id, fromTaskId: 't2', body: 'fyi' });
+    const event = await service.post({
+      initiativeId: id,
+      fromTaskId: 't3',
+      kind: 'event',
+      body: 't3 finished',
+    });
+
+    const bodies = async (taskId: string) =>
+      (await service.messages({ initiativeId: id, forTaskId: taskId })).map((m) => m.body);
+    expect(await bodies('t1')).toEqual(['contract', 'fyi', 't3 finished']);
+    expect(await bodies('t2')).toEqual(['plan']);
+    expect(await bodies('t3')).toEqual(['plan', 'contract']);
+    expect(await service.recipients(lead)).toEqual(['t2', 't3']);
+    expect(await service.recipients(between)).toEqual(['t1', 't3']);
+    expect(await service.recipients(broadcast)).toEqual(['t1']);
+    expect(await service.recipients(event)).toEqual(['t1']);
+  });
+
+  it('drops the lead when it leaves the initiative', async () => {
+    const { id } = await service.create('Accounts v2');
+    await service.setLead(id, 't1');
+    await service.setTaskInitiative(['t1'], id);
+    expect((await service.get(id))?.leadTaskId).toBe('t1');
+
+    await service.setTaskInitiative(['t1'], null);
+    expect((await service.get(id))?.leadTaskId).toBeNull();
+  });
 });

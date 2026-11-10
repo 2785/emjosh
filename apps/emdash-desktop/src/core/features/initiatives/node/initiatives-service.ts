@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type {
   Initiative,
   InitiativeChange,
@@ -25,17 +25,23 @@ export type InitiativeSubscription = {
 
 /**
  * Whether a message reaches a task. Messages addressed to it always do; so do the user's posts
- * to everyone. Broadcasts from tasks ('messages') and app status events ('events') only reach
- * tasks subscribed to that topic from that task, or from every task.
+ * to everyone. The initiative's lead gets everything, and every member gets the lead's
+ * broadcasts. Other broadcasts from tasks ('messages') and app status events ('events') only
+ * reach tasks subscribed to that topic from that task, or from every task.
  */
 export function messageReachesTask(
   message: Pick<InitiativeMessage, 'kind' | 'fromTaskId' | 'toTaskId'>,
   taskId: string,
-  subscriptions: readonly InitiativeSubscription[]
+  subscriptions: readonly InitiativeSubscription[],
+  leadTaskId: string | null = null
 ): boolean {
-  if (message.toTaskId) return message.toTaskId === taskId;
   if (message.fromTaskId === taskId) return false;
+  if (taskId === leadTaskId) return true;
+  if (message.toTaskId) return message.toTaskId === taskId;
   if (message.kind === 'message' && message.fromTaskId === null) return true;
+  if (message.kind === 'message' && leadTaskId !== null && message.fromTaskId === leadTaskId) {
+    return true;
+  }
   const topic: SubscriptionTopic = message.kind === 'event' ? 'events' : 'messages';
   return subscriptions.some(
     (subscription) =>
@@ -85,6 +91,7 @@ export class InitiativesService {
       archived: row.archivedAt !== null,
       createdAt: row.createdAt,
       taskIds: members.filter((m) => m.initiativeId === row.id).map((m) => m.id),
+      leadTaskId: row.leadTaskId,
     }));
   }
 
@@ -99,6 +106,19 @@ export class InitiativesService {
     await this.db.insert(initiatives).values({ id, name: trimmed });
     this.emit({ type: 'initiatives-changed' });
     return (await this.get(id))!;
+  }
+
+  /** Makes a task the initiative's lead, moving it into the initiative; null removes the lead. */
+  async setLead(initiativeId: string, taskId: string | null): Promise<void> {
+    if (!(await this.get(initiativeId))) {
+      throw new Error(`Initiative '${initiativeId}' was not found.`);
+    }
+    if (taskId) await this.setTaskInitiative([taskId], initiativeId);
+    await this.db
+      .update(initiatives)
+      .set({ leadTaskId: taskId, updatedAt: sql`CURRENT_TIMESTAMP` })
+      .where(eq(initiatives.id, initiativeId));
+    this.emit({ type: 'initiatives-changed' });
   }
 
   async update(
@@ -133,6 +153,16 @@ export class InitiativesService {
       .where(inArray(tasks.id, taskIds))
       .returning({ id: tasks.id, projectId: tasks.projectId });
     for (const row of rows) appDbPokes.tasks.poke({ projectId: row.projectId, taskId: row.id });
+    // A lead that leaves its initiative stops leading it.
+    await this.db
+      .update(initiatives)
+      .set({ leadTaskId: null })
+      .where(
+        and(
+          inArray(initiatives.leadTaskId, taskIds),
+          initiativeId ? ne(initiatives.id, initiativeId) : undefined
+        )
+      );
     this.emit({ type: 'initiatives-changed' });
   }
 
@@ -195,11 +225,15 @@ export class InitiativesService {
       .orderBy(sql`rowid`);
     const messages = rows.map(toMessage);
     const { forTaskId } = input;
-    const visible = forTaskId
-      ? await this.subscriptions(input.initiativeId, forTaskId).then((subscriptions) =>
-          messages.filter((message) => messageReachesTask(message, forTaskId, subscriptions))
-        )
-      : messages;
+    if (!forTaskId) return messages.slice(0, input.limit ?? 200);
+    const [subscriptions, initiative] = await Promise.all([
+      this.subscriptions(input.initiativeId, forTaskId),
+      this.get(input.initiativeId),
+    ]);
+    const leadTaskId = initiative?.leadTaskId ?? null;
+    const visible = messages.filter((message) =>
+      messageReachesTask(message, forTaskId, subscriptions, leadTaskId)
+    );
     return visible.slice(0, input.limit ?? 200);
   }
 
@@ -209,7 +243,12 @@ export class InitiativesService {
     if (!initiative) return [];
     const reached = await Promise.all(
       initiative.taskIds.map(async (taskId) =>
-        messageReachesTask(message, taskId, await this.subscriptions(initiative.id, taskId))
+        messageReachesTask(
+          message,
+          taskId,
+          await this.subscriptions(initiative.id, taskId),
+          initiative.leadTaskId
+        )
           ? taskId
           : null
       )

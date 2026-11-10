@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
+import { formatHostRef, LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
 import type { Logger } from '@emdash/shared/logger';
 import type { ContractClient } from '@emdash/wire/rpc';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { conversationRegistryTable as conversations } from '@core/features/conversations/api/node/registry/conversation-registry';
+import { getProviderSettingsService } from '@core/features/conversations/node/provider-settings-service';
 import {
   sendAcpConversationPrompt,
   startAcpConversationSession,
@@ -155,7 +156,7 @@ export async function startWorkspaceControl(
 
   // Push delivery: in an initiative with pushMessages on, each message or status event is fed
   // into the conversations of the tasks it reaches, labelled as coming from the feed rather than
-  // the user. Events only reach tasks subscribed to them.
+  // the user. Events only reach the lead and tasks subscribed to them.
   const deliver = async (message: InitiativeMessage) => {
     const initiative = await initiatives.get(message.initiativeId);
     if (!initiative?.pushMessages || initiative.archived) return;
@@ -166,15 +167,23 @@ export async function startWorkspaceControl(
       ...(message.fromTaskId ? [message.fromTaskId] : []),
     ]);
     const sender = message.fromTaskId ? `workspace "${names.get(message.fromTaskId)}"` : 'the user';
-    const text =
+    const text = (taskId: string) =>
       message.kind === 'event'
-        ? `[Initiative "${initiative.name}" event, which you subscribed to.]\n\n${message.body}`
-        : `[Initiative "${initiative.name}" message from ${sender}. It comes from the initiative ` +
-          `feed, not directly from the user; weigh it accordingly.]\n\n${message.body}`;
+        ? `[Initiative "${initiative.name}" event` +
+          (taskId === initiative.leadTaskId
+            ? ', delivered to you as its lead.]'
+            : ', which you subscribed to.]') +
+          `\n\n${message.body}`
+        : `[Initiative "${initiative.name}" message from ${sender}` +
+          (message.fromTaskId && message.fromTaskId === initiative.leadTaskId
+            ? ' (its lead)'
+            : '') +
+          '. It comes from the initiative feed, not directly from the user; weigh it ' +
+          `accordingly.]\n\n${message.body}`;
     for (const taskId of targets) {
       const conversationId = await primaryConversation(taskId);
       if (!conversationId) continue;
-      const sent = await sendAcpConversationPrompt(context, conversationId, text);
+      const sent = await sendAcpConversationPrompt(context, conversationId, text(taskId));
       if (!sent.success) log.warn('Initiative message delivery failed', { taskId });
     }
   };
@@ -342,11 +351,21 @@ export async function startWorkspaceControl(
 
     async callerContext(conversationId) {
       const [row] = await db
-        .select({ taskId: conversations.taskId, provider: conversations.provider })
+        .select({
+          taskId: conversations.taskId,
+          provider: conversations.provider,
+          config: conversations.config,
+        })
         .from(conversations)
         .where(eq(conversations.id, conversationId))
         .limit(1);
-      return row?.taskId ? { taskId: row.taskId, provider: row.provider ?? 'claude' } : null;
+      if (!row?.taskId) return null;
+      const options = row.config?.type === 'acp' ? row.config.options : undefined;
+      return {
+        taskId: row.taskId,
+        provider: row.provider ?? 'claude',
+        ...(options && { options }),
+      };
     },
 
     archiveWorkspace: (projectId, taskId) => taskService.archiveTask(projectId, taskId, telemetry),
@@ -374,6 +393,13 @@ export async function startWorkspaceControl(
         appendRandomSuffix: projectSettings.appendRandomBranchSuffix,
       });
       const provider = input.provider ?? (await appSettings.get('defaultAgent'));
+      // Like the new-task dialog: start from the provider's saved preferences (such as the
+      // permission mode the user picked), so the agent doesn't fall back to its own defaults.
+      const preferences = await getProviderSettingsService(db).read({
+        host: formatHostRef(LOCAL_HOST_REF),
+        providerId: provider,
+      });
+      const options = { ...preferences.acp.options, ...input.options };
       const taskId = crypto.randomUUID();
       const prompt = input.prompt?.trim();
       const conversationId = crypto.randomUUID();
@@ -392,6 +418,7 @@ export async function startWorkspaceControl(
                   title: `${provider} (1)`,
                   initialQueue: [{ text: prompt }],
                   type: 'acp' as const,
+                  ...(Object.keys(options).length > 0 && { options }),
                 },
               }
             : {}),
@@ -399,7 +426,7 @@ export async function startWorkspaceControl(
         workspaceConfig: buildWorkspaceConfigFromPreset(
           'new-worktree',
           { defaultBranch: fromBranch },
-          { branchName, fromBranch }
+          { branchName, fromBranch, pushBranch: input.pushBranch ?? true }
         ),
       });
       if (!created.success)
