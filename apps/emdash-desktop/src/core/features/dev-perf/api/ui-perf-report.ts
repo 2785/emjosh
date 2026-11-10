@@ -29,11 +29,18 @@ export type UiPerfReport = {
   longTasks: { count: number; totalMs: number; maxMs: number };
   slowEvents: { name: string; count: number; maxMs: number }[];
   react: { commits: number; topRenders: [string, number][] } | null;
-  cpu: {
-    busyMs: number;
-    byPackage: { name: string; ms: number }[];
-    topFunctions: { name: string; ms: number }[];
-  };
+  cpu: CpuSummary;
+  /**
+   * The main process: it also runs the window's UI thread, so while it is busy, input waits
+   * before it reaches the renderer.
+   */
+  mainCpu: CpuSummary | null;
+};
+
+export type CpuSummary = {
+  busyMs: number;
+  byPackage: { name: string; ms: number }[];
+  topFunctions: { name: string; ms: number }[];
 };
 
 const round = (n: number) => Math.round(n * 10) / 10;
@@ -57,7 +64,7 @@ export function sourceBucket(url: string, functionName: string): string {
 }
 
 /** Self time per function and per source, without idle time and the recorder's own work. */
-export function summarizeCpuProfile(profile: CpuProfile): UiPerfReport['cpu'] {
+export function summarizeCpuProfile(profile: CpuProfile): CpuSummary {
   const nodes = new Map(profile.nodes.map((node) => [node.id, node]));
   const selfMicros = new Map<number, number>();
   profile.samples.forEach((id, index) => {
@@ -93,6 +100,7 @@ export function buildUiPerfReport(input: {
   durationMs: number;
   renderer: UiPerfRendererRecording | null;
   profile: CpuProfile;
+  mainProfile?: CpuProfile | null;
 }): UiPerfReport {
   const r = input.renderer;
   const latencies = r?.inputLatencies ?? [];
@@ -135,6 +143,7 @@ export function buildUiPerfReport(input: {
       .sort((a, b) => b.count - a.count),
     react: r ? { commits: r.reactCommits, topRenders: r.reactRenders.slice(0, 25) } : null,
     cpu: summarizeCpuProfile(input.profile),
+    mainCpu: input.mainProfile ? summarizeCpuProfile(input.mainProfile) : null,
   };
 }
 
@@ -150,7 +159,8 @@ export function formatUiPerfReport(report: UiPerfReport): string {
   lines.push(
     `frames            p50 ${f.p50} ms  p95 ${f.p95} ms  max ${f.max} ms  janky ${f.janky}/${f.frames}`,
     `long tasks        ${report.longTasks.count}, ${report.longTasks.totalMs} ms total, max ${report.longTasks.maxMs} ms`,
-    `main thread busy  ${report.cpu.busyMs} ms`
+    `renderer busy     ${report.cpu.busyMs} ms`,
+    ...(report.mainCpu ? [`main process busy ${report.mainCpu.busyMs} ms`] : [])
   );
   if (report.slowEvents.length > 0) {
     lines.push(
@@ -165,13 +175,17 @@ export function formatUiPerfReport(report: UiPerfReport): string {
       ...report.react.topRenders.map(([name, count]) => `  ${count}  ${name}`)
     );
   }
+  const cpuSection = (title: string, cpu: CpuSummary) => [
+    '',
+    `${title}: CPU self time by source`,
+    ...cpu.byPackage.map((b) => `  ${b.ms} ms  ${b.name}`),
+    '',
+    `${title}: CPU self time by function`,
+    ...cpu.topFunctions.map((fn) => `  ${fn.ms} ms  ${fn.name}`),
+  ];
   lines.push(
-    '',
-    'CPU self time by source:',
-    ...report.cpu.byPackage.map((b) => `  ${b.ms} ms  ${b.name}`),
-    '',
-    'CPU self time by function:',
-    ...report.cpu.topFunctions.map((fn) => `  ${fn.ms} ms  ${fn.name}`)
+    ...(report.mainCpu ? cpuSection('Main process', report.mainCpu) : []),
+    ...cpuSection('Renderer', report.cpu)
   );
   return `${lines.join('\n')}\n`;
 }

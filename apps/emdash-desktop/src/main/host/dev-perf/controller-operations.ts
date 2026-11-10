@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import { Session } from 'node:inspector/promises';
 import { join } from 'node:path';
 import { err, ok, type Result } from '@emdash/shared';
 import { app, contentTracing } from 'electron';
@@ -62,6 +63,12 @@ async function recordUiProfile(
   }
   tracingInFlight = true;
   try {
+    // The main process too: it runs the window's UI thread, so its busy time delays input.
+    const main = new Session();
+    main.connect();
+    await main.post('Profiler.enable');
+    await main.post('Profiler.setSamplingInterval', { interval: 500 });
+    await main.post('Profiler.start');
     webContents.debugger.attach('1.3');
     await webContents.debugger.sendCommand('Profiler.enable');
     await webContents.debugger.sendCommand('Profiler.setSamplingInterval', { interval: 200 });
@@ -74,6 +81,10 @@ async function recordUiProfile(
     const { profile } = (await webContents.debugger.sendCommand('Profiler.stop')) as {
       profile: CpuProfile;
     };
+    const { profile: mainProfile } = (await main.post('Profiler.stop')) as unknown as {
+      profile: CpuProfile;
+    };
+    main.disconnect();
 
     const dir = join(
       app.getPath('userData'),
@@ -81,11 +92,12 @@ async function recordUiProfile(
       new Date().toISOString().replace(/[:.]/g, '-')
     );
     await mkdir(dir, { recursive: true });
-    const report = buildUiPerfReport({ durationMs, renderer, profile });
+    const report = buildUiPerfReport({ durationMs, renderer, profile, mainProfile });
     const summary = formatUiPerfReport(report);
     const reportPath = join(dir, 'report.txt');
     await Promise.all([
       writeFile(join(dir, 'profile.cpuprofile'), JSON.stringify(profile)),
+      writeFile(join(dir, 'main.cpuprofile'), JSON.stringify(mainProfile)),
       writeFile(join(dir, 'report.json'), JSON.stringify({ report, renderer }, null, 2)),
       writeFile(reportPath, summary),
     ]);
