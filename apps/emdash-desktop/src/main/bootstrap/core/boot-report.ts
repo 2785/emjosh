@@ -15,6 +15,7 @@ import { log } from '@main/lib/logger';
 export const BOOT_REPORT_GRACE_MS = 20_000;
 
 const phases: Record<string, number> = {};
+let mainEnteredMs: number | undefined;
 let windowVisibleMs: number | undefined;
 let usableWorkspaceMs: number | undefined;
 let settled = false;
@@ -23,11 +24,17 @@ let graceTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** This launch's boot timings so far, for diagnostics such as the UI performance profile. */
 export function getBootReport(): {
+  mainEnteredMs: number | undefined;
   windowVisibleMs: number | undefined;
   usableWorkspaceMs: number | undefined;
   phases: Record<string, number>;
 } {
-  return { windowVisibleMs, usableWorkspaceMs, phases: { ...phases } };
+  return { mainEnteredMs, windowVisibleMs, usableWorkspaceMs, phases: { ...phases } };
+}
+
+/** Launch → the main process's code starts running (after Electron and module loading). */
+export function recordMainEntered(sinceProcessStartMs: number): void {
+  mainEnteredMs ??= Math.round(sinceProcessStartMs);
 }
 
 /** Called by `step()` for every boot phase; last duration wins on retries. */

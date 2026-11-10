@@ -40,6 +40,7 @@ export type UiPerfReport = {
 };
 
 export type UiPerfBoot = {
+  mainEnteredMs?: number;
   windowVisibleMs?: number;
   usableWorkspaceMs?: number;
   /** Main-process boot phases by duration. */
@@ -192,7 +193,7 @@ export function formatUiPerfReport(report: UiPerfReport): string {
     const b = report.boot;
     lines.push(
       '',
-      `Launch: window visible ${b.windowVisibleMs ?? '?'} ms, usable ${b.usableWorkspaceMs ?? '?'} ms after start`,
+      `Launch: main code running ${b.mainEnteredMs ?? '?'} ms, window visible ${b.windowVisibleMs ?? '?'} ms, usable ${b.usableWorkspaceMs ?? '?'} ms after start`,
       '  main-process phases:',
       ...Object.entries(b.phases)
         .sort((x, y) => y[1] - x[1])

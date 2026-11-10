@@ -10,7 +10,11 @@ import {
   recordBootFailure,
   writeBootingMarker,
 } from './core/boot-guard';
-import { notifyBootSettledForReport, recordUsableWorkspace } from './core/boot-report';
+import {
+  notifyBootSettledForReport,
+  recordMainEntered,
+  recordUsableWorkspace,
+} from './core/boot-report';
 import { onBootSettled, reportBootSuccessSignal, bootSuccessSignalsSeen } from './core/boot-status';
 import { startBootWatchdog, type BootWatchdogTrigger } from './core/boot-watchdog';
 import { loadAppConfig, setAppConfig, type AppConfig } from './core/config';
@@ -19,10 +23,9 @@ import { step } from './core/phase';
 const CRASH_LOOP_THRESHOLD = 2;
 
 export async function main(): Promise<void> {
-  log.info('boot-timeline', {
-    mark: 'main-entered',
-    sinceProcessStartMs: Date.now() - (process.getCreationTime() ?? Date.now()),
-  });
+  const mainEnteredMs = Date.now() - (process.getCreationTime() ?? Date.now());
+  log.info('boot-timeline', { mark: 'main-entered', sinceProcessStartMs: mainEnteredMs });
+  recordMainEntered(mainEnteredMs);
   if (import.meta.env.DEV) {
     dotenvConfig({ path: '.env.local', override: false });
   }
