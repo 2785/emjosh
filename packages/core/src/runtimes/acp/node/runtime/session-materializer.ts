@@ -294,6 +294,7 @@ export class SessionMaterializer {
       acpSessionId,
       agent: connection.agent,
       supportsSteering: connection.supportsSteering,
+      reportsAgentTurnEnd: connection.reportsAgentTurnEnd,
       resolveAttachment: this.deps.resolveAttachment,
       logger: this.deps.logger,
       callbacks,

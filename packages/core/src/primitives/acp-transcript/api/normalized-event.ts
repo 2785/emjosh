@@ -146,6 +146,8 @@ export type NormalizedEvent =
   | {
       kind: 'usage';
       usage: SessionUsage;
+      /** The provider reports this usage as the end of an agent-initiated turn. */
+      endsAgentTurn?: boolean;
     }
   | {
       kind: 'title';

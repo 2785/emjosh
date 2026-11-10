@@ -792,6 +792,55 @@ describe('SessionCell idle turns and queue commands', () => {
       cell.dispose();
     }
   });
+  it('ends agent turns on the provider marker, not a short silence, when it reports them', async () => {
+    vi.useFakeTimers();
+    try {
+      const agent = new FakeAcpAgent();
+      agent.prompt = vi.fn().mockResolvedValue({ stopReason: 'end_turn' });
+      const { cell } = makePendingCell(agent, { reportsAgentTurnEnd: true });
+      cell.applySessionReady();
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Checking CI' });
+      vi.advanceTimersByTime(30_000);
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+      // A prompt arriving while the agent is still on its own turn waits for it.
+      expect(await cell.prompt({ text: 'from the lead' })).toEqual({
+        success: true,
+        data: { queued: true },
+      });
+      expect(agent.prompt).not.toHaveBeenCalled();
+
+      cell.push({
+        kind: 'usage',
+        usage: { contextUsed: 1, contextSize: 2, cost: null },
+        endsAgentTurn: true,
+      });
+
+      expect(cell.sessionState.agentTurnActive).toBe(false);
+      expect(cell.history().committed.at(-1)?.initiator).toBe('agent');
+      await vi.waitFor(() =>
+        expect(agent.prompt).toHaveBeenCalledWith({
+          sessionId: 'session-1',
+          prompt: [{ type: 'text', text: 'from the lead' }],
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('falls back to a long silence when the end marker never comes', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makePendingCell(new FakeAcpAgent(), { reportsAgentTurnEnd: true });
+      cell.applySessionReady();
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Hm' });
+      vi.advanceTimersByTime(119_000);
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+      vi.advanceTimersByTime(2_000);
+      expect(cell.sessionState.agentTurnActive).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('settles idle agent turns after quiesce', async () => {
     vi.useFakeTimers();
     try {

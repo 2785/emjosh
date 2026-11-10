@@ -94,6 +94,12 @@ export interface IAcpBehavior {
    */
   enrich?: EnrichHook;
 
+  /**
+   * `enrich` marks the event ending each agent-initiated turn (a `usage` event with
+   * `endsAgentTurn`), so the runtime ends those turns on it rather than after a short silence.
+   */
+  reportsAgentTurnEnd?: boolean;
+
   /** Recognize provider-specific proof that session/load's requested session is missing. */
   isSessionNotFound?(error: unknown, sessionId: string): boolean;
 

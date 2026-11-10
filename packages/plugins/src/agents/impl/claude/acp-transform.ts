@@ -15,6 +15,9 @@ import type { NormalizedEvent } from '@emdash/core/runtimes/acp/api';
  * Unrecognized content remains a message for the renderer's literal fallback.
  */
 export function enrichClaudeUpdate(update: NormalizedEvent, raw: SessionUpdate): NormalizedEvent {
+  if (update.kind === 'usage') {
+    return isAutonomousUsage(raw) ? { ...update, endsAgentTurn: true } : update;
+  }
   if (update.kind === 'message' && update.role === 'user') {
     if (update.promptId || update.attachments?.length) return update;
     const text = update.text.trim();
@@ -87,6 +90,25 @@ export function enrichClaudeUpdate(update: NormalizedEvent, raw: SessionUpdate):
   if (!parentPatch.parentToolCallId && outputPatch.outputText === undefined)
     return normalizedUpdate;
   return { ...normalizedUpdate, ...parentPatch, ...outputPatch };
+}
+
+/**
+ * Result origins of turns Claude starts on its own (the adapter's AUTONOMOUS_RESULT_ORIGINS).
+ * The adapter ends each such turn with a usage update stamped with its origin.
+ */
+const AUTONOMOUS_ORIGINS = new Set([
+  'task-notification',
+  'peer',
+  'coordinator',
+  'observer',
+  'observer-activity',
+]);
+
+function isAutonomousUsage(raw: SessionUpdate): boolean {
+  const origin = (raw._meta as Record<string, unknown> | null | undefined)?.['_claude/origin'] as
+    | { kind?: unknown }
+    | undefined;
+  return typeof origin?.kind === 'string' && AUTONOMOUS_ORIGINS.has(origin.kind);
 }
 
 type ClaudeMeta = {

@@ -159,6 +159,7 @@ export const provider = registerPluginBehavior(plugin, {
       return connectStdioAcp(io, toClient);
     },
     enrich: enrichClaudeUpdate,
+    reportsAgentTurnEnd: true,
   },
   auth: {
     checkStatus: claudeAuthStatus,
