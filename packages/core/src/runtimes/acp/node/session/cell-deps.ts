@@ -27,6 +27,8 @@ export interface SessionCellDeps {
   agent: AcpAgentApi;
   /** The agent can take a message into its running turn (`_session/steering`). */
   supportsSteering?: boolean;
+  /** Agent-initiated turns end on a provider marker (see IAcpBehavior.reportsAgentTurnEnd). */
+  reportsAgentTurnEnd?: boolean;
   resolveAttachment: ResolvePromptAttachment;
   logger: Logger;
   callbacks?: SessionCellCallbacks;

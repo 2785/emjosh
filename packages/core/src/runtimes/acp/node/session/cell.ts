@@ -59,6 +59,11 @@ export type SessionConfigCatalog =
       config: Pick<SessionConfigState, 'options'>;
     };
 
+/** Silence after which an agent-initiated turn counts as over. */
+const QUIESCE_MS = 250;
+/** The same, for providers that mark the end of those turns. */
+const MARKED_AGENT_TURN_FALLBACK_MS = 120_000;
+
 export class SessionCell {
   readonly machine: SessionMachine;
   readonly transcript: AcpTranscriptParser;
@@ -253,6 +258,7 @@ export class SessionCell {
     this.dispatchAgentsChangedIfNeeded(previousRunningAgentCount);
     if (idleTranscriptEvent) this.scheduleQuiesce();
     this.emitTranscriptChanged();
+    if (event.kind === 'usage' && event.endsAgentTurn) this.endAgentTurn();
   }
 
   async prompt(
@@ -810,17 +816,30 @@ export class SessionCell {
     }
   }
 
+  /**
+   * Ends an agent-initiated turn once it goes quiet. Providers that mark the end of those turns
+   * end them on the marker (endAgentTurn); for them the silence is only a fallback, and a long
+   * one, because the agent can think for a while without output. Ending such a turn early would
+   * let a prompt reach the agent while it is still busy, where it can be absorbed into that turn
+   * and never answered.
+   */
   private scheduleQuiesce(): void {
     if (this.quiesceTimer) clearTimeout(this.quiesceTimer);
+    const delay = this.deps.reportsAgentTurnEnd ? MARKED_AGENT_TURN_FALLBACK_MS : QUIESCE_MS;
     this.quiesceTimer = setTimeout(() => {
       this.quiesceTimer = null;
-      if (!this.machine.agentTurnActive) return;
-      const endingTurnId = this.transcript.activeTurn?.id ?? null;
-      this.transcript.settleTurn({ kind: 'done', reason: 'quiesced' });
-      this.settleEarlierBackgroundAgents(endingTurnId);
-      this.emitTranscriptChanged();
-      this.applyEvent({ type: 'AgentActivity', active: false });
-    }, 250);
+      this.endAgentTurn();
+    }, delay);
+  }
+
+  private endAgentTurn(): void {
+    this.clearQuiesce();
+    if (!this.machine.agentTurnActive) return;
+    const endingTurnId = this.transcript.activeTurn?.id ?? null;
+    this.transcript.settleTurn({ kind: 'done', reason: 'quiesced' });
+    this.settleEarlierBackgroundAgents(endingTurnId);
+    this.emitTranscriptChanged();
+    this.applyEvent({ type: 'AgentActivity', active: false });
   }
 
   private clearQuiesce(): void {

@@ -49,6 +49,27 @@ function makeRaw(meta?: Record<string, unknown>): SessionUpdate {
 // ── enrichClaudeUpdate ────────────────────────────────────────────────────────
 
 describe('enrichClaudeUpdate', () => {
+  it('marks the usage update ending a turn Claude started on its own', () => {
+    const usage: NormalizedEvent = {
+      kind: 'usage',
+      usage: { contextUsed: 10, contextSize: 100, cost: null },
+    };
+    const raw = (origin?: string) =>
+      ({
+        sessionUpdate: 'usage_update',
+        used: 10,
+        size: 100,
+        ...(origin ? { _meta: { '_claude/origin': { kind: origin } } } : {}),
+      }) as unknown as SessionUpdate;
+
+    expect(enrichClaudeUpdate(usage, raw('task-notification'))).toEqual({
+      ...usage,
+      endsAgentTurn: true,
+    });
+    expect(enrichClaudeUpdate(usage, raw('human'))).toEqual(usage);
+    expect(enrichClaudeUpdate(usage, raw())).toEqual(usage);
+  });
+
   it('preserves start/update provenance and content continuity through Agent enrichment', () => {
     const p = new AcpTranscriptParser({
       conversationId: 'claude-stream',

@@ -35,6 +35,8 @@ export interface AcpConnectionEntry extends AcpConnectionContext {
   agent: AcpAgentApi;
   supportsLoadSession: boolean;
   supportsSteering: boolean;
+  /** See IAcpBehavior.reportsAgentTurnEnd. */
+  reportsAgentTurnEnd: boolean;
   mcpCapabilities: Required<Pick<McpCapabilities, 'http' | 'sse'>>;
 }
 
@@ -172,6 +174,7 @@ async function provisionAcpConnection(
     terminalCommand: binding.behavior.terminalCommand,
     supportsLoadSession: connection.data.supportsLoadSession,
     supportsSteering: connection.data.supportsSteering,
+    reportsAgentTurnEnd: binding.behavior.reportsAgentTurnEnd === true,
     mcpCapabilities: connection.data.mcpCapabilities,
   };
 }
