@@ -73,8 +73,10 @@ export async function applyWorkspaceRegistrySnapshot(
   const result = input.db.transaction((tx) =>
     applyWorkspaceRegistrySnapshotTx(tx, input, registry, now)
   );
-  appDbPokes.workspaces.poke({});
-  return result;
+  // Most deliveries change nothing: only tell observers when rows were written.
+  if (result.written) appDbPokes.workspaces.poke({});
+  const { written: _written, ...counts } = result;
+  return counts;
 }
 
 function applyWorkspaceRegistrySnapshotTx(
@@ -82,7 +84,7 @@ function applyWorkspaceRegistrySnapshotTx(
   input: ApplyWorkspaceRegistrySnapshotInput,
   registry: WorkspaceRegistry,
   now: string
-): ApplyWorkspaceRegistrySnapshotResult {
+): ApplyWorkspaceRegistrySnapshotResult & { written: boolean } {
   const observedAt = input.observedAt ?? Date.now();
   const hostRows = loadLiveHostRows(tx, input.host);
   const annotations = loadWorkspaceAnnotations(
@@ -91,6 +93,8 @@ function applyWorkspaceRegistrySnapshotTx(
   );
   assertNoIdentityConflicts(input.host, hostRows, input.records);
   releaseMovedPaths(tx, hostRows, input.records);
+  const hostRowsById = new Map(hostRows.map((row) => [row.id, row]));
+  let written = false;
   const counts: ApplyWorkspaceRegistrySnapshotResult = {
     adopted: 0,
     refreshed: 0,
@@ -110,7 +114,7 @@ function applyWorkspaceRegistrySnapshotTx(
     if (tombstoned.has(record.id)) continue;
     // Matching is a primary-key lookup on the preserved workspace UUID — the host
     // already resolved moves and adoptions; no path or admin-name matching here.
-    const existing = registry.getLive(record.id, tx);
+    const existing = hostRowsById.get(record.id) ?? registry.getLive(record.id, tx);
     if (existing === undefined) {
       registry.adopt(
         {
@@ -122,9 +126,18 @@ function applyWorkspaceRegistrySnapshotTx(
         tx
       );
       counts.adopted += 1;
+      written = true;
       continue;
     }
-    registry.refresh(record.id, workspaceObservationFromRecord(record, input.host, observedAt), tx);
+    const observation = workspaceObservationFromRecord(record, input.host, observedAt);
+    // The snapshot's paths were checked as a whole above, so a host row needs no per-row
+    // path scan; a row from elsewhere goes through the checked refresh.
+    if (hostRowsById.has(record.id)) {
+      written = registry.refreshFromSnapshot(existing, observation, tx) || written;
+    } else {
+      registry.refresh(record.id, observation, tx);
+      written = true;
+    }
     counts.refreshed += 1;
   }
 
@@ -137,6 +150,7 @@ function applyWorkspaceRegistrySnapshotTx(
     if (row.deletionTombstone !== null) {
       registry.untrack([row.id], now, undefined, tx);
       counts.purgedTombstones += 1;
+      written = true;
       continue;
     }
     const annotated = isAnnotatedWorkspace({
@@ -146,16 +160,18 @@ function applyWorkspaceRegistrySnapshotTx(
     });
     if (annotated) {
       // Annotated rows stay visible as missing until the user acts.
-      registry.refresh(row.id, { observedStatus: 'missing', observedAt }, tx);
+      written =
+        registry.refreshFromSnapshot(row, { observedStatus: 'missing', observedAt }, tx) || written;
       counts.markedMissing += 1;
     } else {
       // Pure mirror entries follow the mirror.
       registry.untrack([row.id], now, undefined, tx);
       counts.untracked += 1;
+      written = true;
     }
   }
 
-  return counts;
+  return { ...counts, written };
 }
 
 /**

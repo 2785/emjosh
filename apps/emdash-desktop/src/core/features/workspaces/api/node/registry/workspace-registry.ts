@@ -1,5 +1,5 @@
 import type { WorkspaceRecord } from '@emdash/core/runtimes/workspace-registry/api';
-import { err, ok, type Result } from '@emdash/shared';
+import { err, isDeepEqual, ok, type Result } from '@emdash/shared';
 import { and, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import {
   tombstoneAttemptEpoch,
@@ -65,6 +65,13 @@ export type WorkspaceRetrackError =
 export type WorkspaceRegistryOptions = {
   now?: () => string;
 };
+
+/**
+ * How stale an unchanged row's `observedAt` may get before a snapshot refreshes it. Host
+ * snapshots arrive whenever any workspace changes, so rewriting every row each time would
+ * churn the whole mirror and everything observing it.
+ */
+export const OBSERVED_AT_REFRESH_MS = 60_000;
 
 export class WorkspaceRegistry {
   private readonly now: () => string;
@@ -280,6 +287,49 @@ export class WorkspaceRegistry {
       })
       .where(and(eq(workspaces.id, id), liveWorkspaces()))
       .run().changes;
+  }
+
+  /**
+   * Applies a host snapshot's observation to a row the caller has just read. Only for a
+   * snapshot apply that checked the whole snapshot for path collisions first, so unlike
+   * `refresh` it doesn't scan for a path owner. A row whose observation is unchanged is left
+   * alone, apart from refreshing `observedAt` once it is {@link OBSERVED_AT_REFRESH_MS} old.
+   * Returns whether it wrote.
+   */
+  refreshFromSnapshot(
+    current: WorkspaceRow,
+    observation: WorkspaceObservation,
+    tx: DrizzleTx
+  ): boolean {
+    const { path, observedAt, ...observed } = observation;
+    const persistedPath =
+      path !== undefined &&
+      path !== null &&
+      current.path !== null &&
+      workspacePathIdentityKey(current.path) === workspacePathIdentityKey(path)
+        ? stableWorkspacePathDisplay(current.path, path)
+        : path;
+    const unchanged =
+      (persistedPath === undefined || persistedPath === current.path) &&
+      Object.entries(observed).every(([key, value]) =>
+        isDeepEqual(current[key as keyof WorkspaceRow], value)
+      );
+    const recentlyObserved =
+      observedAt === undefined ||
+      observedAt === null ||
+      (current.observedAt !== null && observedAt - current.observedAt < OBSERVED_AT_REFRESH_MS);
+    if (unchanged && recentlyObserved) return false;
+    this.source(tx)
+      .update(workspaces)
+      .set({
+        ...observed,
+        ...(persistedPath !== undefined ? { path: persistedPath } : {}),
+        ...(observedAt !== undefined ? { observedAt } : {}),
+        updatedAt: this.now(),
+      })
+      .where(and(eq(workspaces.id, current.id), liveWorkspaces()))
+      .run();
+    return true;
   }
 
   updateConfig(id: string, config: WorkspaceInsert['config'], tx?: DrizzleTx): number {
