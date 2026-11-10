@@ -6,8 +6,9 @@ import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { makePtySessionId } from '@core/primitives/pty/api';
 import { createDrizzleClient } from '../../../drizzleClient';
+import { importAtomically } from '../../sqlite-utils';
 import { ensureImportedTaskWorkspaces } from '../../task-workspace-backfill';
-import { portConversations } from './conversations';
+import { portConversations, renameLegacyTmuxSessions } from './conversations';
 import { portProjects } from './projects';
 import { createRemapTables } from './remap';
 import { portSshConnections } from './ssh-connections';
@@ -183,28 +184,6 @@ function createLegacyDb(): Database.Database {
   return db;
 }
 
-async function withAtomicDestinationImport<T>(
-  sqlite: Database.Database,
-  action: () => Promise<T>
-): Promise<T> {
-  const foreignKeys = sqlite.pragma('foreign_keys', { simple: true }) as number;
-  sqlite.pragma('foreign_keys = OFF');
-  sqlite.exec('BEGIN IMMEDIATE');
-
-  try {
-    const result = await action();
-    sqlite.exec('COMMIT');
-    return result;
-  } catch (error) {
-    if (sqlite.inTransaction) {
-      sqlite.exec('ROLLBACK');
-    }
-    throw error;
-  } finally {
-    sqlite.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
-  }
-}
-
 describe('legacy-port table passes', () => {
   const openDbs: Database.Database[] = [];
   const tempDirs: string[] = [];
@@ -332,13 +311,14 @@ describe('legacy-port table passes', () => {
       .run('conv-legacy-new', 'task-legacy-new', 'New conversation', 'codex');
 
     const remap = createRemapTables();
-    const { sshSummary, projectsSummary, taskResult, conversationsSummary } =
-      await withAtomicDestinationImport(appSqlite, async () => {
-        const sshSummary = await portSshConnections({ appDb, legacyDb, remap });
-        const projectsSummary = await portProjects({ appDb, legacyDb, remap });
-        const taskResult = await portTasks({ appDb, legacyDb, remap });
+    const { sshSummary, projectsSummary, taskResult, conversationsSummary } = importAtomically(
+      appSqlite,
+      () => {
+        const sshSummary = portSshConnections({ appDb, legacyDb, remap });
+        const projectsSummary = portProjects({ appDb, legacyDb, remap });
+        const taskResult = portTasks({ appDb, legacyDb, remap });
         ensureImportedTaskWorkspaces(appDb);
-        const conversationsSummary = await portConversations({
+        const { summary: conversationsSummary } = portConversations({
           appDb,
           legacyDb,
           remap,
@@ -346,7 +326,8 @@ describe('legacy-port table passes', () => {
         });
 
         return { sshSummary, projectsSummary, taskResult, conversationsSummary };
-      });
+      }
+    );
 
     expect(sshSummary.considered).toBe(1);
     expect(sshSummary.skippedDedup).toBe(1);
@@ -484,14 +465,14 @@ describe('legacy-port table passes', () => {
 
     const remap = createRemapTables();
 
-    await expect(
-      withAtomicDestinationImport(appSqlite, async () => {
-        await portSshConnections({ appDb, legacyDb, remap });
-        await portProjects({ appDb, legacyDb, remap });
-        await portTasks({ appDb, legacyDb, remap });
+    expect(() =>
+      importAtomically(appSqlite, () => {
+        portSshConnections({ appDb, legacyDb, remap });
+        portProjects({ appDb, legacyDb, remap });
+        portTasks({ appDb, legacyDb, remap });
         ensureImportedTaskWorkspaces(appDb);
       })
-    ).rejects.toThrow();
+    ).toThrow();
 
     const projectCount = appSqlite.prepare(`SELECT COUNT(*) AS count FROM projects`).get() as {
       count: number;
@@ -521,7 +502,7 @@ describe('legacy-port table passes', () => {
       .run('proj-legacy-local', 'Legacy Local', '/work/repo', 'main', 0, null, null);
 
     const remap = createRemapTables();
-    const projectsSummary = await portProjects({ appDb, legacyDb, remap });
+    const projectsSummary = portProjects({ appDb, legacyDb, remap });
     expect(projectsSummary.inserted).toBe(1);
 
     legacyDb
@@ -554,7 +535,7 @@ describe('legacy-port table passes', () => {
         '2026-01-05T12:00:00.000Z'
       );
 
-    const taskResult = await portTasks({ appDb, legacyDb, remap });
+    const taskResult = portTasks({ appDb, legacyDb, remap });
     expect(taskResult.summary.inserted).toBe(2);
 
     const insertedTasks = appSqlite
@@ -595,7 +576,7 @@ describe('legacy-port table passes', () => {
       .run('proj-legacy-local', 'Legacy Local', '/work/repo', 'main', 0, null, null);
 
     const remap = createRemapTables();
-    const projectsSummary = await portProjects({ appDb, legacyDb, remap });
+    const projectsSummary = portProjects({ appDb, legacyDb, remap });
     expect(projectsSummary.inserted).toBe(1);
 
     legacyDb
@@ -626,7 +607,7 @@ describe('legacy-port table passes', () => {
         '2026-01-07T12:00:00.000Z'
       );
 
-    const taskResult = await portTasks({ appDb, legacyDb, remap });
+    const taskResult = portTasks({ appDb, legacyDb, remap });
     expect(taskResult.summary.inserted).toBe(2);
 
     const insertedTasks = appSqlite
@@ -805,11 +786,11 @@ describe('legacy-port table passes', () => {
       .run('conv-legacy-codex', 'task-legacy-chat', 'Legacy Codex Conversation', 'codex');
 
     const remap = createRemapTables();
-    await portSshConnections({ appDb, legacyDb, remap });
-    await portProjects({ appDb, legacyDb, remap });
-    const taskResult = await portTasks({ appDb, legacyDb, remap });
+    portSshConnections({ appDb, legacyDb, remap });
+    portProjects({ appDb, legacyDb, remap });
+    const taskResult = portTasks({ appDb, legacyDb, remap });
 
-    const conversationsSummary = await portConversations({
+    const { summary: conversationsSummary } = portConversations({
       appDb,
       legacyDb,
       remap,
@@ -923,18 +904,18 @@ describe('legacy-port table passes', () => {
     };
 
     const remap = createRemapTables();
-    await portSshConnections({ appDb, legacyDb, remap });
-    await portProjects({ appDb, legacyDb, remap });
-    const taskResult = await portTasks({ appDb, legacyDb, remap });
+    portSshConnections({ appDb, legacyDb, remap });
+    portProjects({ appDb, legacyDb, remap });
+    const taskResult = portTasks({ appDb, legacyDb, remap });
 
-    await portConversations({
+    const { tmuxSessionRenames } = portConversations({
       appDb,
       legacyDb,
       remap,
       mergedLegacyTaskIds: taskResult.mergedLegacyTaskIds,
       userDataPath: userDataDir,
-      tmuxExec,
     });
+    await renameLegacyTmuxSessions(tmuxSessionRenames, tmuxExec);
 
     const newTmuxName = makeLegacyTmuxSessionName(
       makePtySessionId('proj-legacy-tmux', 'task-legacy-tmux', mappedChatUuid)

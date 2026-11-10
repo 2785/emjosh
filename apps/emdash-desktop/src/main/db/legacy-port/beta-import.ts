@@ -56,15 +56,15 @@ export function copyAttachedBetaDatabaseIntoDestination(
   copyAttachedBetaTables(sqlite, options);
 }
 
-export async function withBetaDatabaseAttached<T>(
+export function withBetaDatabaseAttached<T>(
   sqlite: Database.Database,
   betaDatabasePath: string,
-  action: () => Promise<T>
-): Promise<T> {
+  action: () => T
+): T {
   sqlite.exec(`ATTACH DATABASE ${quoteSqliteString(betaDatabasePath)} AS beta`);
 
   try {
-    return await action();
+    return action();
   } finally {
     sqlite.exec('DETACH DATABASE beta');
   }
