@@ -34,6 +34,7 @@ import {
   useViewParams,
   useWorkspaceSlots,
 } from '@core/primitives/navigation/browser/navigation-hooks';
+import { cn } from '@core/primitives/styling/browser/cn';
 import { SidebarInitiativeHeader } from './initiative-header';
 import { SidebarProjectItem } from './project-item';
 import { SidebarTaskItem } from './task-item';
@@ -237,6 +238,17 @@ export const SidebarVirtualList = observer(function SidebarVirtualList() {
                   </SortableRow>
                 );
               }
+              if (row.kind === 'more') {
+                return (
+                  <SortableRow key={dndId} dndId={dndId} style={vStyle} disabled>
+                    <SidebarShowMore
+                      remaining={row.remaining}
+                      indent={row.indent}
+                      onClick={() => getSidebarStore().showMore(row.groupKey)}
+                    />
+                  </SortableRow>
+                );
+              }
               if (row.kind === 'project') {
                 return (
                   <SortableRow key={row.projectId} dndId={dndId} style={vStyle}>
@@ -276,6 +288,30 @@ export const SidebarVirtualList = observer(function SidebarVirtualList() {
   );
 });
 
+/** Lists more of a group's older tasks. */
+function SidebarShowMore({
+  remaining,
+  indent,
+  onClick,
+}: {
+  remaining: number;
+  indent: Extract<SidebarRow, { kind: 'more' }>['indent'];
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'flex h-8 w-full items-center rounded-md px-1 text-left text-xs text-foreground-tertiary-passive transition-colors hover:text-foreground',
+        indent === 'project' ? 'pl-8' : indent === 'initiative' ? 'pl-6' : 'pl-2'
+      )}
+    >
+      Show {remaining} more
+    </button>
+  );
+}
+
 const toProjectDndId = (id: string) => `proj::${id}`;
 const toTaskDndId = (projectId: string, taskId: string) => `task::${projectId}::${taskId}`;
 
@@ -285,6 +321,7 @@ type SidebarDndId =
 
 function rowToDndId(row: SidebarRow): string {
   if (row.kind === 'initiative') return `initiative::${row.initiativeId ?? 'other'}`;
+  if (row.kind === 'more') return `more::${row.groupKey}`;
   if (row.kind === 'project') return toProjectDndId(row.projectId);
   return toTaskDndId(row.projectId, row.taskId);
 }

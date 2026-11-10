@@ -35,6 +35,17 @@ export type UiPerfReport = {
    * before it reaches the renderer.
    */
   mainCpu: CpuSummary | null;
+  /** How this launch went, in ms since the process (main) or page (renderer) started. */
+  boot: UiPerfBoot | null;
+};
+
+export type UiPerfBoot = {
+  windowVisibleMs?: number;
+  usableWorkspaceMs?: number;
+  /** Main-process boot phases by duration. */
+  phases: Record<string, number>;
+  /** Renderer boot marks, ms since the page started loading. */
+  rendererMarks: { mark: string; ms: number }[];
 };
 
 export type CpuSummary = {
@@ -101,6 +112,7 @@ export function buildUiPerfReport(input: {
   renderer: UiPerfRendererRecording | null;
   profile: CpuProfile;
   mainProfile?: CpuProfile | null;
+  boot?: UiPerfBoot | null;
 }): UiPerfReport {
   const r = input.renderer;
   const latencies = r?.inputLatencies ?? [];
@@ -144,6 +156,7 @@ export function buildUiPerfReport(input: {
     react: r ? { commits: r.reactCommits, topRenders: r.reactRenders.slice(0, 25) } : null,
     cpu: summarizeCpuProfile(input.profile),
     mainCpu: input.mainProfile ? summarizeCpuProfile(input.mainProfile) : null,
+    boot: input.boot ?? null,
   };
 }
 
@@ -173,6 +186,19 @@ export function formatUiPerfReport(report: UiPerfReport): string {
       '',
       'Most rendered components:',
       ...report.react.topRenders.map(([name, count]) => `  ${count}  ${name}`)
+    );
+  }
+  if (report.boot) {
+    const b = report.boot;
+    lines.push(
+      '',
+      `Launch: window visible ${b.windowVisibleMs ?? '?'} ms, usable ${b.usableWorkspaceMs ?? '?'} ms after start`,
+      '  main-process phases:',
+      ...Object.entries(b.phases)
+        .sort((x, y) => y[1] - x[1])
+        .map(([name, ms]) => `    ${Math.round(ms)} ms  ${name}`),
+      '  renderer marks (ms since page start):',
+      ...b.rendererMarks.map((m) => `    ${m.ms}  ${m.mark}`)
     );
   }
   const cpuSection = (title: string, cpu: CpuSummary) => [

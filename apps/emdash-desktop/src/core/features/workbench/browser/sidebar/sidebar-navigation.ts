@@ -30,6 +30,7 @@ type NavigationEvents = {
 
 type ProjectRevealer = {
   revealProject(projectId: string): void;
+  revealTask(taskId: string): void;
 };
 
 export class SidebarNavigationController {
@@ -47,6 +48,7 @@ export class SidebarNavigationController {
       const target = taskProjectRevealTarget(event);
       if (!target || this.isTaskPinned(target.projectId, target.taskId)) return;
       this.sidebar.revealProject(target.projectId);
+      this.sidebar.revealTask(target.taskId);
     });
   }
 

@@ -1,3 +1,4 @@
+import { taskAgentStatus } from '@core/features/conversations/api/browser/conversation-selectors';
 import { asAvailableProject } from '@core/features/projects/api/browser/stores/project-selectors';
 import { projectManagerStoreToken } from '@core/features/projects/contributions/app-store-tokens';
 import { taskManagerStoreToken } from '@core/features/tasks/contributions/browser/project-store-tokens';
@@ -21,7 +22,12 @@ const sidebarNavigationControllerToken = scopedStoreToken<SidebarNavigationContr
 export const workbenchAppStoreContributions: readonly AppScopedStoreContribution[] = [
   contributeScopedStore({
     token: sidebarStoreToken,
-    create: (_context, stores) => new SidebarStore(stores.get(projectManagerStoreToken)),
+    // Tasks whose agent is working or left something unseen are never hidden behind "more".
+    create: (_context, stores) =>
+      new SidebarStore(
+        stores.get(projectManagerStoreToken),
+        (task) => taskAgentStatus(task) !== null
+      ),
   }),
   contributeScopedStore({
     token: sidebarNavigationControllerToken,

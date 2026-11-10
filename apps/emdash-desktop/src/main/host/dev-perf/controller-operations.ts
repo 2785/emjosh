@@ -11,6 +11,7 @@ import {
   type UiPerfRendererRecording,
 } from '@core/features/dev-perf/api/ui-perf-report';
 import type { DevPerfOperations } from '@core/features/dev-perf/node/wire-controller';
+import { getBootReport } from '@main/bootstrap/core/boot-report';
 import type { DesktopRuntimes } from '@main/gateway/desktop-runtimes';
 import { getMainWindow } from '@main/host/window';
 import { log } from '@main/lib/logger';
@@ -92,7 +93,16 @@ async function recordUiProfile(
       new Date().toISOString().replace(/[:.]/g, '-')
     );
     await mkdir(dir, { recursive: true });
-    const report = buildUiPerfReport({ durationMs, renderer, profile, mainProfile });
+    const rendererMarks = ((await webContents.executeJavaScript(
+      'window.__emjoshBootMarks ?? []'
+    )) ?? []) as { mark: string; ms: number }[];
+    const report = buildUiPerfReport({
+      durationMs,
+      renderer,
+      profile,
+      mainProfile,
+      boot: { ...getBootReport(), rendererMarks },
+    });
     const summary = formatUiPerfReport(report);
     const reportPath = join(dir, 'report.txt');
     await Promise.all([

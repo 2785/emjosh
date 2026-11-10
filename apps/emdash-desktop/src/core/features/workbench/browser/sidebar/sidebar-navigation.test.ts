@@ -40,9 +40,10 @@ describe('SidebarNavigationController', () => {
   it('reveals an unpinned task Project while no sidebar view is mounted', () => {
     const onDidNavigate = createEmitter<NavigationEvent>();
     const revealProject = vi.fn();
+    const revealTask = vi.fn();
     const controller = new SidebarNavigationController(
       { onDidNavigate },
-      { revealProject },
+      { revealProject, revealTask },
       () => false
     );
     controller.activate();
@@ -50,14 +51,16 @@ describe('SidebarNavigationController', () => {
     onDidNavigate.emit(taskNavigation('traversal', 'direct'));
 
     expect(revealProject).toHaveBeenCalledWith('project-1');
+    expect(revealTask).toHaveBeenCalledWith('task-1');
   });
 
   it('preserves collapsed Projects for pinned tasks', () => {
     const onDidNavigate = createEmitter<NavigationEvent>();
     const revealProject = vi.fn();
+    const revealTask = vi.fn();
     const controller = new SidebarNavigationController(
       { onDidNavigate },
-      { revealProject },
+      { revealProject, revealTask },
       () => true
     );
     controller.activate();
@@ -70,9 +73,10 @@ describe('SidebarNavigationController', () => {
   it('stops handling navigation after disposal', () => {
     const onDidNavigate = createEmitter<NavigationEvent>();
     const revealProject = vi.fn();
+    const revealTask = vi.fn();
     const controller = new SidebarNavigationController(
       { onDidNavigate },
-      { revealProject },
+      { revealProject, revealTask },
       () => false
     );
     controller.activate();
@@ -86,9 +90,10 @@ describe('SidebarNavigationController', () => {
   it('does not subscribe more than once', () => {
     const onDidNavigate = createEmitter<NavigationEvent>();
     const revealProject = vi.fn();
+    const revealTask = vi.fn();
     const controller = new SidebarNavigationController(
       { onDidNavigate },
-      { revealProject },
+      { revealProject, revealTask },
       () => false
     );
     controller.activate();

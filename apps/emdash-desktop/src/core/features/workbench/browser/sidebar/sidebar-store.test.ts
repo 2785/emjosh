@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { taskManagerStoreToken } from '@core/features/tasks/contributions/browser/project-store-tokens';
 import type { WorkbenchSidebarState } from '@core/features/workbench/contributions/mementos';
 import type { MementoHandle } from '@core/primitives/mementos/browser';
-import { SidebarStore } from './sidebar-store';
+import { SIDEBAR_GROUP_PAGE, SIDEBAR_GROUP_STEP, SidebarStore } from './sidebar-store';
 
 type SidebarProjectManager = ConstructorParameters<typeof SidebarStore>[0];
 
@@ -392,5 +392,71 @@ describe('SidebarStore initiative grouping', () => {
     store.setGroupBy('initiative');
 
     expect(store.sidebarRows).toEqual([{ kind: 'task', projectId: 'api', taskId: 'a' }]);
+  });
+});
+
+describe('SidebarStore pagination', () => {
+  const ids = Array.from({ length: 50 }, (_, i) => `t${String(i).padStart(2, '0')}`);
+  const taskRows = (store: SidebarStore) =>
+    store.sidebarRows.filter((row) => row.kind === 'task').length;
+
+  it('lists a group’s first tasks and stands in for the rest with a "more" row', () => {
+    initiativesState.initiatives = [];
+    const store = new SidebarStore(
+      projectManagerWithTasks([{ id: 'api', createdAt: '2026-01-01T00:00:00.000Z', taskIds: ids }])
+    );
+    store.setGroupBy('none');
+
+    expect(taskRows(store)).toBe(SIDEBAR_GROUP_PAGE);
+    expect(store.sidebarRows.at(-1)).toEqual({
+      kind: 'more',
+      groupKey: 'all',
+      remaining: 50 - SIDEBAR_GROUP_PAGE,
+      indent: 'none',
+    });
+
+    store.showMore('all');
+    expect(taskRows(store)).toBe(SIDEBAR_GROUP_PAGE + SIDEBAR_GROUP_STEP);
+    store.showMore('all');
+    expect(taskRows(store)).toBe(50);
+    expect(store.sidebarRows.some((row) => row.kind === 'more')).toBe(false);
+  });
+
+  it('keeps opened tasks and tasks needing attention listed beyond the limit', () => {
+    initiativesState.initiatives = [];
+    const store = new SidebarStore(
+      projectManagerWithTasks([{ id: 'api', createdAt: '2026-01-01T00:00:00.000Z', taskIds: ids }]),
+      (task) => task.data.id === 'needs-attention' || task.data.id === ids[0]
+    );
+    store.setGroupBy('none');
+    const listed = () =>
+      store.sidebarRows.flatMap((row) => (row.kind === 'task' ? [row.taskId] : []));
+    const remainingIds = ids.filter((id) => !listed().includes(id));
+    expect(remainingIds.length).toBeGreaterThan(0);
+
+    store.revealTask(remainingIds[0]!);
+
+    expect(listed()).toContain(remainingIds[0]);
+    expect(listed()).toContain(ids[0]);
+  });
+
+  it('paginates each project on its own', () => {
+    initiativesState.initiatives = [];
+    const store = new SidebarStore(
+      projectManagerWithTasks([
+        { id: 'api', createdAt: '2026-01-01T00:00:00.000Z', taskIds: ids },
+        { id: 'web', createdAt: '2026-01-02T00:00:00.000Z', taskIds: ['w1', 'w2'] },
+      ])
+    );
+    store.expandAllProjects();
+
+    expect(store.sidebarRows.filter((row) => row.kind === 'more')).toEqual([
+      {
+        kind: 'more',
+        groupKey: 'project:api',
+        remaining: 50 - SIDEBAR_GROUP_PAGE,
+        indent: 'project',
+      },
+    ]);
   });
 });

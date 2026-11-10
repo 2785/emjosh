@@ -72,6 +72,9 @@ function bootMark(mark: string, extra?: Record<string, unknown>): void {
     ...extra,
   });
   lastBootMarkAt = now;
+  // Kept for the UI performance profile's launch section.
+  const w = window as unknown as { __emjoshBootMarks?: { mark: string; ms: number }[] };
+  (w.__emjoshBootMarks ??= []).push({ mark, ms: Math.round(now) });
 }
 
 async function bootstrap() {

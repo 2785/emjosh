@@ -85,6 +85,14 @@ export function resolveAlias(lang: string | undefined): string | undefined {
 
 // ── Default highlighter implementation ────────────────────────────────────────
 
+/**
+ * Bounds on one highlight, which runs on the UI thread. Long lines (minified or generated
+ * code) are where TextMate grammars get slow: past the limits a line stays plain.
+ */
+export const TOKENIZE_LIMITS = { tokenizeMaxLineLength: 1_000, tokenizeTimeLimit: 20 } as const;
+/** Inputs longer than this are not highlighted at all. */
+export const MAX_HIGHLIGHT_CHARS = 100_000;
+
 type SyncHighlighter = ReturnType<typeof createHighlighterCoreSync>;
 let _defaultHighlighter: SyncHighlighter | null = null;
 
@@ -107,11 +115,16 @@ function getDefaultShikiHighlighter(): SyncHighlighter {
  * Pure — no internal cache. Caching is handled by ChatCaches in core/caches.ts.
  */
 export function computeHighlightRaw(code: string, resolvedLang: string): HighlightResult {
+  // Highlighting runs on the UI thread: huge inputs stay plain rather than stall it.
+  if (code.length > MAX_HIGHLIGHT_CHARS) {
+    return { rootStyle: '', lines: code.split('\n').map((content) => [{ content }]) };
+  }
   const hl = getDefaultShikiHighlighter();
   const result = hl.codeToTokens(code, {
     lang: resolvedLang,
     themes: { light: 'em-light', dark: 'em-dark' },
     defaultColor: false,
+    ...TOKENIZE_LIMITS,
   });
 
   const lines: CodeToken[][] = result.tokens.map((line) =>
