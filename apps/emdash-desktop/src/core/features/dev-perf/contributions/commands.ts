@@ -17,4 +17,17 @@ export const devPerfCaptureTraceCommand = defineCommand({
   icon: 'gauge',
 });
 
-export const DEV_PERF_COMMAND_DEFS = [devProcessPanelCommand, devPerfCaptureTraceCommand] as const;
+export const devPerfRecordUiProfileCommand = defineCommand({
+  id: 'devPerf.recordUiProfile',
+  title: 'Record UI Performance Profile',
+  description:
+    'Profile typing, scrolling and rendering for 15 seconds and write a report of what is slow',
+  category: 'Developer',
+  icon: 'gauge',
+});
+
+export const DEV_PERF_COMMAND_DEFS = [
+  devProcessPanelCommand,
+  devPerfCaptureTraceCommand,
+  devPerfRecordUiProfileCommand,
+] as const;

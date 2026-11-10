@@ -42,6 +42,17 @@ export const devPerfContract = defineContract({
     input: z.object({ durationMs: z.number().optional() }),
     output: resultSchema(z.object({ path: z.string() }), devPerfTraceErrorSchema),
   }),
+  /**
+   * Profile the main window's renderer: a CPU profile plus input latency, frame times, long
+   * tasks and React renders. Writes a report next to the profile and returns its path.
+   */
+  recordUiProfile: procedure({
+    input: z.object({ durationMs: z.number().optional() }),
+    output: resultSchema(
+      z.object({ reportPath: z.string(), summary: z.string() }),
+      z.object({ type: z.enum(['trace_in_progress', 'no_window', 'debugger_busy']) })
+    ),
+  }),
   /** Toggle verbose per-spawn logging (main process + all workers). */
   setVerboseSpawnLogging: procedure({
     input: z.object({ enabled: z.boolean() }),
