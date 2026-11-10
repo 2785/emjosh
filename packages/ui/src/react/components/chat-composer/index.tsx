@@ -821,9 +821,7 @@ export function ChatComposer({
 
   const imageAttachments = attachments.filter((a) => a.kind === 'image');
   const canQueuePrompt =
-    isWorking &&
-    !!onSubmitWhileWorking &&
-    (hasEditorText || imageAttachments.length > 0);
+    isWorking && !!onSubmitWhileWorking && (hasEditorText || imageAttachments.length > 0);
 
   // ── Model items ─────────────────────────────────────────────────────────────
 
