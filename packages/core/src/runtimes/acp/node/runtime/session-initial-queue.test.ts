@@ -96,9 +96,8 @@ describe('ACP initial queue persistence', () => {
           }
           h.agent.newSession.mockResolvedValueOnce({ sessionId: 'replacement' });
           expect((await runtime.startSession(input, 'fresh')).success).toBe(true);
-          await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(2));
+          await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(1));
           expect(h.agent.prompt.mock.calls.map(([request]) => request.sessionId)).toEqual([
-            'replacement',
             'replacement',
           ]);
           expect(h.agent.loadSession).not.toHaveBeenCalled();
@@ -108,7 +107,7 @@ describe('ACP initial queue persistence', () => {
           });
           await runtime.stopSession(input.conversationId);
           expect((await runtime.startSession(input, 'fresh')).success).toBe(true);
-          expect(h.agent.prompt).toHaveBeenCalledTimes(2);
+          expect(h.agent.prompt).toHaveBeenCalledTimes(1);
         } finally {
           queueFault.mockRestore();
           save.mockRestore();
@@ -160,17 +159,16 @@ describe('ACP initial queue persistence', () => {
           if (mode === 'fresh')
             h.agent.newSession.mockResolvedValueOnce({ sessionId: 'replacement' });
           expect((await runtime.startSession(input, mode)).success).toBe(true);
-          await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(2));
+          await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(1));
           expect(h.agent.newSession).toHaveBeenCalledTimes(mode === 'fresh' ? 2 : 1);
           expect(h.agent.loadSession).toHaveBeenCalledTimes(mode === 'resume' ? 1 : 0);
           expect(h.agent.prompt.mock.calls.map(([request]) => request.sessionId)).toEqual([
             mode === 'fresh' ? 'replacement' : 'session-1',
-            mode === 'fresh' ? 'replacement' : 'session-1',
           ]);
+          // The queue goes out as one prompt.
           expect(h.agent.prompt.mock.calls.map(([request]) => request.prompt)).toEqual([
-            [{ type: 'text', text: 'first' }],
             [
-              { type: 'text', text: 'second' },
+              { type: 'text', text: 'first\n\nsecond' },
               { type: 'text', text: wrapHiddenContext('private context') },
             ],
           ]);
@@ -223,7 +221,7 @@ describe('ACP initial queue persistence', () => {
         runtime = new AcpRuntime(h.deps);
         await runtime.reconcile();
         expect((await runtime.startSession(input, mode)).success).toBe(true);
-        await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(1));
       } finally {
         fault.mockRestore();
         await runtime.dispose();
@@ -264,7 +262,7 @@ describe('ACP initial queue persistence', () => {
           })
         );
         expect((await next.startSession(input, 'resume')).success).toBe(true);
-        await vi.waitFor(() => expect(restarted.agent.prompt).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(restarted.agent.prompt).toHaveBeenCalledTimes(1));
         expect(restarted.agent.newSession).toHaveBeenCalledOnce();
       } finally {
         await next.dispose();
@@ -304,7 +302,7 @@ describe('ACP initial queue persistence', () => {
         expect(h.agent.newSession).toHaveBeenCalledTimes(materialized ? 1 : 0);
         expect(intents.snapshot()[0]?.payload).toMatchObject({ initialQueueConsumed: false });
         expect((await runtime.startSession(input, mode)).success).toBe(true);
-        await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(1));
       } finally {
         fault?.mockRestore();
         await runtime.dispose();
@@ -327,13 +325,13 @@ describe('ACP initial queue persistence', () => {
         h.agent.prompt.mockRejectedValue(new Error('lost response'));
       try {
         expect((await runtime.startSession(input, 'resume')).success).toBe(true);
-        await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(h.agent.prompt).toHaveBeenCalledTimes(1));
         await runtime.dispose();
         runtime = new AcpRuntime(h.deps);
         await runtime.reconcile();
         await runtime.attachSession(input);
         expect((await runtime.startSession(input, mode)).success).toBe(true);
-        expect(h.agent.prompt).toHaveBeenCalledTimes(2);
+        expect(h.agent.prompt).toHaveBeenCalledTimes(1);
       } finally {
         await runtime.dispose();
       }

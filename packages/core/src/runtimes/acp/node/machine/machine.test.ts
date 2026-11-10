@@ -375,16 +375,72 @@ describe('permissions and config validation', () => {
     expect(state.queuedPrompts[1]).toMatchObject({ text: 'edited', updatedAt: 200 });
   });
 
-  it('drains the selected prompt when reordering a legacy idle queue', () => {
+  it('drains a legacy idle queue in its new order when reordered', () => {
     const queuedA = { id: 'a', text: 'a', createdAt: 100, updatedAt: 100 };
-    const queuedB = { id: 'b', text: 'b', createdAt: 100, updatedAt: 100 };
+    const queuedB = { id: 'b', text: 'b', createdAt: 100, updatedAt: 200 };
     let state = evolve(makeReady(), { type: 'PromptQueued', prompt: queuedA }).state;
     state = evolve(state, { type: 'PromptQueued', prompt: queuedB }).state;
 
     const result = evolve(state, { type: 'QueueReordered', ids: ['b', 'a'] });
 
-    expect(result.state.queuedPrompts.map((entry) => entry.id)).toEqual(['a']);
-    expect(result.effects).toContainEqual({ type: 'sendPrompt', prompt: queuedB });
+    expect(result.state.queuedPrompts).toEqual([]);
+    expect(result.effects).toContainEqual({
+      type: 'sendPrompt',
+      prompt: { id: 'a', text: 'b\n\na', createdAt: 100, updatedAt: 100 },
+    });
+  });
+
+  it('sends the whole queue as one prompt when a turn ends', () => {
+    const first = {
+      id: 'p1',
+      text: 'first',
+      createdAt: 100,
+      updatedAt: 100,
+      attachments: [
+        {
+          type: 'attachment' as const,
+          id: 'img-1',
+          mimeType: 'image/png' as const,
+          name: 'Image 1',
+        },
+      ],
+    };
+    const second = {
+      id: 'p2',
+      text: 'second',
+      hiddenContext: 'ctx',
+      createdAt: 200,
+      updatedAt: 200,
+    };
+    let state = evolve(makeWorking(), { type: 'PromptQueued', prompt: first }).state;
+    state = evolve(state, { type: 'PromptQueued', prompt: second }).state;
+
+    const result = evolve(state, {
+      type: 'TurnEnded',
+      outcome: { kind: 'stopped', stopReason: 'end_turn' },
+    });
+
+    expect(result.state.queuedPrompts).toEqual([]);
+    expect(result.effects.filter((effect) => effect.type === 'sendPrompt')).toEqual([
+      {
+        type: 'sendPrompt',
+        prompt: {
+          id: 'p2',
+          text: 'first\n\nsecond',
+          hiddenContext: 'ctx',
+          attachments: [
+            {
+              type: 'attachment' as const,
+              id: 'img-1',
+              mimeType: 'image/png' as const,
+              name: 'Image 1',
+            },
+          ],
+          createdAt: 200,
+          updatedAt: 200,
+        },
+      },
+    ]);
   });
 });
 

@@ -166,7 +166,13 @@ describe('SessionCell prompts', () => {
         if (!prepared.success) return;
         prepared.data();
         prepared.data();
-        await vi.waitFor(() => expect(agent.prompt).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() =>
+          expect(agent.prompt).toHaveBeenCalledWith({
+            sessionId: 'session-1',
+            prompt: [{ type: 'text', text: 'first\n\nsecond' }],
+          })
+        );
+        expect(agent.prompt).toHaveBeenCalledTimes(1);
       } finally {
         cell.dispose();
       }
