@@ -274,13 +274,14 @@ export class SessionCell {
 
   /**
    * While busy: folds queued prompts and `input` into one queued prompt and cancels the active
-   * turn, so it runs as soon as the turn ends. While idle: sends `input` like `prompt`.
+   * turn, so it runs as soon as the turn ends. While idle, or only background agents are running:
+   * sends `input` like `prompt` (a message doesn't stop background agents; Stop does).
    */
   async interrupt(
     input: PromptInput,
     acceptance?: PromptAcceptance
   ): Promise<Result<SessionPromptResult, AcpSendPromptError>> {
-    if (!this.machine.isBusy) return this.prompt(input, acceptance);
+    if (!this.machine.isForegroundBusy) return this.prompt(input, acceptance);
     if (
       this.deps.supportsSteering &&
       this.machine.phase.kind === 'working' &&
@@ -526,7 +527,9 @@ export class SessionCell {
 
   settleTurn(outcome: TranscriptTurnOutcome): void {
     const previousRunningAgentCount = this.lastRunningAgentCount;
+    const endingTurnId = this.transcript.activeTurn?.id ?? null;
     this.transcript.settleTurn(outcome);
+    this.settleEarlierBackgroundAgents(endingTurnId);
     this.dispatchAgentsChangedIfNeeded(previousRunningAgentCount);
     this.emitTranscriptChanged();
     this.applyEvent({ type: 'TurnEnded', outcome: machineOutcome(outcome) });
@@ -750,12 +753,40 @@ export class SessionCell {
     }
   }
 
+  /**
+   * Marks background agents launched before the turn that just ended as completed. Claude reports
+   * a background agent's completion as its own notification turn only when the agent finishes
+   * while the session is idle; one that finishes during a turn is handed to the model inside that
+   * turn with nothing on the ACP stream, and would otherwise stay running (and keep the session
+   * generating) forever. A turn ending after the launch turn is the last point its completion
+   * could have gone unreported. An agent genuinely still running then shows completed early; its
+   * real completion still arrives later as a notification turn.
+   */
+  private settleEarlierBackgroundAgents(endingTurnId: string | null): void {
+    const stale = this.transcript.agents.filter(
+      (agent) =>
+        agent.background === true &&
+        agent.status === 'running' &&
+        agent.launchTurnId !== endingTurnId
+    );
+    for (const agent of stale) {
+      this.push({
+        kind: 'subagent_update',
+        agentId: agent.agentId,
+        toolCallId: agent.toolCallId,
+        status: 'completed',
+      });
+    }
+  }
+
   private scheduleQuiesce(): void {
     if (this.quiesceTimer) clearTimeout(this.quiesceTimer);
     this.quiesceTimer = setTimeout(() => {
       this.quiesceTimer = null;
       if (!this.machine.agentTurnActive) return;
+      const endingTurnId = this.transcript.activeTurn?.id ?? null;
       this.transcript.settleTurn({ kind: 'done', reason: 'quiesced' });
+      this.settleEarlierBackgroundAgents(endingTurnId);
       this.emitTranscriptChanged();
       this.applyEvent({ type: 'AgentActivity', active: false });
     }, 250);

@@ -380,7 +380,11 @@ export class SessionManager {
       this.lifecycle.recordInput(input.conversationId);
       if (input.placement === 'queue') {
         const state = lease.value.cell.sessionState;
-        if (state.lifecycle !== 'ready' || state.isGenerating || state.queuedPrompts.length > 0) {
+        if (
+          state.lifecycle !== 'ready' ||
+          state.agentTurnActive ||
+          state.queuedPrompts.length > 0
+        ) {
           const queued = lease.value.cell.queuePrompt(input.prompt, input.promptId);
           if (!queued.success) return queued;
           onAccepted({ queued: true });
