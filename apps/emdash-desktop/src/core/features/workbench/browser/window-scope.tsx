@@ -1,6 +1,9 @@
 import { toast } from '@emdash/ui/react/primitives';
 import { useLayoutEffect, type ReactNode } from 'react';
-import { captureDevPerfTrace } from '@core/features/dev-perf/api/browser/capture-trace';
+import {
+  captureDevPerfTrace,
+  recordUiProfile,
+} from '@core/features/dev-perf/api/browser/capture-trace';
 import { projectViewDef } from '@core/features/projects/contributions/views';
 import { toggleAppTheme } from '@core/features/settings/api/browser/theme-toggle';
 import {
@@ -124,6 +127,18 @@ export function WindowScope({ children }: { readonly children: ReactNode }) {
           outcome.ok
             ? toast.success('Trace captured', { description: outcome.path })
             : toast.error('Trace capture failed', { description: outcome.message })
+        );
+      },
+    }),
+    'devPerf.recordUiProfile': () => ({
+      execute: () => {
+        toast('Recording UI performance profile', {
+          description: 'Type and scroll as usual for 15 seconds…',
+        });
+        void recordUiProfile().then((outcome) =>
+          outcome.ok
+            ? toast.success('UI profile recorded', { description: outcome.reportPath })
+            : toast.error('UI profile failed', { description: outcome.message })
         );
       },
     }),

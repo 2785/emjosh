@@ -8,6 +8,15 @@ import { PROCESS_SNAPSHOT_SUPPORTED, snapshotProcessTree } from './process-snaps
 export type DevPerfOperations = {
   /** Record a contentTracing trace and return the file path it was written to. */
   captureTrace(durationMs: number): Promise<Result<string, DevPerfTraceError>>;
+  /** Profile the main window's renderer and write a report (see the contract). */
+  recordUiProfile(
+    durationMs: number
+  ): Promise<
+    Result<
+      { reportPath: string; summary: string },
+      { type: 'trace_in_progress' | 'no_window' | 'debugger_busy' }
+    >
+  >;
   /** Toggle verbose per-spawn logging in every worker process. */
   setWorkerSpawnLogging(enabled: boolean): void;
 };
@@ -33,6 +42,10 @@ export function createDevPerfWireController(
       );
       return map(await operations.captureTrace(clamped), (path) => ({ path }));
     },
+    recordUiProfile: ({ durationMs }) =>
+      operations.recordUiProfile(
+        Math.min(MAX_TRACE_DURATION_MS, Math.max(1_000, durationMs ?? DEFAULT_TRACE_DURATION_MS))
+      ),
     setVerboseSpawnLogging: ({ enabled }) => {
       verboseSpawnLogging = enabled;
       setVerboseSpawnLogging(logger, enabled);

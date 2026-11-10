@@ -1,3 +1,5 @@
+// Before React: the recorder hooks into React's DevTools interface as React loads.
+import './perf/ui-perf-recorder';
 import {
   connectSession,
   createChatContext,
