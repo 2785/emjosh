@@ -153,23 +153,24 @@ export async function startWorkspaceControl(
     return (chats.find((row) => row.initial) ?? chats[0])?.id ?? null;
   };
 
-  // Push delivery: messages to a task in an initiative with pushMessages on are fed into its
-  // agent conversation, labelled as coming from a peer rather than the user.
+  // Push delivery: in an initiative with pushMessages on, each message or status event is fed
+  // into the conversations of the tasks it reaches, labelled as coming from the feed rather than
+  // the user. Events only reach tasks subscribed to them.
   const deliver = async (message: InitiativeMessage) => {
-    if (message.kind !== 'message') return;
     const initiative = await initiatives.get(message.initiativeId);
     if (!initiative?.pushMessages || initiative.archived) return;
-    const targets = message.toTaskId
-      ? [message.toTaskId]
-      : initiative.taskIds.filter((id) => id !== message.fromTaskId);
+    // Direct messages, the user's posts, and what each task subscribed to (messageReachesTask).
+    const targets = await initiatives.recipients(message);
     const names = await taskNames([
       ...targets,
       ...(message.fromTaskId ? [message.fromTaskId] : []),
     ]);
     const sender = message.fromTaskId ? `workspace "${names.get(message.fromTaskId)}"` : 'the user';
     const text =
-      `[Initiative "${initiative.name}" message from ${sender}. It comes from the initiative ` +
-      `feed, not directly from the user; weigh it accordingly.]\n\n${message.body}`;
+      message.kind === 'event'
+        ? `[Initiative "${initiative.name}" event, which you subscribed to.]\n\n${message.body}`
+        : `[Initiative "${initiative.name}" message from ${sender}. It comes from the initiative ` +
+          `feed, not directly from the user; weigh it accordingly.]\n\n${message.body}`;
     for (const taskId of targets) {
       const conversationId = await primaryConversation(taskId);
       if (!conversationId) continue;

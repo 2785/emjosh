@@ -286,5 +286,11 @@
     "tag": "0047_outgoing_hannibal_king",
     "when": 1793849059096,
     "hash": "e705854b5577dcf2377b4af2581a6de6a67013f440f0b8b351d0286e87d7e5a2"
+  },
+  {
+    "idx": 48,
+    "tag": "0048_open_mentor",
+    "when": 1794274766919,
+    "hash": "5b5027c9d415ccf41d6096fc9fa7734787ebc9681fb556f745417db45edaf86f"
   }
 ]

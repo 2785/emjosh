@@ -40,12 +40,28 @@ export type CreateWorkspaceInput = {
   initiativeId?: string;
 };
 
+/** What a task listens to beyond messages addressed to it (see InitiativesService). */
+export type InitiativeSubscription = {
+  topic: 'messages' | 'events';
+  sourceTaskId: string | null;
+};
+
+type SubscriptionChange = {
+  initiativeId: string;
+  taskId: string;
+  topic: InitiativeSubscription['topic'];
+  sourceTaskIds?: string[];
+};
+
 /** The initiative operations workspace control needs (see InitiativesService). */
 export type ControlInitiatives = {
   list(): Promise<Initiative[]>;
   get(id: string): Promise<Initiative | null>;
   create(name: string): Promise<Initiative>;
   update(id: string, changes: { pushMessages?: boolean }): Promise<void>;
+  subscriptions(initiativeId: string, taskId: string): Promise<InitiativeSubscription[]>;
+  subscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
+  unsubscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
   setTaskInitiative(taskIds: string[], initiativeId: string | null): Promise<void>;
   initiativeOfTask(taskId: string): Promise<Initiative | null>;
   post(input: {
@@ -365,6 +381,47 @@ export class WorkspaceControlService {
       toTaskId: input.toWorkspaceId ?? null,
       body: input.text,
     });
+  }
+
+  /**
+   * Changes what the calling workspace listens to in its initiative: broadcasts ('messages') or
+   * status events ('events'), from the given workspaces or, when none are given, from all.
+   * Messages addressed to it always arrive.
+   */
+  async setSubscription(
+    caller: ControlCaller,
+    input: {
+      subscribe: boolean;
+      topic: InitiativeSubscription['topic'];
+      fromWorkspaceIds?: string[];
+      initiativeId?: string;
+    }
+  ): Promise<{ initiativeId: string; subscriptions: InitiativeSubscription[] }> {
+    const { initiativeId, taskId } = await this.messagingScope(caller, input.initiativeId);
+    if (!taskId) throw new Error('Only a workspace in the initiative can subscribe.');
+    const change = {
+      initiativeId,
+      taskId,
+      topic: input.topic,
+      sourceTaskIds: input.fromWorkspaceIds,
+    };
+    const initiatives = this.requireInitiatives();
+    const subscriptions = input.subscribe
+      ? await initiatives.subscribe(change)
+      : await initiatives.unsubscribe(change);
+    return { initiativeId, subscriptions };
+  }
+
+  async listSubscriptions(
+    caller: ControlCaller,
+    input: { initiativeId?: string } = {}
+  ): Promise<{ initiativeId: string; subscriptions: InitiativeSubscription[] }> {
+    const { initiativeId, taskId } = await this.messagingScope(caller, input.initiativeId);
+    if (!taskId) throw new Error('Only a workspace in the initiative has subscriptions.');
+    return {
+      initiativeId,
+      subscriptions: await this.requireInitiatives().subscriptions(initiativeId, taskId),
+    };
   }
 
   /** Turns delivery of the initiative's messages into its workspaces' chats on or off. */

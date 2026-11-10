@@ -20,9 +20,9 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - Split work across repositories into an initiative. When the task also needs changes in other repositories (an API and its UI, a library and its users), don't make those changes from this workspace; you lead, and a workspace per repository does its part:
   - Call current_workspace. If it has no initiative, create one with create_initiative (it includes this workspace and delivers messages into every member's chat). If it has one, make sure its pushMessages is true, or call set_message_delivery, so the others actually receive what you send.
   - For each other repository (find it with list_projects; if it isn't a project yet, add it with add_project or clone_project), call create_workspace with that initiativeId and a self-contained prompt: the goal, that repository's part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative led by your workspace (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
-  - Coordinate through the initiative: post_message changes of plan to the workspace concerned. With delivery on, their reports arrive in your chat as new messages, even after your turn ends, so you don't need to poll; call wait_for_messages only when you can't continue without an answer. App events in the feed tell you when a workspace finished a turn, needs approval, or failed.
+  - Coordinate through the initiative. Messaging is opt-in: a workspace receives messages addressed to it (and the user's posts), and broadcasts or status events only if it subscribed. So address messages with toWorkspaceId instead of broadcasting, and subscribe only to what you need, for example to the status events of the workspaces you started (subscribe with topic 'events' and their ids). With delivery on, what reaches you arrives in your chat, even after your turn ends, so you don't need to poll; call wait_for_messages only when you can't continue without an answer.
   - Don't do another workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
-- If you were started as part of an initiative (current_workspace shows one and your first prompt names a lead), do your part, post_message to the lead when you finish, get blocked, or need a decision, and check read_messages before ending a turn so instructions sent mid-turn aren't missed.
+- If you were started as part of an initiative (current_workspace shows one and your first prompt names a lead), do your part, and post_message to the lead (toWorkspaceId) when you finish, get blocked, or need a decision. Don't broadcast or subscribe unless your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
 - Keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
 - If current_workspace returns null, you are not running inside an Emjosh workspace, and the points above about workspaces and initiatives don't apply.`;
@@ -265,16 +265,70 @@ export function buildControlMcpServer(
     async (input) => json(await service.removeFromInitiative(input))
   );
 
+  const topicSchema = z
+    .enum(['messages', 'events'])
+    .describe(
+      "'messages': broadcasts other workspaces post to everyone. 'events': app status updates " +
+        '(a workspace finished its turn, needs approval, or failed).'
+    );
+  const fromSchema = z
+    .array(z.string())
+    .optional()
+    .describe('Only from these workspaces; omit for every workspace in the initiative.');
+
+  server.registerTool(
+    'subscribe',
+    {
+      description:
+        "Choose to receive more of your initiative's feed. By default a workspace only gets " +
+        "messages addressed to it (and the user's posts); subscribe to broadcasts or status " +
+        'events, from specific workspaces or all of them, only as far as your work needs.',
+      inputSchema: {
+        topic: topicSchema,
+        fromWorkspaceIds: fromSchema,
+        initiativeId: z.string().optional(),
+      },
+    },
+    async (input) => json(await service.setSubscription(caller, { ...input, subscribe: true }))
+  );
+
+  server.registerTool(
+    'unsubscribe',
+    {
+      description:
+        'Stop receiving a topic from the given workspaces, or the whole topic when none are given.',
+      inputSchema: {
+        topic: topicSchema,
+        fromWorkspaceIds: fromSchema,
+        initiativeId: z.string().optional(),
+      },
+    },
+    async (input) => json(await service.setSubscription(caller, { ...input, subscribe: false }))
+  );
+
+  server.registerTool(
+    'list_subscriptions',
+    {
+      description:
+        'What this workspace receives in its initiative beyond messages addressed to it.',
+      inputSchema: { initiativeId: z.string().optional() },
+    },
+    async (input) => json(await service.listSubscriptions(caller, input))
+  );
+
   server.registerTool(
     'post_message',
     {
       description:
-        "Post to your initiative's message feed, for one workspace or everyone in it. Other " +
-        'workspaces read it with read_messages/wait_for_messages (or have it delivered when ' +
-        'the user enabled that). Use it to share decisions, contracts, and status.',
+        "Post to your initiative's message feed. Prefer addressing one workspace " +
+        '(toWorkspaceId): direct messages always arrive. Messages to everyone only reach ' +
+        "workspaces that subscribed to the sender's broadcasts.",
       inputSchema: {
         text: z.string(),
-        toWorkspaceId: z.string().optional().describe('Only this workspace; omit for everyone.'),
+        toWorkspaceId: z
+          .string()
+          .optional()
+          .describe('The workspace to tell; omit only for a broadcast to subscribers.'),
         initiativeId: z.string().optional().describe("Defaults to the caller's initiative."),
       },
     },
