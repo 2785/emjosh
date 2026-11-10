@@ -201,7 +201,10 @@ export class SidebarStore {
           label: initiative.name,
           count: members.length,
         },
-        ...this.paginate(`initiative:${initiative.id}`, members, 'initiative')
+        // Initiatives list every member: they get archived as a whole, so they stay short.
+        ...members.map(
+          ({ projectId, task }): SidebarRow => ({ kind: 'task', projectId, taskId: task.data.id })
+        )
       );
     }
     const other = grouped.get(null) ?? [];

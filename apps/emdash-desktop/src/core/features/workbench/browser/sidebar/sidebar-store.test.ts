@@ -459,4 +459,28 @@ describe('SidebarStore pagination', () => {
       },
     ]);
   });
+
+  it('lists every member of an initiative, paginating only the rest', () => {
+    initiativesState.initiatives = [{ id: 'i1', name: 'Big push' }];
+    const manager = projectManagerWithTasks([
+      { id: 'api', createdAt: '2026-01-01T00:00:00.000Z', taskIds: ids },
+    ]);
+    const tasks = (
+      manager.projects.get('api') as unknown as {
+        context: {
+          context: {
+            get: (token: unknown) => { tasks: Map<string, { data: Record<string, unknown> }> };
+          };
+        };
+      }
+    ).context.context.get(taskManagerStoreToken).tasks;
+    ids.slice(0, 30).forEach((id) => (tasks.get(id)!.data.initiativeId = 'i1'));
+    const store = new SidebarStore(manager);
+    store.setGroupBy('initiative');
+
+    const rows = store.sidebarRows;
+    const otherHeader = rows.findIndex((row) => row.kind === 'initiative' && !row.initiativeId);
+    expect(rows.slice(1, otherHeader).filter((row) => row.kind === 'task')).toHaveLength(30);
+    expect(rows.at(-1)).toMatchObject({ kind: 'more', groupKey: 'initiative:other', remaining: 5 });
+  });
 });
