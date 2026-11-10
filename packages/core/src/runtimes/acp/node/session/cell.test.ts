@@ -26,6 +26,17 @@ function dispatchInitialPrompts(cell: SessionCell, prompts: readonly string[]) {
   if (!prepared.success) throw new Error('Expected the activation to prepare');
   prepared.data();
 }
+function backgroundAgentLaunch(agentId: string) {
+  return {
+    kind: 'subagent' as const,
+    toolCallId: `tool-${agentId}`,
+    agentId,
+    title: 'Background agent',
+    status: 'in_progress' as const,
+    parentToolCallId: null,
+    background: true,
+  };
+}
 function makeCell(agent = new FakeAcpAgent()) {
   const result = makePendingCell(agent);
   const { cell } = result;
@@ -224,32 +235,83 @@ describe('SessionCell prompts', () => {
     expect(agent.prompt).toHaveBeenCalledTimes(2);
     expect(cell.sessionState.queuedPrompts).toHaveLength(0);
   });
-  it('keeps prompts queued while background agents run and drains after cancel settles them', async () => {
+  it('sends a follow-up while background agents run without stopping them', async () => {
     const { cell, agent } = makeCell();
-    agent.prompt = vi.fn().mockResolvedValue({ stopReason: 'end_turn' });
-    cell.push({
-      kind: 'subagent',
-      toolCallId: 'tool-1',
-      agentId: 'agent-1',
-      title: 'Background agent',
-      status: 'in_progress',
-      parentToolCallId: null,
-      background: true,
-    });
+    agent.prompt = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        cell.push(backgroundAgentLaunch('agent-1'));
+        return { stopReason: 'end_turn' };
+      })
+      .mockResolvedValue({ stopReason: 'end_turn' });
+    await cell.prompt({ text: 'launch an agent' });
     expect(cell.sessionState.backgroundAgentCount).toBe(1);
-    const queued = await cell.prompt({ text: 'queued' });
-    expect(queued).toEqual({ success: true, data: { queued: true } });
-    expect(agent.prompt).not.toHaveBeenCalled();
+
+    expect(await cell.interrupt({ text: 'follow-up' })).toEqual({
+      success: true,
+      data: { queued: false },
+    });
+
+    expect(agent.prompt).toHaveBeenCalledTimes(2);
+    expect(agent.cancel).not.toHaveBeenCalled();
+  });
+  it('fails background agents when cancelled', async () => {
+    const { cell, agent } = makeCell();
+    cell.push(backgroundAgentLaunch('agent-1'));
     await cell.cancel();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(agent.cancel).toHaveBeenCalledWith({ sessionId: 'session-1' });
     expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'failed' }]);
     expect(cell.sessionState.backgroundAgentCount).toBe(0);
-    expect(cell.sessionState.queuedPrompts).toHaveLength(0);
-    expect(agent.prompt).toHaveBeenCalledWith({
-      sessionId: 'session-1',
-      prompt: [{ type: 'text', text: 'queued' }],
+  });
+  it('keeps a background agent running when the turn that launched it ends', async () => {
+    const { cell, agent } = makeCell();
+    agent.prompt = vi.fn().mockImplementation(async () => {
+      cell.push(backgroundAgentLaunch('agent-1'));
+      return { stopReason: 'end_turn' };
     });
+    await cell.prompt({ text: 'launch an agent' });
+    expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'running' }]);
+    expect(cell.sessionState.isGenerating).toBe(true);
+  });
+  it('completes background agents from earlier turns when a later turn ends', async () => {
+    // Claude doesn't report an agent that finishes during a turn on the ACP stream.
+    const { cell, agent } = makeCell();
+    agent.prompt = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        cell.push(backgroundAgentLaunch('agent-1'));
+        return { stopReason: 'end_turn' };
+      })
+      .mockImplementationOnce(async () => {
+        cell.push(backgroundAgentLaunch('agent-2'));
+        return { stopReason: 'end_turn' };
+      });
+    await cell.prompt({ text: 'launch an agent' });
+    await cell.prompt({ text: 'launch another' });
+    expect(cell.transcript.agents).toMatchObject([
+      { agentId: 'agent-1', status: 'completed' },
+      { agentId: 'agent-2', status: 'running' },
+    ]);
+    expect(cell.sessionState.backgroundAgentCount).toBe(1);
+  });
+  it('completes background agents from earlier turns when an agent-initiated turn quiesces', async () => {
+    vi.useFakeTimers();
+    try {
+      const { cell, agent } = makeCell();
+      agent.prompt = vi.fn().mockImplementation(async () => {
+        cell.push(backgroundAgentLaunch('agent-1'));
+        return { stopReason: 'end_turn' };
+      });
+      await cell.prompt({ text: 'launch an agent' });
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Tests passed.' });
+      vi.advanceTimersByTime(300);
+      await Promise.resolve();
+      expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'completed' }]);
+      expect(cell.sessionState.isGenerating).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 describe('SessionCell interrupt', () => {
@@ -749,18 +811,11 @@ describe('SessionCell idle turns and queue commands', () => {
     }
   });
   it('queues, edits, removes, and reorders queued prompts', () => {
-    const { cell } = makeCell();
+    const { cell, agent } = makeCell();
     // Keep the session busy so reordering an idle queue does not drain its head
     // (QueueReordered dispatches the new head when the session is idle).
-    cell.push({
-      kind: 'subagent',
-      toolCallId: 'tool-1',
-      agentId: 'agent-1',
-      title: 'Background agent',
-      status: 'in_progress',
-      parentToolCallId: null,
-      background: true,
-    });
+    agent.prompt = vi.fn().mockReturnValue(new Promise(() => {}));
+    void cell.prompt({ text: 'busy' });
     expect(isOk(cell.queuePrompt({ text: 'a' }))).toBe(true);
     expect(isOk(cell.queuePrompt({ text: 'b' }))).toBe(true);
     const [first, second] = cell.sessionState.queuedPrompts;

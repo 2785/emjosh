@@ -119,7 +119,7 @@ export function decide(
 ): Result<DomainEvent[], AcpRuntimeError> {
   switch (cmd.type) {
     case 'Prompt':
-      if (isBusy(s)) {
+      if (isForegroundBusy(s)) {
         return ok([{ type: 'PromptQueued', prompt: cmd.prompt }]);
       }
       if (!isPromptReady(phaseToLifecycle(s.phase))) {
@@ -270,7 +270,7 @@ export function evolve(
       const byId = new Map(s.queuedPrompts.map((prompt) => [prompt.id, prompt]));
       const reordered = ev.ids.map((id) => byId.get(id)!).filter(Boolean);
       const { queuedPrompts, effects: queueEffects } =
-        s.phase.kind === 'ready' && !s.agentTurnActive && s.backgroundAgentCount === 0
+        s.phase.kind === 'ready' && !s.agentTurnActive
           ? dequeuePromptEffects(reordered)
           : { queuedPrompts: reordered, effects: [] as Effect[] };
       return {
@@ -283,10 +283,7 @@ export function evolve(
       const active = activeTurnFromPhase(s.phase);
       if (!active) return warn(s, `TurnEnded with no active turn (phase: '${s.phase.kind}')`);
       const stopReason = ev.outcome.kind === 'stopped' ? ev.outcome.stopReason : null;
-      const { queuedPrompts, effects: queueEffects } =
-        s.backgroundAgentCount === 0
-          ? dequeuePromptEffects(s.queuedPrompts)
-          : { queuedPrompts: s.queuedPrompts, effects: [] as Effect[] };
+      const { queuedPrompts, effects: queueEffects } = dequeuePromptEffects(s.queuedPrompts);
       return {
         state: {
           ...s,
@@ -311,7 +308,7 @@ export function evolve(
     case 'AgentActivity': {
       const wasActive = s.agentTurnActive;
       const { queuedPrompts, effects: queueEffects } =
-        !ev.active && s.phase.kind === 'ready' && s.backgroundAgentCount === 0
+        !ev.active && s.phase.kind === 'ready'
           ? dequeuePromptEffects(s.queuedPrompts)
           : { queuedPrompts: s.queuedPrompts, effects: [] as Effect[] };
       return {
@@ -323,16 +320,11 @@ export function evolve(
       };
     }
 
-    case 'AgentsChanged': {
-      const { queuedPrompts, effects: queueEffects } =
-        ev.runningCount === 0 && s.phase.kind === 'ready'
-          ? dequeuePromptEffects(s.queuedPrompts)
-          : { queuedPrompts: s.queuedPrompts, effects: [] as Effect[] };
+    case 'AgentsChanged':
       return {
-        state: { ...s, backgroundAgentCount: ev.runningCount, queuedPrompts },
-        effects: [{ type: 'state' }, ...queueEffects],
+        state: { ...s, backgroundAgentCount: ev.runningCount },
+        effects: [{ type: 'state' }],
       };
-    }
 
     case 'CancellationRequested': {
       if (s.phase.kind !== 'working' && !s.agentTurnActive && s.backgroundAgentCount === 0) {
@@ -404,13 +396,18 @@ function makeTurn(s: SessionMachineState): ControlTurn {
   return { id: makeTurnId(s.conversationId, s.nextTurnIndex) };
 }
 
+/** Busy with anything Stop would cancel, background agents included. */
 export function isBusy(s: SessionMachineState): boolean {
-  return (
-    s.phase.kind === 'working' ||
-    s.phase.kind === 'cancelling' ||
-    s.agentTurnActive ||
-    s.backgroundAgentCount > 0
-  );
+  return isForegroundBusy(s) || s.backgroundAgentCount > 0;
+}
+
+/**
+ * Busy with a turn the agent can't take a new prompt during. Background agents don't count: the
+ * agent accepts prompts while they run, and a prompt queued behind one would wait on a
+ * completion signal the provider doesn't always send.
+ */
+export function isForegroundBusy(s: SessionMachineState): boolean {
+  return s.phase.kind === 'working' || s.phase.kind === 'cancelling' || s.agentTurnActive;
 }
 
 /** Joins prompts in order into one prompt carrying the last one's id and timestamps. */
@@ -517,6 +514,9 @@ export class SessionMachine {
   }
   get isBusy(): boolean {
     return isBusy(this.machine.current());
+  }
+  get isForegroundBusy(): boolean {
+    return isForegroundBusy(this.machine.current());
   }
   get isWorking(): boolean {
     const phase = this.machine.current().phase;
