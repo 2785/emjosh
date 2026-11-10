@@ -344,6 +344,13 @@
       "when": 1794274766919,
       "tag": "0048_open_mentor",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1794332676072,
+      "tag": "0049_smart_the_twelve",
+      "breakpoints": true
     }
   ]
 }

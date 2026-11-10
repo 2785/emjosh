@@ -10,6 +10,7 @@ export function createInitiativesWireController(service: InitiativesService): Co
     list: (input) => service.list(input),
     create: ({ name }) => service.create(name),
     update: ({ id, ...changes }) => service.update(id, changes),
+    setLead: ({ initiativeId, taskId }) => service.setLead(initiativeId, taskId),
     setTaskInitiative: ({ taskIds, initiativeId }) =>
       service.setTaskInitiative(taskIds, initiativeId),
     messages: (input) => service.messages(input),

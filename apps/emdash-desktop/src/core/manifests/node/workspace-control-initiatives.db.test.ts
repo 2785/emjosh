@@ -23,20 +23,35 @@ describe('workspace control initiatives and messages', () => {
       .insert(tasks)
       .values({ id: 'peer', projectId: 'web', name: 'peer', status: 'x' })
       .run();
+    fixture.db
+      .insert(tasks)
+      .values({ id: 'other', projectId: 'web', name: 'other', status: 'x' })
+      .run();
     initiatives = new InitiativesService(fixture.db as never);
     service = new WorkspaceControlService({
       listProjects: async () => [],
-      listWorkspaces: async () => [],
+      listWorkspaces: async () =>
+        ['lead', 'peer', 'other'].map((id) => ({
+          id,
+          name: id,
+          projectId: id === 'lead' ? 'api' : 'web',
+          projectName: id === 'lead' ? 'api' : 'web',
+          branch: id,
+          archived: false,
+          agentStatus: null,
+          lastActivityAt: null,
+          initiativeId:
+            fixture.db
+              .select()
+              .from(tasks)
+              .all()
+              .find((task) => task.id === id)?.initiativeId ?? null,
+        })),
       pullRequestForBranch: async () => null,
-      callerContext: async (conversationId) =>
-        (({ 'conv-lead': 'lead', 'conv-peer': 'peer' }) as Record<string, string>)[conversationId]
-          ? {
-              taskId: ({ 'conv-lead': 'lead', 'conv-peer': 'peer' } as Record<string, string>)[
-                conversationId
-              ]!,
-              provider: 'claude',
-            }
-          : null,
+      callerContext: async (conversationId) => {
+        const taskId = conversationId.replace(/^conv-/, '');
+        return ['lead', 'peer', 'other'].includes(taskId) ? { taskId, provider: 'claude' } : null;
+      },
       archiveWorkspace: async () => {},
       renameWorkspace: async () => {},
       addProject: async () => ({ id: 'x', name: 'x', path: '/x' }),
@@ -50,19 +65,26 @@ describe('workspace control initiatives and messages', () => {
 
   afterEach(() => fixture?.close());
 
-  it('lets a lead group workspaces and exchange messages with them', async () => {
-    const initiative = await service.createInitiative(lead, {
+  it('starts a lead workspace that the caller and every member hear from', async () => {
+    const { initiative, lead: started } = await service.createInitiative(peer, {
       name: 'Accounts v2',
+      goal: 'Ship accounts v2.',
+    });
+    // createWorkspace is stubbed to return the existing 'peer' task, standing in for the lead.
+    expect(started).toEqual({ id: 'peer', name: 'peer', created: true });
+    expect(initiative.leadTaskId).toBe('peer');
+  });
+
+  it('lets a lead group workspaces and exchange messages with them', async () => {
+    const { initiative } = await service.createInitiative(lead, {
+      name: 'Accounts v2',
+      leadWorkspaceId: 'lead',
       workspaceIds: ['peer'],
     });
     expect(initiative.taskIds.sort()).toEqual(['lead', 'peer']);
+    expect(await service.currentWorkspace(lead)).toMatchObject({ isLead: true });
 
-    // Broadcasts are opt-in: the peer listens to the lead's.
-    await service.setSubscription(peer, {
-      subscribe: true,
-      topic: 'messages',
-      fromWorkspaceIds: ['lead'],
-    });
+    // Members hear the lead's broadcasts without subscribing.
     const waiting = service.waitForMessages(peer, { timeoutSeconds: 5 });
     await service.postMessage(lead, { text: 'Use tenant_id on POST /v2/accounts' });
     const received = await waiting;
@@ -76,8 +98,16 @@ describe('workspace control initiatives and messages', () => {
   });
 
   it('delivers messages into chats for initiatives agents create, unless asked not to', async () => {
-    expect((await service.createInitiative(lead, { name: 'Accounts v2' })).pushMessages).toBe(true);
-    const quiet = await service.createInitiative(peer, { name: 'Quiet', pushMessages: false });
+    const created = await service.createInitiative(lead, {
+      name: 'Accounts v2',
+      leadWorkspaceId: 'lead',
+    });
+    expect(created.initiative.pushMessages).toBe(true);
+    const { initiative: quiet } = await service.createInitiative(peer, {
+      name: 'Quiet',
+      leadWorkspaceId: 'peer',
+      pushMessages: false,
+    });
     expect(quiet.pushMessages).toBe(false);
 
     // The caller's initiative by default.
@@ -85,20 +115,32 @@ describe('workspace control initiatives and messages', () => {
     expect((await initiatives.get(quiet.id))?.pushMessages).toBe(true);
   });
 
-  it('keeps broadcasts and status events to workspaces that subscribed', async () => {
-    await service.createInitiative(lead, { name: 'Accounts v2', workspaceIds: ['peer'] });
-    await service.postMessage(lead, { text: 'FYI to everyone' });
-    expect(await service.readMessages(peer, {})).toEqual([]);
-    expect(await service.listSubscriptions(peer)).toMatchObject({ subscriptions: [] });
+  it("keeps members' broadcasts to the lead and workspaces that subscribed", async () => {
+    await service.createInitiative(lead, {
+      name: 'Accounts v2',
+      leadWorkspaceId: 'lead',
+      workspaceIds: ['peer', 'other'],
+    });
+    const other = { conversationId: 'conv-other' };
+    await service.postMessage(peer, { text: 'FYI to everyone' });
+    expect((await service.readMessages(lead, {})).map((m) => m.body)).toEqual(['FYI to everyone']);
+    expect(await service.readMessages(other, {})).toEqual([]);
+    expect(await service.listSubscriptions(other)).toMatchObject({
+      leadWorkspaceId: 'lead',
+      subscriptions: [],
+    });
 
-    await service.setSubscription(peer, { subscribe: true, topic: 'messages' });
-    expect((await service.readMessages(peer, {})).map((m) => m.body)).toEqual(['FYI to everyone']);
-    await service.setSubscription(peer, { subscribe: false, topic: 'messages' });
-    expect(await service.readMessages(peer, {})).toEqual([]);
+    await service.setSubscription(other, { subscribe: true, topic: 'messages' });
+    expect((await service.readMessages(other, {})).map((m) => m.body)).toEqual(['FYI to everyone']);
+    await service.setSubscription(other, { subscribe: false, topic: 'messages' });
+    expect(await service.readMessages(other, {})).toEqual([]);
   });
 
   it('records new workspaces in the initiative feed', async () => {
-    const initiative = await service.createInitiative(lead, { name: 'Accounts v2' });
+    const { initiative } = await service.createInitiative(lead, {
+      name: 'Accounts v2',
+      leadWorkspaceId: 'lead',
+    });
     await service.setSubscription(peer, {
       subscribe: true,
       topic: 'events',

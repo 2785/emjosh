@@ -9,6 +9,8 @@ export type Initiative = {
   archived: boolean;
   createdAt: string;
   taskIds: string[];
+  /** The task orchestrating the initiative; null when it has none. */
+  leadTaskId: string | null;
 };
 
 export type InitiativeMessage = {
@@ -42,6 +44,11 @@ export const initiativesContract = defineContract({
       pushMessages: z.boolean().optional(),
       archived: z.boolean().optional(),
     }),
+    output: z.void(),
+  }),
+  /** Makes a task of the initiative its lead, or removes the lead with `taskId: null`. */
+  setLead: procedure({
+    input: z.object({ initiativeId: z.string(), taskId: z.string().nullable() }),
     output: z.void(),
   }),
   setTaskInitiative: procedure({

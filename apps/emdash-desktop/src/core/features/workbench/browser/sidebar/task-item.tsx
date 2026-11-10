@@ -1,6 +1,8 @@
 import { ContextMenu } from '@emdash/ui/react/primitives';
-import { Layers } from 'lucide-react';
+import { Crown, Layers } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
+import { getInitiativesClient } from '@core/features/initiatives/api/browser/client';
+import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
 import { getProjectStore } from '@core/features/projects/api/browser/stores/project-selectors';
 import { projectViewDef } from '@core/features/projects/contributions/views';
 import { useAppSettingsKey } from '@core/features/settings/api/browser/use-app-settings-key';
@@ -92,6 +94,9 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
   };
 
   const canPin = task.state !== 'unregistered';
+  const initiativeId = registeredTaskData(task)?.initiativeId ?? null;
+  const initiative = initiativeId ? getInitiativesStore().byId.get(initiativeId) : undefined;
+  const isLead = initiative?.leadTaskId === taskId;
 
   const workspaceStore = getTaskWorkspace(projectId, taskId);
   const git = getTaskGitCheckoutStore(projectId, taskId);
@@ -116,17 +121,31 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
       onConvertAutomation={undefined}
       onDelete={handleDelete}
       extraItems={
-        <ContextMenu.Item
-          onClick={() =>
-            void openInitiativePicker({
-              taskIds: [taskId],
-              currentInitiativeId: registeredTaskData(task)?.initiativeId,
-            })
-          }
-        >
-          <Layers className="size-4" />
-          Initiative…
-        </ContextMenu.Item>
+        <>
+          {initiative && !isLead && (
+            <ContextMenu.Item
+              onClick={() =>
+                void getInitiativesClient().then((client) =>
+                  client.setLead({ initiativeId: initiative.id, taskId })
+                )
+              }
+            >
+              <Crown className="size-4" />
+              Make initiative lead
+            </ContextMenu.Item>
+          )}
+          <ContextMenu.Item
+            onClick={() =>
+              void openInitiativePicker({
+                taskIds: [taskId],
+                currentInitiativeId: registeredTaskData(task)?.initiativeId,
+              })
+            }
+          >
+            <Layers className="size-4" />
+            Initiative…
+          </ContextMenu.Item>
+        </>
       }
     >
       <SidebarMenuRow
@@ -146,6 +165,12 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
           aria-label={`Open task ${taskName || 'task'}`}
           className="gap-1 overflow-hidden"
         >
+          {isLead && rowVariant === 'underInitiative' && (
+            <Crown
+              aria-label="Initiative lead"
+              className="size-3.5 shrink-0 text-foreground-tertiary-passive"
+            />
+          )}
           <span
             className={cn(
               'min-w-0 flex-1 truncate text-left transition-colors',

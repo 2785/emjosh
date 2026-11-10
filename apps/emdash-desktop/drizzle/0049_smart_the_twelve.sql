@@ -1,0 +1,1 @@
+ALTER TABLE `initiatives` ADD `lead_task_id` text;

@@ -17,13 +17,15 @@ export type ControlEndpointInfo = { url: string; token: string };
 export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace: a branch and worktree of one repository with its own agent chat. These tools manage workspaces and initiatives (groups of workspaces across repositories working towards one goal). Use them as described below without waiting to be asked.
 
 - Name your workspace once, first. New workspaces get placeholder names such as "dull-geese-try". As soon as you understand the task, before starting the work, call rename_workspace with a short name for it in plain words, the way you would title the work (for example "Remove sandbox access expiry"), not a branch-style slug. Later messages are almost always follow-ups to that work (corrections, details, related questions), so keep the name; rename again only if the user asks, or the conversation has pivoted to something with nothing in common with what the workspace started as.
-- Split work across repositories into an initiative. When the task also needs changes in other repositories (an API and its UI, a library and its users), don't make those changes from this workspace; you lead, and a workspace per repository does its part:
-  - Call current_workspace. If it has no initiative, create one with create_initiative (it includes this workspace and delivers messages into every member's chat). If it has one, make sure its pushMessages is true, or call set_message_delivery, so the others actually receive what you send.
-  - For each other repository (find it with list_projects; if it isn't a project yet, add it with add_project or clone_project), call create_workspace with that initiativeId and a self-contained prompt: the goal, that repository's part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative led by your workspace (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
-  - Coordinate through the initiative. Messaging is opt-in: a workspace receives messages addressed to it (and the user's posts), and broadcasts or status events only if it subscribed. So address messages with toWorkspaceId instead of broadcasting, and subscribe only to what you need, for example to the status events of the workspaces you started (subscribe with topic 'events' and their ids). With delivery on, what reaches you arrives in your chat, even after your turn ends, so you don't need to poll; call wait_for_messages only when you can't continue without an answer.
-  - Don't do another workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
-- If you were started as part of an initiative (current_workspace shows one and your first prompt names a lead), do your part, and post_message to the lead (toWorkspaceId) when you finish, get blocked, or need a decision. Don't broadcast or subscribe unless your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
-- Keep work that belongs in this repository here; don't create workspaces for it.
+- Split work across repositories into an initiative. When the task also needs changes in other repositories (an API and its UI, a library and its users), or the user asks you to spin up other workspaces or an initiative, don't make those changes from this workspace and don't orchestrate them from here either: messages to you queue behind your own long-running work. An initiative has a dedicated lead workspace that only orchestrates:
+  - Call current_workspace. If it has no initiative, call create_initiative with a self-contained goal. It starts a new lead workspace (its id is in the result) and keeps this workspace as a member. Then tell the user, and carry on with this workspace's own part, if any, as a member (see below). Don't create the other workspaces yourself; the lead does.
+  - If this workspace is already in an initiative, post_message to its lead (initiative.leadTaskId) asking for the new work, instead of starting workspaces yourself. If the initiative has no lead, ask the user before making one with set_initiative_lead.
+- If you lead an initiative (current_workspace shows isLead), you orchestrate and nothing else. Members' messages and status events are delivered into your chat but wait until your turn ends, so keep turns short; any slow or non-trivial work (code changes, builds, test runs, long investigations) goes to a workspace:
+  - For each part (find projects with list_projects; if a repository isn't a project yet, add it with add_project or clone_project), call create_workspace with the initiativeId and a self-contained prompt: the goal, that part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative you lead (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
+  - You receive every message and status event in the initiative, and every member receives your broadcasts. Address one workspace with toWorkspaceId when it concerns only that one. Delivery is on by default; if not, call set_message_delivery. Call wait_for_messages only when you can't continue without an answer.
+  - Don't do a workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
+- If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish, get blocked, or need a decision. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
+- Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
 - If current_workspace returns null, you are not running inside an Emjosh workspace, and the points above about workspaces and initiatives don't apply.`;
 
@@ -214,11 +216,33 @@ export function buildControlMcpServer(
     'create_initiative',
     {
       description:
-        'Create an initiative grouping workspaces across projects. Includes the calling ' +
-        'workspace unless includeCallingWorkspace is false. Messages are delivered into the ' +
-        "members' chats unless pushMessages is false.",
+        'Create an initiative grouping workspaces across projects, with a lead workspace that ' +
+        'orchestrates it. Unless leadWorkspaceId is given, starts a new lead workspace with the ' +
+        'goal as its first prompt; the lead then starts the workspaces for each part. Includes ' +
+        'the calling workspace as a member unless includeCallingWorkspace is false. Messages ' +
+        "are delivered into the members' chats unless pushMessages is false.",
       inputSchema: {
         name: z.string(),
+        goal: z
+          .string()
+          .optional()
+          .describe(
+            "The new lead's brief, self-contained: the overall goal, the repositories and parts " +
+              'involved, the contract the parts must agree on, what the calling workspace is ' +
+              'doing itself, and anything the user said about scope or rollout. Required ' +
+              'unless leadWorkspaceId is given.'
+          ),
+        leadWorkspaceId: z
+          .string()
+          .optional()
+          .describe(
+            'Make this existing workspace the lead instead of starting one. Only for a ' +
+              'workspace that does nothing but orchestrate.'
+          ),
+        leadProjectId: z
+          .string()
+          .optional()
+          .describe("Project to start the lead workspace in; the calling workspace's by default."),
         workspaceIds: z.array(z.string()).optional(),
         includeCallingWorkspace: z.boolean().optional(),
         pushMessages: z
@@ -231,6 +255,21 @@ export function buildControlMcpServer(
       },
     },
     async (input) => json(await service.createInitiative(caller, input))
+  );
+
+  server.registerTool(
+    'set_initiative_lead',
+    {
+      description:
+        "Make a workspace its initiative's lead (moving it in if needed). The lead receives " +
+        'every message and status event, and its broadcasts reach every member. Only when the ' +
+        'user asks, or the initiative has no lead.',
+      inputSchema: {
+        workspaceId: z.string(),
+        initiativeId: z.string().optional().describe("Defaults to the caller's initiative."),
+      },
+    },
+    async (input) => json(await service.setInitiativeLead(caller, input))
   );
 
   server.registerTool(
@@ -280,9 +319,10 @@ export function buildControlMcpServer(
     'subscribe',
     {
       description:
-        "Choose to receive more of your initiative's feed. By default a workspace only gets " +
-        "messages addressed to it (and the user's posts); subscribe to broadcasts or status " +
-        'events, from specific workspaces or all of them, only as far as your work needs.',
+        "Choose to receive more of your initiative's feed. By default a workspace gets " +
+        "messages addressed to it, the user's posts, and the lead's broadcasts (the lead gets " +
+        'everything); subscribe to other broadcasts or status events, from specific workspaces ' +
+        'or all of them, only as far as your work needs.',
       inputSchema: {
         topic: topicSchema,
         fromWorkspaceIds: fromSchema,
@@ -321,7 +361,8 @@ export function buildControlMcpServer(
     {
       description:
         "Post to your initiative's message feed. Prefer addressing one workspace " +
-        '(toWorkspaceId): direct messages always arrive. Messages to everyone only reach ' +
+        '(toWorkspaceId): direct messages always arrive, and the lead sees every message. ' +
+        'Messages to everyone reach every member when the lead sends them; otherwise only ' +
         "workspaces that subscribed to the sender's broadcasts.",
       inputSchema: {
         text: z.string(),
