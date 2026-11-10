@@ -50,22 +50,56 @@ describe('InitiativesService', () => {
     expect(await service.list({ includeArchived: true })).toHaveLength(1);
   });
 
-  it('shows a task the messages meant for it: to it or everyone, not its own', async () => {
+  it("shows a task only messages to it and the user's posts, plus what it subscribed to", async () => {
     const { id } = await service.create('Accounts v2');
+    await service.setTaskInitiative(['t1', 't2', 't3'], id);
     await service.post({ initiativeId: id, fromTaskId: 't1', body: 'from t1 to all' });
     await service.post({ initiativeId: id, fromTaskId: 't1', toTaskId: 't2', body: 'to t2' });
     await service.post({ initiativeId: id, fromTaskId: 't2', toTaskId: 't3', body: 'to t3' });
-    await service.post({ initiativeId: id, fromTaskId: null, kind: 'event', body: 'user note' });
+    await service.post({ initiativeId: id, fromTaskId: null, body: 'user post' });
+    await service.post({ initiativeId: id, fromTaskId: 't1', kind: 'event', body: 't1 finished' });
+    await service.post({ initiativeId: id, fromTaskId: 't3', kind: 'event', body: 't3 failed' });
+    const forT2 = async () =>
+      (await service.messages({ initiativeId: id, forTaskId: 't2' })).map((m) => m.body);
 
-    const forT2 = await service.messages({ initiativeId: id, forTaskId: 't2' });
-    expect(forT2.map((m) => m.body)).toEqual(['from t1 to all', 'to t2', 'user note']);
-    expect((await service.messages({ initiativeId: id })).map((m) => m.body)).toHaveLength(4);
-    const afterFirst = await service.messages({
+    expect(await forT2()).toEqual(['to t2', 'user post']);
+
+    await service.subscribe({
       initiativeId: id,
-      forTaskId: 't2',
-      afterId: forT2[0]!.id,
+      taskId: 't2',
+      topic: 'messages',
+      sourceTaskIds: ['t1'],
     });
-    expect(afterFirst.map((m) => m.body)).toEqual(['to t2', 'user note']);
+    await service.subscribe({ initiativeId: id, taskId: 't2', topic: 'events' });
+    expect(await forT2()).toEqual([
+      'from t1 to all',
+      'to t2',
+      'user post',
+      't1 finished',
+      't3 failed',
+    ]);
+
+    await service.unsubscribe({ initiativeId: id, taskId: 't2', topic: 'events' });
+    await service.subscribe({
+      initiativeId: id,
+      taskId: 't2',
+      topic: 'events',
+      sourceTaskIds: ['t3'],
+    });
+    expect(await forT2()).toEqual(['from t1 to all', 'to t2', 'user post', 't3 failed']);
+    expect(await service.subscriptions(id, 't2')).toEqual(
+      expect.arrayContaining([
+        { topic: 'messages', sourceTaskId: 't1' },
+        { topic: 'events', sourceTaskId: 't3' },
+      ])
+    );
+
+    // The user's view of the feed is unfiltered.
+    expect(await service.messages({ initiativeId: id })).toHaveLength(6);
+    const all = await service.messages({ initiativeId: id });
+    expect(await service.recipients(all[0]!)).toEqual(['t2']);
+    expect(await service.recipients(all[3]!)).toEqual(['t1', 't2', 't3']);
+    expect(await service.recipients(all[4]!)).toEqual([]);
   });
 
   it('wakes a waiting task when a message for it arrives, and times out otherwise', async () => {

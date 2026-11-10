@@ -604,3 +604,31 @@ export const initiativeMessages = sqliteTable(
     ),
   })
 );
+
+/**
+ * What a task listens to in its initiative beyond messages addressed to it: broadcasts
+ * ('messages') or app status events ('events'), from one task or, with a null source, any task.
+ */
+export const initiativeSubscriptions = sqliteTable(
+  'initiative_subscriptions',
+  {
+    id: text('id').primaryKey(),
+    initiativeId: text('initiative_id')
+      .notNull()
+      .references(() => initiatives.id, { onDelete: 'cascade' }),
+    /** The listening task. */
+    taskId: text('task_id').notNull(),
+    topic: text('topic').notNull().$type<'messages' | 'events'>(),
+    /** Only from this task; null for every task in the initiative. */
+    sourceTaskId: text('source_task_id'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  },
+  (table) => ({
+    initiativeTaskIdx: index('idx_initiative_subscriptions_initiative_task').on(
+      table.initiativeId,
+      table.taskId
+    ),
+  })
+);

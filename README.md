@@ -29,11 +29,12 @@ problems to them.
 - **Initiatives.** Optional groups of workspaces across repositories working towards one goal.
   Group the sidebar by initiative, add tasks from their context menu (*Initiative…*), or let
   agents create and fill them.
-- **Workspaces talking to each other.** Each initiative has a message feed: agents post to
-  everyone or one workspace and read or wait for replies; Emjosh adds events (a workspace
-  finished, needs approval, failed). Messages can be delivered straight into each workspace's
-  chat, labelled as coming from a peer: on for initiatives agents create, and a toggle in the
-  initiative's menu.
+- **Workspaces talking to each other.** Each initiative has a message feed. Messaging is
+  opt-in: a workspace always gets messages addressed to it (and your posts from the feed), and
+  hears other workspaces' broadcasts or status events (finished, needs approval, failed) only
+  if it subscribed to them, from specific workspaces or all. With delivery on (the default for
+  initiatives agents create), what reaches a workspace arrives in its chat, labelled as coming
+  from the feed.
 - **External agents.** Settings → General → *Connect an external agent* copies a
   `claude mcp add` command so a `claude` outside Emjosh can use the same tools while Emjosh
   is open.

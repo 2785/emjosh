@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type {
   Initiative,
   InitiativeChange,
@@ -6,9 +6,43 @@ import type {
 } from '@core/features/initiatives/api/contract';
 import type { AppDb } from '@core/services/app-db/node/db';
 import { appDbPokes } from '@core/services/app-db/node/pokes';
-import { initiativeMessages, initiatives, tasks } from '@core/services/app-db/node/schema';
+import {
+  initiativeMessages,
+  initiatives,
+  initiativeSubscriptions,
+  tasks,
+} from '@core/services/app-db/node/schema';
 
 type Listener = (change: InitiativeChange) => void;
+
+export type SubscriptionTopic = 'messages' | 'events';
+
+export type InitiativeSubscription = {
+  topic: SubscriptionTopic;
+  /** Only from this task; null for every task in the initiative. */
+  sourceTaskId: string | null;
+};
+
+/**
+ * Whether a message reaches a task. Messages addressed to it always do; so do the user's posts
+ * to everyone. Broadcasts from tasks ('messages') and app status events ('events') only reach
+ * tasks subscribed to that topic from that task, or from every task.
+ */
+export function messageReachesTask(
+  message: Pick<InitiativeMessage, 'kind' | 'fromTaskId' | 'toTaskId'>,
+  taskId: string,
+  subscriptions: readonly InitiativeSubscription[]
+): boolean {
+  if (message.toTaskId) return message.toTaskId === taskId;
+  if (message.fromTaskId === taskId) return false;
+  if (message.kind === 'message' && message.fromTaskId === null) return true;
+  const topic: SubscriptionTopic = message.kind === 'event' ? 'events' : 'messages';
+  return subscriptions.some(
+    (subscription) =>
+      subscription.topic === topic &&
+      (subscription.sourceTaskId === null || subscription.sourceTaskId === message.fromTaskId)
+  );
+}
 
 /**
  * Initiatives: optional groups of tasks across projects, each with a message feed that its
@@ -137,8 +171,8 @@ export class InitiativesService {
   }
 
   /**
-   * Messages of an initiative in posting order, optionally only those a task should see
-   * (addressed to it or to everyone, and not sent by it) and only after a given message.
+   * Messages of an initiative in posting order, optionally only those reaching a task (see
+   * messageReachesTask) and only after a given message.
    */
   async messages(input: {
     initiativeId: string;
@@ -155,24 +189,102 @@ export class InitiativesService {
           eq(initiativeMessages.initiativeId, input.initiativeId),
           input.afterId
             ? sql`rowid > (SELECT rowid FROM initiative_messages WHERE id = ${input.afterId})`
-            : undefined,
-          input.forTaskId
-            ? and(
-                or(
-                  isNull(initiativeMessages.toTaskId),
-                  eq(initiativeMessages.toTaskId, input.forTaskId)
-                ),
-                or(
-                  isNull(initiativeMessages.fromTaskId),
-                  sql`${initiativeMessages.fromTaskId} != ${input.forTaskId}`
-                )
-              )
             : undefined
         )
       )
-      .orderBy(sql`rowid`)
-      .limit(input.limit ?? 200);
-    return rows.map(toMessage);
+      .orderBy(sql`rowid`);
+    const messages = rows.map(toMessage);
+    const { forTaskId } = input;
+    const visible = forTaskId
+      ? await this.subscriptions(input.initiativeId, forTaskId).then((subscriptions) =>
+          messages.filter((message) => messageReachesTask(message, forTaskId, subscriptions))
+        )
+      : messages;
+    return visible.slice(0, input.limit ?? 200);
+  }
+
+  /** The tasks of the initiative a message reaches, for delivery into their chats. */
+  async recipients(message: InitiativeMessage): Promise<string[]> {
+    const initiative = await this.get(message.initiativeId);
+    if (!initiative) return [];
+    const reached = await Promise.all(
+      initiative.taskIds.map(async (taskId) =>
+        messageReachesTask(message, taskId, await this.subscriptions(initiative.id, taskId))
+          ? taskId
+          : null
+      )
+    );
+    return reached.filter((taskId): taskId is string => taskId !== null);
+  }
+
+  async subscriptions(initiativeId: string, taskId: string): Promise<InitiativeSubscription[]> {
+    const rows = await this.db
+      .select({
+        topic: initiativeSubscriptions.topic,
+        sourceTaskId: initiativeSubscriptions.sourceTaskId,
+      })
+      .from(initiativeSubscriptions)
+      .where(
+        and(
+          eq(initiativeSubscriptions.initiativeId, initiativeId),
+          eq(initiativeSubscriptions.taskId, taskId)
+        )
+      );
+    return rows;
+  }
+
+  /** Subscribes a task to a topic from the given tasks, or from every task when none are given. */
+  async subscribe(input: {
+    initiativeId: string;
+    taskId: string;
+    topic: SubscriptionTopic;
+    sourceTaskIds?: string[];
+  }): Promise<InitiativeSubscription[]> {
+    const existing = await this.subscriptions(input.initiativeId, input.taskId);
+    const sources: (string | null)[] = input.sourceTaskIds?.length
+      ? [...new Set(input.sourceTaskIds)]
+      : [null];
+    const added = sources.filter(
+      (source) =>
+        !existing.some(
+          (subscription) =>
+            subscription.topic === input.topic && subscription.sourceTaskId === source
+        )
+    );
+    if (added.length > 0) {
+      await this.db.insert(initiativeSubscriptions).values(
+        added.map((sourceTaskId) => ({
+          id: crypto.randomUUID(),
+          initiativeId: input.initiativeId,
+          taskId: input.taskId,
+          topic: input.topic,
+          sourceTaskId,
+        }))
+      );
+    }
+    return this.subscriptions(input.initiativeId, input.taskId);
+  }
+
+  /** Drops the topic from the given tasks, or the whole topic when none are given. */
+  async unsubscribe(input: {
+    initiativeId: string;
+    taskId: string;
+    topic: SubscriptionTopic;
+    sourceTaskIds?: string[];
+  }): Promise<InitiativeSubscription[]> {
+    await this.db
+      .delete(initiativeSubscriptions)
+      .where(
+        and(
+          eq(initiativeSubscriptions.initiativeId, input.initiativeId),
+          eq(initiativeSubscriptions.taskId, input.taskId),
+          eq(initiativeSubscriptions.topic, input.topic),
+          input.sourceTaskIds?.length
+            ? inArray(initiativeSubscriptions.sourceTaskId, input.sourceTaskIds)
+            : undefined
+        )
+      );
+    return this.subscriptions(input.initiativeId, input.taskId);
   }
 
   /** Resolves with the first new message for the task, or an empty list after the timeout. */
@@ -191,13 +303,11 @@ export class InitiativesService {
       };
       const unsubscribe = this.onChange((change) => {
         if (change.type !== 'message-posted') return;
-        const { message } = change;
-        if (message.initiativeId !== input.initiativeId) return;
-        if (input.forTaskId) {
-          if (message.fromTaskId === input.forTaskId) return;
-          if (message.toTaskId && message.toTaskId !== input.forTaskId) return;
-        }
-        void this.messages(input).then(finish);
+        if (change.message.initiativeId !== input.initiativeId) return;
+        // Only messages reaching the task (messages() applies the rules) end the wait.
+        void this.messages(input).then((messages) => {
+          if (messages.length > 0) finish(messages);
+        });
       });
       const timer = setTimeout(() => finish([]), timeoutMs);
       // Messages posted between the caller's last read and subscribing.

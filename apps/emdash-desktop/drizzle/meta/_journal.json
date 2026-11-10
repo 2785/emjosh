@@ -337,6 +337,13 @@
       "when": 1793849059096,
       "tag": "0047_outgoing_hannibal_king",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794274766919,
+      "tag": "0048_open_mentor",
+      "breakpoints": true
     }
   ]
 }

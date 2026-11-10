@@ -57,6 +57,12 @@ describe('workspace control initiatives and messages', () => {
     });
     expect(initiative.taskIds.sort()).toEqual(['lead', 'peer']);
 
+    // Broadcasts are opt-in: the peer listens to the lead's.
+    await service.setSubscription(peer, {
+      subscribe: true,
+      topic: 'messages',
+      fromWorkspaceIds: ['lead'],
+    });
     const waiting = service.waitForMessages(peer, { timeoutSeconds: 5 });
     await service.postMessage(lead, { text: 'Use tenant_id on POST /v2/accounts' });
     const received = await waiting;
@@ -79,8 +85,25 @@ describe('workspace control initiatives and messages', () => {
     expect((await initiatives.get(quiet.id))?.pushMessages).toBe(true);
   });
 
+  it('keeps broadcasts and status events to workspaces that subscribed', async () => {
+    await service.createInitiative(lead, { name: 'Accounts v2', workspaceIds: ['peer'] });
+    await service.postMessage(lead, { text: 'FYI to everyone' });
+    expect(await service.readMessages(peer, {})).toEqual([]);
+    expect(await service.listSubscriptions(peer)).toMatchObject({ subscriptions: [] });
+
+    await service.setSubscription(peer, { subscribe: true, topic: 'messages' });
+    expect((await service.readMessages(peer, {})).map((m) => m.body)).toEqual(['FYI to everyone']);
+    await service.setSubscription(peer, { subscribe: false, topic: 'messages' });
+    expect(await service.readMessages(peer, {})).toEqual([]);
+  });
+
   it('records new workspaces in the initiative feed', async () => {
     const initiative = await service.createInitiative(lead, { name: 'Accounts v2' });
+    await service.setSubscription(peer, {
+      subscribe: true,
+      topic: 'events',
+      initiativeId: initiative.id,
+    });
 
     await service.createWorkspace(lead, {
       projectId: 'web',

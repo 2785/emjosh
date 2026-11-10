@@ -88,6 +88,7 @@ describe('control MCP endpoint', () => {
       'current_workspace',
       'list_initiatives',
       'list_projects',
+      'list_subscriptions',
       'list_workspaces',
       'post_message',
       'read_messages',
@@ -96,6 +97,8 @@ describe('control MCP endpoint', () => {
       'rename_project',
       'rename_workspace',
       'set_message_delivery',
+      'subscribe',
+      'unsubscribe',
       'wait_for_messages',
     ]);
     // Clients such as Claude Code put these into the agent's system prompt.
@@ -104,6 +107,7 @@ describe('control MCP endpoint', () => {
     expect(client.getInstructions()).toContain('background shell loop');
     expect(client.getInstructions()).toContain('set_message_delivery');
     expect(client.getInstructions()).toContain('not a branch-style slug');
+    expect(client.getInstructions()).toContain('Messaging is opt-in');
     expect(client.getInstructions()).toContain("Don't do another workspace's work on its branch");
     const current = await client.callTool({ name: 'current_workspace', arguments: {} });
     expect(JSON.parse((current.content as { text: string }[])[0]!.text)).toMatchObject({
