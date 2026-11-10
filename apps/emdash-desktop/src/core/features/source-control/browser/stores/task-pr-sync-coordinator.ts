@@ -37,13 +37,16 @@ export class TaskPrSyncCoordinator {
     // association facts (breadcrumb, upstream, branch) and fallback git facts —
     // observation changes must re-derive even when the local checkout never moved
     // (e.g. the host scan delivers a breadcrumb or sees the follow move the head).
+    // Only the tasks whose facts changed re-derive: one agent's commit shouldn't refetch the
+    // association of every task.
+    let previousKeys = new Map<TaskStore, string>();
     this.disposeGitHeadReaction = reaction(
       () =>
         [...tasks.tasks.values()].filter(isRegistered).map((store) => {
           const git = getTaskGitCheckoutStore(store);
           const checkout = git?.headTrackingSnapshot;
           const observed = store.workspaceObservedPr;
-          return [
+          const key = [
             store.workspaceId,
             (store.data as Task).workspaceId ?? '',
             store.workspaceObservedStatus ?? '',
@@ -59,8 +62,20 @@ export class TaskPrSyncCoordinator {
             observed?.ahead ?? '',
             observed?.behind ?? '',
           ].join(':');
+          return [store, key] as const;
         }),
-      () => this.reloadAll()
+      (entries) => {
+        const keys = new Map(entries);
+        for (const [store, key] of keys) {
+          if (previousKeys.get(store) !== key) void this.reloadTask(store);
+        }
+        previousKeys = keys;
+      },
+      {
+        equals: (a, b) =>
+          a.length === b.length &&
+          a.every((entry, i) => entry[1] === b[i]![1] && entry[0] === b[i]![0]),
+      }
     );
     this.disposeRepositoryReaction = reaction(
       () => [repository.pullRequestRepositoryUrl, repository.canonicalPushRepositoryUrl] as const,

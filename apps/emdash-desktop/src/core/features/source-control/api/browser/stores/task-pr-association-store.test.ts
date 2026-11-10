@@ -32,6 +32,18 @@ describe('TaskPrAssociationStore', () => {
     expect(store.checkoutDrift).toEqual({ kind: 'unknown' });
   });
 
+  it('keeps the same state when an association is set again unchanged', () => {
+    const store = new TaskPrAssociationStore(createManualClock(1_786_000_000_000));
+    store.setAssociation([pullRequest], { kind: 'in-sync', syncedAt: 1 });
+    const first = store.state;
+
+    store.setAssociation([{ ...pullRequest }], { kind: 'in-sync', syncedAt: 1 });
+    expect(store.state).toBe(first);
+
+    store.setAssociation([pullRequest], { kind: 'in-sync', syncedAt: 2 });
+    expect(store.state).not.toBe(first);
+  });
+
   it('refreshes details only for an already-associated PR', () => {
     const store = new TaskPrAssociationStore();
     const refreshed = { ...pullRequest, title: 'Refreshed title' };
