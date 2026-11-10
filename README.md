@@ -49,6 +49,8 @@ problems to them.
   *Steer* (the default) hands your message (merged with anything queued) to the running agent
   right away, so it adjusts course without stopping; *Queue* (Emdash's behavior) waits for the
   turn to end. Agents that can't take messages mid-turn stop and run it next.
+- **Queued messages go out together.** When a turn ends, everything queued behind it (your
+  messages, initiative messages) is sent as one message, not one turn per message.
 - **Screenshots in new tasks.** Paste or drop images into the New Task dialog's first message;
   they're sent with it once the chat starts. Enter creates the task (Shift+Enter for a new
   line); switch back to Cmd/Ctrl+Enter in Settings → General → *Create tasks with Enter*.

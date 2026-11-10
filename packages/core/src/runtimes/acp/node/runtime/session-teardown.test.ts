@@ -32,7 +32,11 @@ describe('ACP teardown while a provider prompt is pending', () => {
         await vi.waitFor(() =>
           expect(h.agent.prompt).toHaveBeenCalledWith({
             sessionId: 'victim-session',
-            prompt: [LONG_TURN],
+            // A drained queue goes out as one prompt.
+            prompt:
+              turn === 'drained queued prompt'
+                ? [{ type: 'text', text: `quick turn\n\n${LONG_TURN.text}` }]
+                : [LONG_TURN],
           })
         );
 
@@ -142,7 +146,7 @@ function makeTeardownHarness(close: 'times out' | 'fails') {
     .mockResolvedValueOnce({ sessionId: 'sibling-session' })
     .mockResolvedValueOnce({ sessionId: 'victim-session' });
   h.agent.prompt.mockImplementation(async (request: PromptRequest) =>
-    request.prompt.some((block) => block.type === 'text' && block.text === LONG_TURN.text)
+    request.prompt.some((block) => block.type === 'text' && block.text.includes(LONG_TURN.text))
       ? lateTurn.promise
       : { stopReason: 'end_turn' }
   );

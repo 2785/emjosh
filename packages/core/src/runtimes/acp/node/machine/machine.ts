@@ -433,13 +433,16 @@ function mergePrompts(prompts: readonly QueuedPrompt[], into: QueuedPrompt): Que
   };
 }
 
+/** Sends every queued prompt at once, merged into one, rather than a turn per prompt. */
 function dequeuePromptEffects(queuedPrompts: readonly QueuedPrompt[]): {
   queuedPrompts: readonly QueuedPrompt[];
   effects: Effect[];
 } {
-  const [next, ...rest] = queuedPrompts;
-  return next
-    ? { queuedPrompts: rest, effects: [{ type: 'sendPrompt', prompt: next }] }
+  return queuedPrompts.length > 0
+    ? {
+        queuedPrompts: [],
+        effects: [{ type: 'sendPrompt', prompt: mergeQueuedPrompts(queuedPrompts) }],
+      }
     : { queuedPrompts, effects: [] };
 }
 

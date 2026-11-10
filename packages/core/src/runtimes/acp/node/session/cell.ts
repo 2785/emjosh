@@ -621,6 +621,41 @@ export class SessionCell {
     }
   }
 
+  /**
+   * Resolves a queued prompt's images. A queued prompt can hold several messages, so an image
+   * that can no longer be loaded is left out (and the agent told) rather than failing them all.
+   */
+  private async resolveQueuedAttachments(prompt: QueuedPrompt): Promise<{
+    content: Pick<QueuedPrompt, 'text' | 'attachments' | 'hiddenContext'>;
+    resolved: ResolvedImage[];
+  }> {
+    const attachments = prompt.attachments ?? [];
+    const settled = await Promise.allSettled(
+      attachments.map((attachment) =>
+        this.deps.resolveAttachment(this.deps.conversationId, attachment)
+      )
+    );
+    const kept = attachments.filter((_, index) => settled[index]!.status === 'fulfilled');
+    const resolved = settled.flatMap((result) =>
+      result.status === 'fulfilled' ? [result.value] : []
+    );
+    const missing = attachments.length - kept.length;
+    if (missing === 0) return { content: prompt, resolved };
+    this.deps.logger.warn('SessionCell: leaving out queued images that could not be loaded', {
+      conversationId: this.conversationId,
+      missing,
+    });
+    const note = `${missing} image(s) attached to this message could not be loaded and were left out.`;
+    return {
+      content: {
+        text: prompt.text,
+        attachments: kept,
+        hiddenContext: [prompt.hiddenContext, note].filter(Boolean).join('\n\n'),
+      },
+      resolved,
+    };
+  }
+
   private async sendPromptInternal(
     prompt: QueuedPrompt,
     acceptance?: PromptAcceptance
@@ -659,16 +694,12 @@ export class SessionCell {
     let outcome: TranscriptTurnOutcome;
     let result: Result<SessionPromptResult, AcpSendPromptError>;
     try {
-      const resolvedAttachments =
-        acceptance?.resolvedAttachments ??
-        (await Promise.all(
-          (prompt.attachments ?? []).map((attachment) =>
-            this.deps.resolveAttachment(this.deps.conversationId, attachment)
-          )
-        ));
+      const { content: sendable, resolved: resolvedAttachments } = acceptance?.resolvedAttachments
+        ? { content: prompt, resolved: acceptance.resolvedAttachments }
+        : await this.resolveQueuedAttachments(prompt);
       const promptRequest = {
         sessionId: this.acpSessionId,
-        prompt: promptContent(prompt, resolvedAttachments),
+        prompt: promptContent(sendable, resolvedAttachments),
       };
       this.rawLog.record({
         kind: 'prompt',

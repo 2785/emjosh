@@ -177,13 +177,13 @@ describe('completed history through real runtime and Wire', () => {
   );
 
   it.each([2, 5, 12])(
-    'retains every distinct repeated-text prompt across a queue of %i',
+    'sends the prompts queued behind a running turn as one turn, for %i prompts',
     async (count) => {
       h = await createHarness();
-      const gates = Array.from({ length: count }, () => h.gate());
+      const gates = [h.gate(), h.gate()];
       const ids = Array.from({ length: count }, () => randomUUID());
       for (const id of ids) expect((await h.send('continue', id)).success).toBe(true);
-      for (let index = 0; index < count; index++) {
+      for (let index = 0; index < 2; index++) {
         await vi.waitFor(() => expect(h.provider.agent.prompt).toHaveBeenCalledTimes(index + 1));
         await h.update({
           sessionUpdate: 'agent_message_chunk',
@@ -193,13 +193,15 @@ describe('completed history through real runtime and Wire', () => {
         await vi.waitFor(async () => expect((await h.history()).turns).toHaveLength(index + 1));
       }
       const turns = (await h.history()).turns;
-      expect(turns.map((turn) => turn.seq)).toEqual(ids.map((_, index) => index));
-      expect(turns.map((turn) => turn.items[0])).toEqual(
-        ids.map((promptId) => expect.objectContaining({ text: 'continue', promptId }))
-      );
-      expect(new Set(turns.flatMap((turn) => turn.items.map((item) => item.id))).size).toBe(
-        count * 2
-      );
+      expect(turns.map((turn) => turn.seq)).toEqual([0, 1]);
+      expect(turns.map((turn) => turn.items[0])).toEqual([
+        expect.objectContaining({ text: 'continue', promptId: ids[0] }),
+        expect.objectContaining({
+          text: Array.from({ length: count - 1 }, () => 'continue').join('\n\n'),
+          promptId: ids.at(-1),
+        }),
+      ]);
+      expect(new Set(turns.flatMap((turn) => turn.items.map((item) => item.id))).size).toBe(4);
     }
   );
 
@@ -242,22 +244,21 @@ describe('completed history through real runtime and Wire', () => {
       first.resolve({ stopReason: 'end_turn' });
       await vi.waitFor(() => expect(h.provider.agent.prompt).toHaveBeenCalledTimes(2));
       next.resolve({ stopReason: 'end_turn' });
-      if (operation !== 'delete')
-        await vi.waitFor(() => expect(h.provider.agent.prompt).toHaveBeenCalledTimes(3));
       last.resolve({ stopReason: 'end_turn' });
+      // The queue goes out as one turn, in its order, under its last prompt's id.
       const expected =
         operation === 'delete'
           ? ['running', 'C']
           : operation === 'edit'
-            ? ['running', 'B edited', 'C']
-            : ['running', 'C', 'B'];
+            ? ['running', 'B edited\n\nC']
+            : ['running', 'C\n\nB'];
       await vi.waitFor(async () =>
         expect((await h.history()).turns.map((turn) => messageTexts(turn)[0])).toEqual(expected)
       );
-      const expectedIds = operation === 'delete' ? [c] : operation === 'edit' ? [b, c] : [c, b];
-      expect((await h.history()).turns.slice(1).map((turn) => turn.items[0])).toEqual(
-        expectedIds.map((promptId) => expect.objectContaining({ promptId }))
-      );
+      expect(h.provider.agent.prompt).toHaveBeenCalledTimes(2);
+      expect((await h.history()).turns[1]?.items[0]).toMatchObject({
+        promptId: operation === 'reorder' ? b : c,
+      });
     }
   );
 
@@ -412,7 +413,7 @@ describe('completed history through real runtime and Wire', () => {
     expect(h.runtime.getSessionState(h.conversationId).queuedPrompts).toEqual([]);
   });
 
-  it('records a queued attachment failure as its own turn and continues the remaining queue', async () => {
+  it('leaves out a queued image that can no longer be loaded and still sends the queue', async () => {
     h = await createHarness();
     const running = h.gate();
     const last = h.gate();
@@ -437,16 +438,21 @@ describe('completed history through real runtime and Wire', () => {
     running.resolve({ stopReason: 'end_turn' });
     await vi.waitFor(() => expect(h.provider.agent.prompt).toHaveBeenCalledTimes(2));
     expect(h.provider.agent.prompt).toHaveBeenLastCalledWith(
-      expect.objectContaining({ prompt: [{ type: 'text', text: 'last' }] })
+      expect.objectContaining({
+        prompt: [
+          { type: 'text', text: 'queued attachment\n\nlast' },
+          {
+            type: 'text',
+            text: wrapHiddenContext(
+              '1 image(s) attached to this message could not be loaded and were left out.'
+            ),
+          },
+        ],
+      })
     );
-    const history = await h.history();
-    expect(history.turns).toHaveLength(2);
-    expect(history.turns[1]).toMatchObject({
-      outcome: { kind: 'error', reason: 'prompt_failed' },
-      items: [{ text: 'queued attachment', promptId: attachmentId }],
-    });
     last.resolve({ stopReason: 'end_turn' });
-    await vi.waitFor(async () => expect((await h.history()).turns).toHaveLength(3));
+    await vi.waitFor(async () => expect((await h.history()).turns).toHaveLength(2));
+    expect((await h.history()).turns[1]).toMatchObject({ outcome: { kind: 'done' } });
   });
 
   it.each(['', ' ', '\n\t'])('does not create a phantom turn for empty input %j', async (text) => {
