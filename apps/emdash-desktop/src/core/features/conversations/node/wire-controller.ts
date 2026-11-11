@@ -368,6 +368,10 @@ export function createConversationsWireController(
       },
       loadHistory: (input, meta) =>
         run(input.conversationId, (client) => client.acp.loadHistory(input, callOptions(meta))),
+      loadCachedHistory: (input, meta) =>
+        run(input.conversationId, (client) =>
+          client.acp.loadCachedHistory(input, callOptions(meta))
+        ),
       terminate: (input, meta) =>
         run(input.conversationId, (client) => client.acp.terminate(input, callOptions(meta))),
       sendPrompt: (input, meta) =>

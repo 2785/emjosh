@@ -276,6 +276,7 @@ function startDesktopWorkersWithHost(
           userEnv: userShellEnv,
         },
         intentsFilePath: sessionIntentFilePaths().acp,
+        historyCacheDir: join(app.getPath('userData'), 'acp-history'),
         controlEndpointFile: controlEndpointFile(),
       })
     );

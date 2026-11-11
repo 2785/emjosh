@@ -61,6 +61,7 @@ import type {
 import { createSessionLifecycle } from '#services/session-lifecycle/node';
 import { ConversationHandle } from './conversation-handle';
 import type { ActivationStartError, SessionRecord } from './conversation-types';
+import { CACHED_HISTORY_TURNS } from './history-cache';
 import { persistedIntentV1Schema } from './session-intent-schemas';
 import { SessionMaterializer } from './session-materializer';
 import { routeOwnerId, SessionRouter } from './session-router';
@@ -100,12 +101,21 @@ type SuspendedIntentEntry = {
   summary: SuspendedIntentListEntry;
 };
 
+/** Quiet time before a conversation's settled history is written to the cache. */
+const HISTORY_CACHE_DEBOUNCE_MS = 2_000;
+
 export class SessionManager {
   readonly sessionHost: AcpSessionLiveHost = createAcpSessionLiveHost();
   readonly sessionsHost: AcpSessionsLiveHost = createAcpSessionsLiveHost();
   readonly sessionsList: SessionsListModel = this.sessionsHost.model;
   readonly router: SessionRouter;
   private readonly retained = new Map<string, ConversationHandle>();
+  private readonly historyCacheWrites = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; version: string }
+  >();
+  /** The history version last written to the cache, per conversation. */
+  private readonly historyCacheVersions = new Map<string, string>();
   private readonly suspendedIntents = new Map<string, SuspendedIntentEntry>();
   private readonly clock: Clock;
   private readonly lifecycle: ConversationSessionLifecycle;
@@ -141,7 +151,10 @@ export class SessionManager {
         record.conversation.attachProvisional(record);
         scope.add(() => this.teardownRecord(record));
       },
-      onRecordChanged: (record) => record.conversation.syncRecord(record),
+      onRecordChanged: (record) => {
+        record.conversation.syncRecord(record);
+        this.scheduleHistoryCacheWrite(record);
+      },
       onRecordClosed: (record) => {
         if (!record.conversation.isCurrentRecord(record)) return;
         void this.stop(record.input.conversationId, 'process-exited');
@@ -447,6 +460,8 @@ export class SessionManager {
   }
 
   async kill(conversationId: string): Promise<Result<void, AcpTerminateError>> {
+    this.cancelHistoryCacheWrite(conversationId);
+    void this.deps.historyCache?.remove(conversationId).catch(() => {});
     const entry = this.retained.get(conversationId);
     if (entry) {
       this.removeSuspendedIntentEntry(conversationId);
@@ -917,6 +932,45 @@ export class SessionManager {
         error: String(error),
       });
     }
+  }
+
+  /**
+   * Saves the record's latest committed turns once they settle, so the next start of this
+   * conversation can show them before replay. Skipped during replay (no settled history yet).
+   */
+  private scheduleHistoryCacheWrite(record: SessionRecord): void {
+    const cache = this.deps.historyCache;
+    if (!cache || record.cell.sessionState.transcript === null) return;
+    const conversationId = record.input.conversationId;
+    const { generation, historyRevision } = record.cell.transcript.position;
+    const version = `${generation}:${historyRevision}`;
+    const pending = this.historyCacheWrites.get(conversationId);
+    if (pending?.version === version || this.historyCacheVersions.get(conversationId) === version)
+      return;
+    if (pending) clearTimeout(pending.timer);
+    const timer = setTimeout(() => {
+      this.historyCacheWrites.delete(conversationId);
+      this.historyCacheVersions.set(conversationId, version);
+      const turns = record.cell.transcript.history.slice(-CACHED_HISTORY_TURNS);
+      if (turns.length === 0) return;
+      void cache
+        .write(conversationId, { savedAt: this.clock.now(), turns: [...turns] })
+        .catch((error: unknown) =>
+          this.deps.logger.warn('SessionManager: failed to cache conversation history', {
+            conversationId,
+            error: String(error),
+          })
+        );
+    }, HISTORY_CACHE_DEBOUNCE_MS);
+    timer.unref?.();
+    this.historyCacheWrites.set(conversationId, { timer, version });
+  }
+
+  private cancelHistoryCacheWrite(conversationId: string): void {
+    const pending = this.historyCacheWrites.get(conversationId);
+    if (pending) clearTimeout(pending.timer);
+    this.historyCacheWrites.delete(conversationId);
+    this.historyCacheVersions.delete(conversationId);
   }
 
   private readyRecord(conversationId: string): SessionRecord | undefined {

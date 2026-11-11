@@ -115,6 +115,15 @@ export const acpApiContract = defineContract({
     data: historyPageSchema,
     error: acpLoadHistoryErrorSchema,
   }),
+  /**
+   * The latest turns saved from the conversation's last session, to show while a session
+   * starts (and replays); unavailable when none are saved. Superseded by `loadHistory`.
+   */
+  loadCachedHistory: fallible({
+    input: historyPageInputSchema.pick({ conversationId: true, limit: true }),
+    data: historyPageSchema,
+    error: acpLoadHistoryErrorSchema,
+  }),
   sessions: liveModel({
     key: z.void().optional(),
     states: {

@@ -8,6 +8,7 @@ import {
   terminalStateSchema,
   type AcpRuntimeError,
   type AcpSessionStartMode,
+  type HistoryPage,
   type PromptInput,
   type PromptPlacement,
   type SessionState,
@@ -221,6 +222,22 @@ export class AcpLiveSession {
 
   loadHistory(before?: number, limit = 50) {
     return this.client.loadHistory({ conversationId: this.conversationId, before, limit });
+  }
+
+  /**
+   * History saved from the last session, to show while this one starts (see the contract).
+   * Null when there is none or it can't be read: it is only ever a head start.
+   */
+  async loadCachedHistory(limit = 100): Promise<HistoryPage | null> {
+    try {
+      const result = await this.client.loadCachedHistory({
+        conversationId: this.conversationId,
+        limit,
+      });
+      return result.success && result.data.kind === 'available' ? result.data : null;
+    } catch {
+      return null;
+    }
   }
 
   async exportTranscript(): Promise<Result<string, unknown>> {

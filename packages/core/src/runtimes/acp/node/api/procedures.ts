@@ -109,6 +109,12 @@ export function createAcpProcedures(runtime: AcpRuntime) {
     }): Promise<Result<HistoryPage, AcpLoadHistoryError>> {
       return runtime.loadHistory(input.conversationId, input.before, input.limit);
     },
+    loadCachedHistory(input: {
+      conversationId: string;
+      limit: number;
+    }): Promise<Result<HistoryPage, AcpLoadHistoryError>> {
+      return runtime.loadCachedHistory(input.conversationId, input.limit);
+    },
   };
 }
 
