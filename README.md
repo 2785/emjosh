@@ -16,82 +16,25 @@ problems to them.
 
 ## What's different from Emdash
 
-### Agents managing workspaces
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
-- **Workspace tools for agents.** Every chat agent (and Claude in a terminal) gets an
-  `emjosh` MCP server: list, add, clone, rename, and remove projects; list workspaces (branch,
-  agent status, PR state),
-  describe and rename its own workspace, create workspaces (a new branch and worktree whose
-  first prompt starts right away), and archive others. Agents are told to name their workspace
-  as soon as they know what it's for, and to start workspaces in an initiative for changes that
-  span repositories. Ask things like "archive the workspaces whose PRs
-  merged" or "make workspaces in these four repos for the same change".
-- **Initiatives.** Optional groups of workspaces across repositories working towards one goal.
-  Group the sidebar by initiative, add tasks from their context menu (*Initiative…*), or let
-  agents create and fill them. When an agent creates one, it starts a separate **lead**
-  workspace that only orchestrates: it starts a workspace per part and hands off anything slow,
-  so messages to it don't wait behind long-running work. The lead heads its initiative in the
-  sidebar (crown icon); *Make initiative lead* in a task's context menu changes it.
-- **Workspaces talking to each other.** Each initiative has a message feed. The lead gets
-  everything; every workspace gets messages addressed to it, your posts from the feed, and the
-  lead's broadcasts, and hears other workspaces' broadcasts or status events (finished, needs
-  approval, failed) only if it subscribed to them. With delivery on (the default for
-  initiatives agents create), what reaches a workspace arrives in its chat, labelled as coming
-  from the feed. Workspaces agents create start with the creating conversation's settings,
-  such as its permission mode, over your saved defaults for that agent.
-- **External agents.** Settings → General → *Connect an external agent* copies a
-  `claude mcp add` command so a `claude` outside Emjosh can use the same tools while Emjosh
-  is open.
-
-### Chat
-
-- **Steer the agent mid-turn.** Settings → General → *Messages sent while agent is working*:
-  *Steer* (the default) hands your message (merged with anything queued) to the running agent
-  right away, so it adjusts course without stopping; *Queue* (Emdash's behavior) waits for the
-  turn to end. Agents that can't take messages mid-turn stop and run it next.
-- **Queued messages go out together.** When a turn ends, everything queued behind it (your
-  messages, initiative messages) is sent as one message, not one turn per message.
-- **Screenshots in new tasks.** Paste or drop images into the New Task dialog's first message;
-  they're sent with it once the chat starts. Enter creates the task (Shift+Enter for a new
-  line); switch back to Cmd/Ctrl+Enter in Settings → General → *Create tasks with Enter*.
-- **Inline attachment references.** Pasted or dropped images get an `[Image 1]` pill where
-  your cursor is, and the agent sees which image is which; long pasted text collapses into a
-  `[Snippet 1]` pill that still sends the full text in place.
-
-### Sidebar and workspaces
-
-- **Group by project, initiative, or nothing.** The sort menu's *Group by* lists every task in
-  one cross-repo list (labelled with its project), optionally split by initiative. Without
-  project rows, the sidebar header's **+** opens a searchable project picker for a new task.
-- **"Last used" means real activity.** Tasks move up when a prompt is sent or a turn finishes
-  or needs you, not when you click into them.
-- **Workspaces name themselves.** Agents name their workspace once, as soon as they know what
-  it's for, and keep that name through follow-ups (renaming only if you ask or the work turns
-  into something unrelated). A workspace still on its placeholder name takes its first
-  conversation's title; names you chose are never touched. Names are plain text ("Synctera
-  tenant 1_1 AR/AP"), not branch-style slugs: the branch is fixed when a workspace is created.
-- **More reliable agent status.** Fewer conversations stuck spinning or wrongly flagged as
-  waiting for you (after reopening a chat, a restart, or an interrupted turn).
-
-### App
-
-- **Window frame color.** Settings → Interface → *Window frame color* tints the title bar and
-  sidebar (darker in dark mode, brighter in light mode) so the window is easy to spot.
-- **Remembered link choice.** "Open link?" can remember in-app vs. default browser
-  (Settings → Interface → *Open links in*).
-- **Its own app, on macOS, Linux, and Windows.** It installs next to Emdash, with its own data
-  (`~/Library/Application Support/emjosh` on macOS), keychain entry, and icon. On macOS and
-  Linux it updates from [Emjosh releases](https://github.com/2785/emjosh/releases), never from
-  Emdash's.
-- **Reload button.** When a new release has been downloaded, or you've built one yourself,
-  the sidebar shows *Reload · new build* (also Emjosh → Reload Emjosh); click it to restart on
-  it.
-- **No Emdash branding or services.** Emjosh never contacts Emdash's servers: no Emdash
-  account (sessions copied from Emdash aren't sent anywhere), telemetry, feedback, updates, or
-  docs. GitHub connects through the `gh` CLI's login and GitLab through an access token, not
-  Emdash's OAuth apps. Remote (SSH) hosts need a workspace-server download location, which
-  Emdash hosts and Emjosh doesn't yet, so they are off unless you set
-  `EMDASH_WORKSPACE_SERVER_ARTIFACTS_URL`.
+- **Agents that run workspaces.** Every agent gets an `emjosh` MCP server to create, name,
+  archive and message workspaces and manage projects. Ask for "a workspace in each of these
+  repos" or "archive the ones whose PRs merged".
+- **Initiatives.** Groups of workspaces across repositories working towards one goal, led by a
+  workspace that only orchestrates, with an opt-in message feed between them.
+- **A chat that keeps up.** Steer a running agent instead of interrupting it; queued messages
+  go out together; screenshots and inline `[Image]` / `[Snippet]` references; history shows
+  instantly when you open a chat.
+- **Built for hundreds of workspaces.** Fast typing and scrolling with lots of unarchived
+  work, a sidebar that groups by project or initiative and tucks old workspaces behind
+  *Show more*, and workspaces that name themselves in plain words.
+- **Its own app.** Installs next to Emdash on macOS, Linux and Windows, with its own data and
+  updates from [Emjosh releases](https://github.com/2785/emjosh/releases). No Emdash account,
+  telemetry or services; GitHub and GitLab connect through `gh` or an access token.
+- **Small comforts.** Notifications only while Emjosh is in the background, a window frame
+  tint, a *Reload* button for new builds, and *Record UI Performance Profile* for when
+  something feels slow.
 
 ## Install
 
@@ -181,9 +124,10 @@ pnpm --dir apps/emdash-desktop run release          # next patch version
 pnpm --dir apps/emdash-desktop run release minor    # or major, or an explicit X.Y.Z
 ```
 
-It builds and signs the macOS app, builds the Linux x64 AppImage in a Docker container, then
-publishes both and an update manifest as a GitHub release. Release tags can't be moved or
-deleted.
+It builds and signs the macOS apps (Apple silicon and Intel), the Windows x64 installer, and
+the Linux x64 AppImage (in a Docker container), then publishes them and an update manifest as
+a GitHub release. Add the version's section to [CHANGELOG.md](CHANGELOG.md) first: it becomes
+the release notes. Release tags can't be moved or deleted.
 
 The Linux build needs Docker; on Apple Silicon, create a Colima profile once
 (`colima start -p emjosh-linux --vm-type vz`) and start it before releasing.
@@ -201,5 +145,7 @@ lives in `apps/emdash-desktop/`, shared packages in `packages/`. Start with
 All the hard work is Emdash's, by [General Action](https://github.com/generalaction) and its
 contributors. Go use [Emdash](https://emdash.sh) if you want the real, supported thing.
 
-Emjosh is distributed under the same [Apache-2.0 license](LICENSE.md). Files have been modified
-from the Emdash originals; see this repository's commit history for the changes.
+Emjosh is distributed under the same [Apache-2.0 license](LICENSE.md). My modifications are
+also licensed under Apache-2.0, copyright Zhao Shiqi; see [NOTICE](NOTICE). Files have been
+modified from the Emdash originals: [CHANGELOG.md](CHANGELOG.md) summarizes the changes and the
+commit history has the details.

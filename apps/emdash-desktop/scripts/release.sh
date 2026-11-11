@@ -104,6 +104,17 @@ asset_json() {
   printf '\n  }\n}\n'
 } >"$OUT/$MANIFEST_NAME"
 
+# Release notes: this version's section of CHANGELOG.md, or GitHub's generated notes without one.
+notes="$(awk -v heading="## $version" '
+  index($0, heading) == 1 && (length($0) == length(heading) || substr($0, length(heading) + 1, 1) == " ") { found = 1; next }
+  found && /^## / { exit }
+  found { print }
+' ../../CHANGELOG.md | sed '/./,$!d')"
+if [ -n "$notes" ]; then
+  notes_args=(--notes "$notes")
+else
+  notes_args=(--generate-notes)
+fi
 gh_ release create "$tag" "${assets[@]}" "$OUT/$MANIFEST_NAME" \
-  --repo "$REPO" --target "$commit" --title "Emjosh $version" --generate-notes
+  --repo "$REPO" --target "$commit" --title "Emjosh $version" "${notes_args[@]}"
 echo "Published https://github.com/$REPO/releases/tag/$tag"
