@@ -29,6 +29,7 @@ import {
   type AcpConnectionSource,
 } from '#runtimes/acp/node/connection/source';
 import type { SessionLiveModels, SessionsListModel } from '#runtimes/acp/node/state/live-models';
+import { CACHED_HISTORY_TURNS, cachedHistoryPage } from './history-cache';
 import { SessionManager } from './session-manager';
 import { TerminalLiveRegistry } from './terminal-live-registry';
 import type { AcpRuntimeDeps, AcpStartInput } from './types';
@@ -140,6 +141,19 @@ export class AcpRuntime {
     limit?: number
   ): Promise<Result<HistoryPage, AcpLoadHistoryError>> {
     return ok(this.manager.getHistory(conversationId, before, limit));
+  }
+
+  /** Turns saved from the conversation's last session, to show while a session starts. */
+  async loadCachedHistory(
+    conversationId: string,
+    limit = CACHED_HISTORY_TURNS
+  ): Promise<Result<HistoryPage, AcpLoadHistoryError>> {
+    const cached = await this.deps.historyCache?.read(conversationId);
+    return ok(
+      cached && cached.turns.length > 0
+        ? cachedHistoryPage(conversationId, cached, limit)
+        : { kind: 'unavailable' }
+    );
   }
 
   exportParsedTranscript(conversationId: string): Result<string, AcpExportTranscriptError> {

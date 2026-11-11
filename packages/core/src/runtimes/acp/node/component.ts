@@ -8,6 +8,7 @@ import type { McpServerRegistration } from '#primitives/mcp/api';
 import { acpApiContract } from '#runtimes/acp/api';
 import { createAcpController } from '#runtimes/acp/node/api/controller';
 import { ChildAcpProcessHost } from '#runtimes/acp/node/node/child-process-host';
+import { createFileHistoryCache } from '#runtimes/acp/node/runtime/history-cache';
 import { AcpRuntime } from '#runtimes/acp/node/runtime/runtime';
 import type { AcpRuntimeDeps } from '#runtimes/acp/node/runtime/types';
 import { AgentPluginHost, type CLIAgentPluginProvider } from '#services/agent-plugins/api/plugins';
@@ -29,6 +30,8 @@ import { userShellEnvContract } from '#services/shell-env/api';
 
 export const acpComponentConfigSchema = z.object({
   intentsFilePath: z.string().min(1).optional(),
+  /** Directory for each conversation's recent history, shown while its session starts. */
+  historyCacheDir: z.string().min(1).optional(),
   /**
    * JSON file ({ url, token }) of the host app's control MCP endpoint. When present, every
    * session gets an `emjosh` MCP server identifying its conversation.
@@ -95,6 +98,9 @@ export function createAcpComponent(options: CreateAcpComponentOptions) {
           };
         },
         intents,
+        ...(config.historyCacheDir
+          ? { historyCache: createFileHistoryCache(config.historyCacheDir) }
+          : {}),
         conversationReports: createConversationLifecycleReporter({
           client: dependencies.conversations,
           logger: runtimeLogger,

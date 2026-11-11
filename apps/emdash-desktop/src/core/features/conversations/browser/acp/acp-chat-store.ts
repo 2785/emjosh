@@ -638,6 +638,10 @@ export class AcpChatStore {
         this._subscribeLiveSession(attachedSession);
       });
 
+      // Starting replays the whole conversation, which takes a while: show the history cached
+      // from its last session meanwhile. The live history replaces it once replay finishes.
+      if (mode !== 'fresh') void this._showCachedHistory(attachedSession, epoch);
+
       const started = await attachedSession.startSession(mode);
       if (this._disposed || this._historyEpoch !== epoch || this.session !== attachedSession)
         return;
@@ -685,6 +689,19 @@ export class AcpChatStore {
         void this._refreshAuthStatus(providerId);
       }
     }
+  }
+
+  /** Shows history saved from the conversation's last session until live history arrives. */
+  private async _showCachedHistory(session: AcpLiveSession, epoch: number): Promise<void> {
+    if (this.historyKnown || typeof session.loadCachedHistory !== 'function') return;
+    const cached = await session.loadCachedHistory(100);
+    if (!cached || this._disposed || this._historyEpoch !== epoch || this.session !== session)
+      return;
+    runInAction(() => {
+      if (this.historyKnown) return;
+      if (this.chatState.transcript.applyPage(cached)) this.historyKnown = true;
+      this._syncMessageCount();
+    });
   }
 
   /** Sends a first prompt with images left by the new-task dialog (see pending-first-prompts). */

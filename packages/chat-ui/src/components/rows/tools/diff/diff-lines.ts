@@ -187,3 +187,13 @@ export function selectPreview(rows: DiffRow[], maxLines = 12, context = 1): Diff
   const start = Math.max(0, firstChange - context);
   return rows.slice(start, start + maxLines);
 }
+
+/** The text's lines 0 through `last`, or all of it when there are no more lines. */
+export function linesThrough(text: string, last: number): string {
+  let end = -1;
+  for (let line = 0; line <= last; line++) {
+    end = text.indexOf('\n', end + 1);
+    if (end < 0) return text;
+  }
+  return last < 0 ? '' : text.slice(0, end);
+}

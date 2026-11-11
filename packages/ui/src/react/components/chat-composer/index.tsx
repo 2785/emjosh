@@ -715,7 +715,9 @@ export function ChatComposer({
   const mcpFailureCount = mcpServers.filter((server) => server.startupError).length;
   const editorRef = useRef<PromptEditorRef | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [editorText, setEditorText] = useState('');
+  // Whether the editor has text, not the text itself: a boolean that rarely changes keeps
+  // keystrokes from re-rendering the whole composer.
+  const [hasEditorText, setHasEditorText] = useState(false);
 
   // Retain the last notice so its content stays rendered while the band
   // collapses out, letting the exit transition play before unmount.
@@ -819,9 +821,7 @@ export function ChatComposer({
 
   const imageAttachments = attachments.filter((a) => a.kind === 'image');
   const canQueuePrompt =
-    isWorking &&
-    !!onSubmitWhileWorking &&
-    (editorText.trim().length > 0 || imageAttachments.length > 0);
+    isWorking && !!onSubmitWhileWorking && (hasEditorText || imageAttachments.length > 0);
 
   // ── Model items ─────────────────────────────────────────────────────────────
 
@@ -960,7 +960,7 @@ export function ChatComposer({
           viewportClassName={styles.editorArea}
           ref={(handle) => {
             editorRef.current = handle;
-            if (handle) setEditorText(handle.getText());
+            if (handle) setHasEditorText(handle.getText().trim().length > 0);
             if (editorApiRef) {
               if (typeof editorApiRef === 'function') {
                 editorApiRef(handle);
@@ -973,7 +973,7 @@ export function ChatComposer({
           placeholder={resolvedPlaceholder}
           disabled={disabled}
           onChange={(text) => {
-            setEditorText(text);
+            setHasEditorText(text.trim().length > 0);
             onInputChange?.(text);
           }}
           onSubmit={shouldHandleSubmitAttempt ? handleSubmit : undefined}

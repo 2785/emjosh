@@ -9,6 +9,7 @@ import { basename } from '@lib/path';
 import { assignInlineVars } from '@vanilla-extract/dynamic';
 import { For, Show, createEffect, onCleanup } from 'solid-js';
 import type { ChatDiff } from '@/model';
+import { linesThrough } from './diff-lines';
 import type { DiffLayout } from './diff.def';
 import {
   diffAddsCount,
@@ -122,8 +123,16 @@ export function DiffLines(props: DiffLinesProps) {
     // when status changes to 'done'/'error', running a single highlight then.
     if (props.item.status === 'running') return;
 
-    const oldCode = props.item.oldText ?? '';
-    const newCode = props.item.newText;
+    // Only the lines up to the last one the preview shows: a diff can carry a whole file (a
+    // Write), and highlighting all of it in one go stalls typing and scrolling.
+    const oldCode = linesThrough(
+      props.item.oldText ?? '',
+      Math.max(-1, ...previewRows.map((row) => row.oldIdx ?? -1))
+    );
+    const newCode = linesThrough(
+      props.item.newText,
+      Math.max(-1, ...previewRows.map((row) => row.newIdx ?? -1))
+    );
 
     function paint(newLines: CodeToken[][], oldLines: CodeToken[][]): void {
       for (let i = 0; i < previewRows.length; i++) {

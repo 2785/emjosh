@@ -563,4 +563,57 @@ describe('applyWorkspaceRegistrySnapshot', () => {
     expect(registry.getLive('first')).toMatchObject({ path: '/second' });
     expect(registry.getLive('second')).toMatchObject({ path: '/first' });
   });
+
+  it('leaves unchanged rows alone, refreshing observedAt only once it is a minute old', async () => {
+    const registry = createWorkspaceRegistry(fixture.db);
+    const records = { 'wt-1': hostRecord({ id: 'wt-1' }) };
+    const t0 = Date.parse('2026-03-01T00:00:00.000Z');
+    await applyWorkspaceRegistrySnapshot({
+      db: fixture.db,
+      host: LOCAL_HOST,
+      records,
+      observedAt: t0,
+    });
+    const first = registry.getLive('wt-1')!;
+
+    await applyWorkspaceRegistrySnapshot({
+      db: fixture.db,
+      host: LOCAL_HOST,
+      records,
+      observedAt: t0 + 30_000,
+    });
+    expect(registry.getLive('wt-1')).toEqual(first);
+
+    await applyWorkspaceRegistrySnapshot({
+      db: fixture.db,
+      host: LOCAL_HOST,
+      records,
+      observedAt: t0 + 61_000,
+    });
+    expect(registry.getLive('wt-1')?.observedAt).toBe(t0 + 61_000);
+  });
+
+  it('writes a row as soon as its observation changes', async () => {
+    const registry = createWorkspaceRegistry(fixture.db);
+    const t0 = Date.parse('2026-03-01T00:00:00.000Z');
+    const record = hostRecord({ id: 'wt-1' });
+    await applyWorkspaceRegistrySnapshot({
+      db: fixture.db,
+      host: LOCAL_HOST,
+      records: { 'wt-1': record },
+      observedAt: t0,
+    });
+
+    await applyWorkspaceRegistrySnapshot({
+      db: fixture.db,
+      host: LOCAL_HOST,
+      records: { 'wt-1': { ...record, git: { ...record.git!, ahead: 3 } } },
+      observedAt: t0 + 1_000,
+    });
+
+    expect(registry.getLive('wt-1')).toMatchObject({
+      observedAt: t0 + 1_000,
+      observedGit: { ahead: 3 },
+    });
+  });
 });

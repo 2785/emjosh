@@ -15,10 +15,13 @@ declare const process: { env: { NODE_ENV?: string } } | undefined;
  *
  * Uses `process.env.NODE_ENV` so it works across Node, bundled main/renderer
  * (Vite statically replaces this), and test runners. Falls back to disabled
- * when `process` is unavailable (e.g. a browser context without a shim).
+ * when `process` is unavailable (e.g. a browser context without a shim). Read once:
+ * `process.env` lookups are slow, and this runs for every parsed column value.
  */
+const DEV_MODE = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+
 function isDevMode(): boolean {
-  return typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+  return DEV_MODE;
 }
 
 // ---------------------------------------------------------------------------

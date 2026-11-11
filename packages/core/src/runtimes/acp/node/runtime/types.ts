@@ -12,6 +12,7 @@ import type { AgentPluginHost, ResolvedAcpProvider } from '#services/agent-plugi
 import type { ConversationLifecycleReporter } from '#services/conversation-reports/node';
 import type { SessionIntentStore } from '#services/session-intents/api';
 import type { IdlePolicyConfig } from '#services/session-lifecycle/api';
+import type { AcpHistoryCache } from './history-cache';
 
 export type AcpStartInput = AcpStartInputWire;
 
@@ -34,6 +35,8 @@ export interface AcpRuntimeDeps {
   host: AcpRuntimeProcessHost;
   resolveAttachment: ResolvePromptAttachment;
   intents: SessionIntentStore;
+  /** Keeps recent history across session restarts, shown while a session starts. */
+  historyCache?: AcpHistoryCache;
   /** Lifecycle reports into the conversation index (spec §3.3); defaults to a no-op. */
   conversationReports?: ConversationLifecycleReporter;
   clock?: Clock;

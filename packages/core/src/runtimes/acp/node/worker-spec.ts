@@ -26,6 +26,8 @@ export type AcpWorkerSpecInput = {
   logger?: Logger;
   dependencies: ProvidedWireComponentRequirements<AcpComponent['requirements']>;
   intentsFilePath: string;
+  /** See `historyCacheDir` in the component config. */
+  historyCacheDir?: string;
   /** Host app control endpoint file; see `controlEndpointFile` in the component config. */
   controlEndpointFile?: string;
 };
@@ -51,6 +53,7 @@ export function acpWorkerSpec(
       dependencies: input.dependencies,
       config: {
         intentsFilePath: input.intentsFilePath,
+        ...(input.historyCacheDir ? { historyCacheDir: input.historyCacheDir } : {}),
         ...(input.controlEndpointFile ? { controlEndpointFile: input.controlEndpointFile } : {}),
         lifecycle: {
           session: { kind: 'idle-after', outputMs: SESSION_IDLE_MS },

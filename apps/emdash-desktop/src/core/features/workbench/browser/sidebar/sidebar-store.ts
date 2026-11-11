@@ -48,25 +48,58 @@ export type SidebarRow =
   | { kind: 'project'; projectId: string }
   /** Initiative header in the initiative grouping; `initiativeId: null` is "Other". */
   | { kind: 'initiative'; initiativeId: string | null; label: string; count: number }
-  | { kind: 'task'; projectId: string; taskId: string };
+  | { kind: 'task'; projectId: string; taskId: string }
+  /** Stands in for a group's older tasks beyond what it shows; `indent` follows the group. */
+  | {
+      kind: 'more';
+      groupKey: string;
+      remaining: number;
+      indent: 'project' | 'initiative' | 'none';
+    };
+
+/** Tasks a group shows at first, and how many more each "Show more" adds. */
+export const SIDEBAR_GROUP_PAGE = 15;
+export const SIDEBAR_GROUP_STEP = 30;
+
+type TaskEntry = { projectId: string; task: TaskStore };
 
 export class SidebarStore {
   private _handle: MementoHandle<WorkbenchSidebarState> | undefined;
   private _fallbackState: WorkbenchSidebarState = workbenchSidebarMemento.default;
   private readonly _revealedProjectIds = observable.set<string>();
+  /** Tasks opened this session: they stay listed even when a group would hide them. */
+  private readonly _revealedTaskIds = observable.set<string>();
+  /** How many tasks each group shows, once "Show more" was used (this session only). */
+  private readonly _groupLimits = observable.map<string, number>();
 
-  constructor(private readonly projectManager: ProjectManagerStore) {
+  /**
+   * @param keepVisible tasks a group always lists, however old (e.g. an agent is working or
+   *   left something unseen).
+   */
+  constructor(
+    private readonly projectManager: ProjectManagerStore,
+    private readonly keepVisible: (task: TaskStore) => boolean = () => false
+  ) {
     // `_handle` must stay observable: computeds reading `state` before the
     // memento handle is attached would otherwise capture zero dependencies
     // and freeze at the fallback value forever.
     makeAutoObservable<
       SidebarStore,
-      '_fallbackState' | '_handle' | '_revealedProjectIds' | 'projectManager'
+      | '_fallbackState'
+      | '_handle'
+      | '_revealedProjectIds'
+      | '_revealedTaskIds'
+      | '_groupLimits'
+      | 'projectManager'
+      | 'keepVisible'
     >(this, {
       _fallbackState: false,
       _handle: observable.ref,
       _revealedProjectIds: false,
+      _revealedTaskIds: false,
+      _groupLimits: false,
       projectManager: false,
+      keepVisible: false,
       expandedProjectIds: computed.struct,
       sidebarRows: computed,
       pinnedSidebarEntries: computed,
@@ -131,10 +164,13 @@ export class SidebarStore {
         const ordered = manualOrder?.length
           ? this.mergeTaskOrder(projectId, tasks)
           : this.sortTasksForSidebar(tasks);
-        for (const task of ordered) {
-          if (task.data.isPinned) continue;
-          rows.push({ kind: 'task', projectId, taskId: task.data.id });
-        }
+        rows.push(
+          ...this.paginate(
+            `project:${projectId}`,
+            ordered.filter((task) => !task.data.isPinned).map((task) => ({ projectId, task })),
+            'project'
+          )
+        );
       }
     }
     return rows;
@@ -143,24 +179,21 @@ export class SidebarStore {
   /** The ungrouped list split under initiative headers, then "Other" for the rest. */
   private initiativeRows(): SidebarRow[] {
     const { byId, initiatives } = getInitiativesStore();
-    const grouped = new Map<string | null, SidebarRow[]>();
-    for (const { projectId, task } of this.visibleUnpinnedTasks()) {
-      const initiativeId = registeredTaskData(task)?.initiativeId;
+    const grouped = new Map<string | null, TaskEntry[]>();
+    for (const entry of this.visibleUnpinnedTasks()) {
+      const initiativeId = registeredTaskData(entry.task)?.initiativeId;
       const key = initiativeId && byId.has(initiativeId) ? initiativeId : null;
-      grouped.set(key, [
-        ...(grouped.get(key) ?? []),
-        { kind: 'task', projectId, taskId: task.data.id },
-      ]);
+      const group = grouped.get(key);
+      if (group) group.push(entry);
+      else grouped.set(key, [entry]);
     }
     const rows: SidebarRow[] = [];
     for (const initiative of initiatives) {
       const unordered = grouped.get(initiative.id);
       if (!unordered?.length) continue;
       // The lead heads its initiative's list.
-      const members = [
-        ...unordered.filter((row) => row.kind === 'task' && row.taskId === initiative.leadTaskId),
-        ...unordered.filter((row) => row.kind !== 'task' || row.taskId !== initiative.leadTaskId),
-      ];
+      const isLead = (entry: TaskEntry) => entry.task.data.id === initiative.leadTaskId;
+      const members = [...unordered.filter(isLead), ...unordered.filter((e) => !isLead(e))];
       rows.push(
         {
           kind: 'initiative',
@@ -168,23 +201,61 @@ export class SidebarStore {
           label: initiative.name,
           count: members.length,
         },
-        ...members
+        // Initiatives list every member: they get archived as a whole, so they stay short.
+        ...members.map(
+          ({ projectId, task }): SidebarRow => ({ kind: 'task', projectId, taskId: task.data.id })
+        )
       );
     }
     const other = grouped.get(null) ?? [];
-    if (other.length > 0 && rows.length > 0) {
-      rows.push({ kind: 'initiative', initiativeId: null, label: 'Other', count: other.length });
+    if (rows.length === 0) return this.paginate('all', other, 'none');
+    if (other.length > 0) {
+      rows.push(
+        { kind: 'initiative', initiativeId: null, label: 'Other', count: other.length },
+        ...this.paginate('initiative:other', other, 'initiative')
+      );
     }
-    return [...rows, ...other];
+    return rows;
   }
 
   /** Every visible unpinned task across available projects, in one sorted list. */
   private flatTaskRows(): SidebarRow[] {
-    return this.visibleUnpinnedTasks().map(({ projectId, task }) => ({
-      kind: 'task',
-      projectId,
-      taskId: task.data.id,
-    }));
+    return this.paginate('all', this.visibleUnpinnedTasks(), 'none');
+  }
+
+  /**
+   * A group's first tasks, plus any later ones that must stay listed (opened this session, or
+   * {@link keepVisible}), then a "more" row standing in for the rest. Keeps the sidebar short
+   * with hundreds of unarchived tasks.
+   */
+  private paginate(
+    groupKey: string,
+    entries: readonly TaskEntry[],
+    indent: Extract<SidebarRow, { kind: 'more' }>['indent']
+  ): SidebarRow[] {
+    const limit = this._groupLimits.get(groupKey) ?? SIDEBAR_GROUP_PAGE;
+    const rows: SidebarRow[] = [];
+    let remaining = 0;
+    entries.forEach(({ projectId, task }, index) => {
+      if (index < limit || this._revealedTaskIds.has(task.data.id) || this.keepVisible(task)) {
+        rows.push({ kind: 'task', projectId, taskId: task.data.id });
+      } else {
+        remaining++;
+      }
+    });
+    if (remaining > 0) rows.push({ kind: 'more', groupKey, remaining, indent });
+    return rows;
+  }
+
+  /** Lists more of a group's older tasks. */
+  showMore(groupKey: string): void {
+    const limit = this._groupLimits.get(groupKey) ?? SIDEBAR_GROUP_PAGE;
+    this._groupLimits.set(groupKey, limit + SIDEBAR_GROUP_STEP);
+  }
+
+  /** Keeps a task listed for the rest of the session, e.g. once it was opened. */
+  revealTask(taskId: string): void {
+    this._revealedTaskIds.add(taskId);
   }
 
   private visibleUnpinnedTasks(): { projectId: string; task: TaskStore }[] {

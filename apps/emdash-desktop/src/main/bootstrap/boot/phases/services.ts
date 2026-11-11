@@ -702,7 +702,11 @@ export async function bootServices(
   await step('services:app-settings-init', () => appSettingsService.initialize());
   setTrayVisible((await appSettingsService.get('interface')).showTrayIcon);
   applyNativeTheme(await appSettingsService.get('theme'));
-  await step('services:automations-init', () => automationsService.initialize());
+  // Not on the way to the window: it waits for the automations worker to start, and nothing
+  // before the window needs it.
+  void step('services:automations-init', () => automationsService.initialize()).catch(
+    (error: unknown) => log.warn('automations init failed:', error)
+  );
   await step('services:notifications-init', () => notificationService.initialize());
   installUpdateNotifications(notificationService);
   browserWebContentsRegistry.setKeyboardSettings(await appSettingsService.get('keyboard'));

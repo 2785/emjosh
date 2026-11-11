@@ -1,4 +1,5 @@
 import type { PullRequest } from '@emdash/plugins/pull-requests/schemas';
+import { isDeepEqual } from '@emdash/shared';
 import { systemClock, type Clock } from '@emdash/shared/scheduling';
 import { makeAutoObservable, observable } from 'mobx';
 import type { PrCheckoutDrift } from '@core/services/pull-requests/api';
@@ -37,7 +38,15 @@ export class TaskPrAssociationStore {
     return this._checkoutDrift;
   }
 
+  /** Keeps the current state when nothing changed, so observers don't re-render. */
   setAssociation(pullRequests: readonly PullRequest[], checkoutDrift: PrCheckoutDrift): void {
+    if (
+      this._state.kind !== 'unknown' &&
+      isDeepEqual(this.pullRequests, pullRequests) &&
+      isDeepEqual(this._checkoutDrift, checkoutDrift)
+    ) {
+      return;
+    }
     const observedAt = this.clock.now();
     this._state =
       pullRequests.length > 0

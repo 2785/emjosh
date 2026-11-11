@@ -130,7 +130,14 @@ async function highlightAsync(code: string, resolvedLang: string): Promise<void>
       const grammarModule = await LANG_LOADERS[resolvedLang]!();
       await highlighter.loadLanguage(...(grammarModule.default as LanguageRegistration[]));
     }
-    const result = highlighter.codeToTokens(code, { lang: resolvedLang, theme: 'em-syntax' });
+    // Long lines (minified or generated code) are where grammars get slow; past these
+    // limits a line stays plain instead of stalling the UI thread.
+    const result = highlighter.codeToTokens(code, {
+      lang: resolvedLang,
+      theme: 'em-syntax',
+      tokenizeMaxLineLength: 1_000,
+      tokenizeTimeLimit: 20,
+    });
     const lines: HighlightedLine[] = result.tokens.map((line) =>
       line.map((token) =>
         token.color ? { content: token.content, color: token.color } : { content: token.content }

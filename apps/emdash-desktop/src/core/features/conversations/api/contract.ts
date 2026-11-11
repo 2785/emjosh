@@ -151,6 +151,10 @@ const conversationsAcpContract = defineContract({
     acpApiContract.loadHistory.input,
     acpApiContract.loadHistory.output
   ),
+  loadCachedHistory: runtimeFallibleProcedure(
+    acpApiContract.loadCachedHistory.input,
+    acpApiContract.loadCachedHistory.output
+  ),
   sessions: desktopAcpSessions,
   session: acpApiContract.session,
   terminalOutput: liveLog({

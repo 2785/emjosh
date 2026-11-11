@@ -134,6 +134,10 @@ export default defineConfig({
   },
   renderer: {
     root: 'src/renderer',
+    // Minified for a smaller bundle to load at launch; names are kept so in-app CPU profiles
+    // (Record UI Performance Profile) still name real functions.
+    build: { minify: 'esbuild' },
+    esbuild: { minifyIdentifiers: false },
     // Same env files as main, so build flavor variables (VITE_BUILD) reach the renderer too.
     envDir: resolve('.'),
     plugins: [react(), tailwindcss(), productNameHtmlPlugin()],
