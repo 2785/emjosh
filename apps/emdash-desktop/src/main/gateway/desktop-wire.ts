@@ -1,11 +1,20 @@
 import type { PendingLease } from '@emdash/shared';
-import { exposeWireToWindows, WireError, type Controller, type LiveSource } from '@emdash/wire/rpc';
+import type { Unsubscribe } from '@emdash/shared';
+import {
+  exposeWireToWindows,
+  serve,
+  WireError,
+  type Controller,
+  type LiveSource,
+  type WireTransport,
+} from '@emdash/wire/rpc';
 import { ipcMain, MessageChannelMain } from 'electron';
 import { DESKTOP_WIRE_CHANNEL } from '@core/manifests/shared/wire-channels';
 import type { ControllersBundle } from '@main/bootstrap/boot/phases/controllers';
 import { appScope } from '@main/bootstrap/core/app-scope';
 
 const scope = appScope.child('desktop-wire');
+const routingController = createLazyRoutingController();
 let installed = false;
 let registeredControllers: Record<string, Controller> | undefined;
 let resolveControllers: ((controllers: Record<string, Controller>) => void) | undefined;
@@ -26,7 +35,7 @@ export function installDesktopWire(): void {
   // Validation happens inside each routed controller: `createController`
   // applies the environment default at every controller site.
   scope.add(
-    exposeWireToWindows({ ipcMain, createMessageChannel }, createLazyRoutingController(), {
+    exposeWireToWindows({ ipcMain, createMessageChannel }, routingController, {
       channel: DESKTOP_WIRE_CHANNEL,
     })
   );
@@ -38,6 +47,14 @@ export function registerDesktopWireControllers(bundle: ControllersBundle): void 
   registeredControllers = bundle.controllers;
   scope.add(() => bundle.scope.dispose());
   resolveControllers?.(bundle.controllers);
+}
+
+/**
+ * Serves the desktop wire over another transport (the remote control web app's WebSocket),
+ * routed exactly like the window's port.
+ */
+export function serveDesktopWire(transport: WireTransport): Unsubscribe {
+  return serve(transport, routingController);
 }
 
 function createMessageChannel() {

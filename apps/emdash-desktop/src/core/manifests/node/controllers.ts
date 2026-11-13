@@ -50,6 +50,10 @@ import type { ProjectSettingsService } from '@core/features/projects/api/node/se
 import type { ProjectDeletionDependencies } from '@core/features/projects/node/operations/deleteProject';
 import { getProjectById } from '@core/features/projects/node/operations/getProjects';
 import { createProjectsWireController } from '@core/features/projects/node/wire-controller';
+import {
+  createRemoteControlWireController,
+  type RemoteControlOperations,
+} from '@core/features/remote-control/node/wire-controller';
 import type { GitLabRepositoryService } from '@core/features/repository/node/gitlab-repository-service';
 import { createRepositoryWireController } from '@core/features/repository/node/wire-controller';
 import type { SearchService } from '@core/features/search/node/search-service';
@@ -132,6 +136,7 @@ export type DesktopControllerContext = {
   readonly compensation: CompensationRunner;
   readonly db: AppDb;
   readonly devPerfOperations: DevPerfOperations;
+  readonly remoteControl: RemoteControlOperations;
   readonly editorBuffer: EditorBufferService;
   readonly github: Omit<Parameters<typeof createGithubWireController>[0], 'logger'>;
   readonly gitlabRepositories: GitLabRepositoryService;
@@ -212,6 +217,9 @@ export const desktopNodeControllers = {
   devPerf: {
     create: ({ devPerfOperations, logger }) =>
       createDevPerfWireController(devPerfOperations, logger),
+  },
+  remoteControl: {
+    create: ({ remoteControl }) => createRemoteControlWireController(remoteControl),
   },
   editor: {
     create: ({ editorBuffer, runtimes, hosts }) =>

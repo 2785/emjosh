@@ -1,6 +1,7 @@
 import { awaitWirePort, connect, domPortTransport, type DomPortLike } from '@emdash/wire/rpc';
 import { DESKTOP_WIRE_CHANNEL } from '@core/manifests/shared/wire-channels';
 import { resetWireConnection, seedWireConnection } from '@core/primitives/wire/browser/connection';
+import { remoteWebConfig, remoteWireTransport } from './remote-web';
 
 /**
  * The production seed: called once by the renderer bootstrap before React mounts.
@@ -8,6 +9,12 @@ import { resetWireConnection, seedWireConnection } from '@core/primitives/wire/b
  * preload bridge. Everything downstream reaches the wire through the core seam.
  */
 export function seedDesktopWire(): void {
+  const remote = remoteWebConfig();
+  if (remote) {
+    // In a browser via remote control: the wire comes over a WebSocket instead of a port.
+    seedWireConnection(async () => connect(await remoteWireTransport(remote)));
+    return;
+  }
   seedWireConnection(async () => {
     const portPromise = awaitWirePort(window, { channel: DESKTOP_WIRE_CHANNEL });
     await window.electronAPI.requestWirePort(DESKTOP_WIRE_CHANNEL);

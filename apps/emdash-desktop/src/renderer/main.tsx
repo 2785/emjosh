@@ -53,6 +53,10 @@ import {
 } from '@renderer/lib/boot/splash-gate';
 import { wireExternalLinkRequests } from '@renderer/lib/external-link-requests';
 import { getDesktopWireClient } from '@renderer/lib/runtime/desktop-wire-client';
+import {
+  installRemoteNotificationOpening,
+  remoteWebConfig,
+} from '@renderer/lib/runtime/remote-web';
 import { seedDesktopWire } from '@renderer/lib/runtime/seed-desktop-wire';
 import { seedRendererNavigationHost } from '@renderer/lib/runtime/seed-navigation-host';
 import { initRendererPerfVitals } from '@renderer/utils/perf-vitals';
@@ -190,6 +194,7 @@ async function bootstrap() {
   dismissBootSplash();
   bootMark('app-content-ready', { gate: outcome });
   window.electronAPI.reportBootUsable();
+  if (remoteWebConfig()) installRemoteNotificationOpening();
 }
 
 bootstrap().catch((error: unknown) => {

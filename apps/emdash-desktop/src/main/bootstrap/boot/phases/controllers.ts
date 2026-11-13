@@ -12,6 +12,7 @@ import { agentStatusService } from '@main/core/agent-status/agent-status-service
 import { controlEndpointFile } from '@main/core/workspace-control/endpoint-file';
 import type { DesktopRuntimes } from '@main/gateway/desktop-runtimes';
 import { log } from '@main/lib/logger';
+import { getRemoteControlService } from '@main/remote-control/instance';
 import { appScope } from '../../core/app-scope';
 import { createDesktopWireOptions } from '../wiring';
 import type { DatabaseBundle } from './database';
@@ -72,6 +73,13 @@ export async function bootControllers(
       } catch (error) {
         log.warn('Workspace control endpoint did not start', { error });
       }
+      // Remote control (off unless turned on in settings) and its push notifications.
+      const remoteControl = getRemoteControlService();
+      scope.add(services.notifications.registerSink(remoteControl.pushSink()));
+      scope.add(() => remoteControl.dispose());
+      void remoteControl
+        .initialize()
+        .catch((error: unknown) => log.warn('Remote control did not start', { error }));
     }
     return { controllers: Object.fromEntries(entries), scope };
   } catch (error) {

@@ -25,6 +25,7 @@ import { updateOperations } from '@main/host/updates/controller-operations';
 import { applyNativeTheme } from '@main/host/window';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
+import { getRemoteControlService } from '@main/remote-control/instance';
 import type { DatabaseBundle } from './phases/database';
 import type { ServicesBundle } from './phases/services';
 
@@ -63,6 +64,7 @@ export function createDesktopWireOptions(
     compensation: withCompensation,
     db: database.db,
     devPerfOperations: createDevPerfOperations(runtimes),
+    remoteControl: getRemoteControlService(),
     editorBuffer: database.editorBuffer,
     github: {
       cliAccountImporter: github.cliImport,

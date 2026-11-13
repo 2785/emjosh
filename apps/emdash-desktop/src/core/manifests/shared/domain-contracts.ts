@@ -17,6 +17,7 @@ import { machinesContract, machinesDomain } from '@core/features/machines/api';
 import { mcpContract, mcpDomain } from '@core/features/mcp/api';
 import { previewServersContract, previewServersDomain } from '@core/features/preview-servers/api';
 import { projectsDomain, projectsWireContract } from '@core/features/projects/api';
+import { remoteControlContract, remoteControlDomain } from '@core/features/remote-control/api';
 import { repositoryContract, repositoryDomain } from '@core/features/repository/api';
 import { searchContract, searchDomain } from '@core/features/search/api';
 import { skillsContract, skillsDomain } from '@core/features/skills/api';
@@ -60,6 +61,7 @@ export const desktopDomainContracts = {
   [agentsDomain]: agentsContract,
   [appSettingsDomain]: appSettingsContract,
   [devPerfDomain]: devPerfContract,
+  [remoteControlDomain]: remoteControlContract,
   [editorDomain]: editorContract,
   [filesDomain]: filesWireContract,
   [legacyPortDomain]: legacyPortContract,
