@@ -56,6 +56,8 @@ import type { ChatCaches } from './core/caches';
 import type { ThemeVarKey } from './core/config';
 import type { MeasureCtx } from './core/define';
 import { genericEstimate } from './core/layout/generic-estimate';
+import type { Block } from './core/markdown/document';
+import { blocksToHtml, blocksToMarkdown } from './core/markdown/serialize-blocks';
 import { STICK_THRESHOLD_PX } from './core/stick-to-bottom';
 import { unitReservedHeight } from './core/units';
 import { Virtualizer } from './core/virtualizer';
@@ -82,6 +84,7 @@ import {
   pinnedOverlay,
   pinnedOverlayColumn,
   scrollContainer,
+  unitRowColumn,
   unitRowWrapper,
   widthProbeClass,
 } from './chat-root.css';
@@ -343,6 +346,31 @@ export function ChatRoot(props: ChatRootProps) {
 
   let scrollEl: HTMLDivElement | undefined;
   let canvasEl: HTMLDivElement | undefined;
+
+  /**
+   * Copies a selection across message blocks as markdown (plain text) and HTML, so lists,
+   * code and emphasis survive pasting into Slack or a document. The transcript draws text as
+   * positioned spans, which the browser's own copy can't give structure to. A selection within
+   * one block keeps the browser's copy.
+   */
+  const handleCopy = (event: ClipboardEvent) => {
+    const selection = window.getSelection();
+    if (!scrollEl || !event.clipboardData || !selection || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const blockEls = [...scrollEl.querySelectorAll<HTMLElement>('[data-block-id]')].filter((el) =>
+      range.intersectsNode(el)
+    );
+    const blockIds = [...new Set(blockEls.map((el) => el.dataset.blockId!))];
+    if (blockIds.length < 2) return;
+    const copied = selectedBlocks(blockIds, (messageId) => {
+      const item = state().transcript.findItemById(messageId);
+      return item?.kind === 'message' ? caches().parseBlocks(messageId, item.text) : undefined;
+    });
+    if (!copied) return;
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', copied.markdown);
+    event.clipboardData.setData('text/html', copied.html);
+  };
   let outerEl: HTMLDivElement | undefined;
   // Zero-height probe that carries contentClass; the width ResizeObserver
   // targets this so it only fires on genuine layout-width changes.
@@ -1657,6 +1685,7 @@ export function ChatRoot(props: ChatRootProps) {
                     scrollEl = el;
                   }}
                   data-chat-scroll
+                  onCopy={handleCopy}
                   class={`${scrollContainer}${props.class ? ` ${props.class}` : ''}`}
                   style={scrollElStyle}
                 >
@@ -1677,7 +1706,7 @@ export function ChatRoot(props: ChatRootProps) {
                       el.style.height = `${contentH()}px`;
                     }}
                     data-chat-canvas
-                    class={`${canvas} ${contentClass()}`}
+                    class={canvas}
                   >
                     <For each={visible()}>
                       {(unitIndex) => {
@@ -1702,20 +1731,25 @@ export function ChatRoot(props: ChatRootProps) {
                               }}
                               data-index={String(unitIndex)}
                             >
-                              <UnitRow
-                                unit={u()!}
-                                index={unitIndex}
-                                rowWidth={containerWidth()}
-                                theme={theme()}
-                                viewState={viewState()}
-                                virt={virt}
-                                onHeightChanged={onHeightChanged}
-                                tweenRegistry={tweenRegistry}
-                                isActiveTurn={isActiveTurn()}
-                                caches={caches()}
-                                measureEpoch={measureEpoch()}
-                                expandedId={expandedUserId()}
-                              />
+                              {/* Rows span the full width and center their content, so
+                                  dragging a selection into the gutter stays on that row
+                                  rather than jumping to the top of the transcript. */}
+                              <div class={`${unitRowColumn} ${contentClass()}`}>
+                                <UnitRow
+                                  unit={u()!}
+                                  index={unitIndex}
+                                  rowWidth={containerWidth()}
+                                  theme={theme()}
+                                  viewState={viewState()}
+                                  virt={virt}
+                                  onHeightChanged={onHeightChanged}
+                                  tweenRegistry={tweenRegistry}
+                                  isActiveTurn={isActiveTurn()}
+                                  caches={caches()}
+                                  measureEpoch={measureEpoch()}
+                                  expandedId={expandedUserId()}
+                                />
+                              </div>
                             </div>
                           </Show>
                         );
@@ -1814,4 +1848,27 @@ export function ChatRoot(props: ChatRootProps) {
       </ThemeContext.Provider>
     </DebugContext.Provider>
   );
+}
+
+/**
+ * The blocks with the given ids (`messageId#n`), in order, as markdown and HTML; one message's
+ * blocks stay together and messages are separated. Null when any block can't be found.
+ */
+export function selectedBlocks(
+  blockIds: readonly string[],
+  blocksOf: (messageId: string) => readonly Block[] | undefined
+): { markdown: string; html: string } | null {
+  const byMessage: { messageId: string; blocks: Block[] }[] = [];
+  for (const id of blockIds) {
+    const messageId = id.slice(0, id.lastIndexOf('#'));
+    const block = blocksOf(messageId)?.find((candidate) => candidate.id === id);
+    if (!block) return null;
+    const last = byMessage.at(-1);
+    if (last?.messageId === messageId) last.blocks.push(block);
+    else byMessage.push({ messageId, blocks: [block] });
+  }
+  return {
+    markdown: byMessage.map((group) => blocksToMarkdown(group.blocks)).join('\n\n'),
+    html: byMessage.map((group) => blocksToHtml(group.blocks)).join(''),
+  };
 }

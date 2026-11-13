@@ -9,8 +9,11 @@
 import { style } from '@vanilla-extract/css';
 import { vars } from './styles/theme.css';
 
-/** Max-width of the centered content column — matches user message cards. */
-const CONTAINER_WIDTH = '42rem';
+/**
+ * Max-width of the centered content column — matches user message cards. Hosts widen it with
+ * the `--em-chat-content-width` custom property (any CSS length, `none` for the full width).
+ */
+const CONTAINER_WIDTH = 'var(--em-chat-content-width, 42rem)';
 
 /**
  * Horizontal gutter applied to the scroll container, pinned overlay, and
@@ -67,6 +70,11 @@ export const widthProbeClass = style({
   height: 0,
   overflow: 'hidden',
   pointerEvents: 'none',
+});
+
+/** A row's content column inside the full-width row; positions the row's contents. */
+export const unitRowColumn = style({
+  position: 'relative',
 });
 
 /** Per-unit row wrapper — translates each row to its virtualizer Y position. */

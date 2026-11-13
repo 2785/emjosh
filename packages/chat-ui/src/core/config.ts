@@ -139,6 +139,11 @@ export type ResolvedTheme = {
    * excluded — they stay CSS-class-themed so host overrides keep working.
    */
   themeVars: Record<ThemeVarKey, string>;
+  /**
+   * Layout preferences that can change at runtime. Change them through the ChatContext
+   * (e.g. `setWrapCode`), which re-measures every view.
+   */
+  layout: { wrapCode: boolean };
 };
 
 // ── DEFAULT_CONFIG ────────────────────────────────────────────────────────────
@@ -382,5 +387,6 @@ export function buildChatTheme(config: ChatConfig = DEFAULT_CONFIG): ResolvedThe
     fonts: toFontConfig(config),
     chips: config.chips,
     themeVars: toThemeVars(config),
+    layout: { wrapCode: false },
   };
 }

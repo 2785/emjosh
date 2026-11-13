@@ -76,6 +76,7 @@ export function layoutBlockStack(
               height: 0,
               contentWidth: 0,
               lines: [],
+              wrap: false,
               raw: block as CodeBlock,
             };
           }

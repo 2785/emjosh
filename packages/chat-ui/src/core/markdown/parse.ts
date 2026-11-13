@@ -298,9 +298,10 @@ function blockToBlocks(
     }
 
     case 'list': {
-      const list = node as Parent;
-      for (const child of list.children) {
+      const list = node as Parent & { ordered?: boolean | null; start?: number | null };
+      for (const [index, child] of list.children.entries()) {
         const item = child as ListItem;
+        const marker = list.ordered ? `${(list.start ?? 1) + index}.` : undefined;
         for (const itemChild of (item as Parent).children) {
           if (itemChild.type === 'paragraph') {
             const runs = phrasingsToRuns((itemChild as Parent).children as PhrasingContent[]);
@@ -311,6 +312,7 @@ function blockToBlocks(
                 variant: 'list-item',
                 runs,
                 depth,
+                ...(marker ? { marker } : {}),
               } satisfies ProseBlock);
             }
           } else {

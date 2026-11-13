@@ -25,7 +25,7 @@ import { applyTokenLines } from '@core/highlight/apply-tokens';
 import type { CodeLaidOut } from '@core/layout/layout-types';
 import type { CodeBlock } from '@core/markdown/document';
 import { For, createEffect, createMemo, onCleanup } from 'solid-js';
-import { codeLine, codeWrapper } from './code.css';
+import { codeLine, codeLineWrapping, codeWrapper, codeWrapperWrapping } from './code.css';
 import { codeGroup } from '@components/primitives/copy-button.css';
 
 export type CodeProps = {
@@ -129,7 +129,7 @@ export function Code(props: CodeProps) {
         ref={(el) => {
           wrapperEl = el;
         }}
-        class={codeWrapper}
+        class={props.block.wrap ? `${codeWrapper} ${codeWrapperWrapping}` : codeWrapper}
       >
         <For each={props.block.lines}>
           {(line, i) => (
@@ -138,7 +138,7 @@ export function Code(props: CodeProps) {
                 lineElsMap.set(i(), el);
                 onCleanup(() => lineElsMap.delete(i()));
               }}
-              class={codeLine}
+              class={props.block.wrap ? `${codeLine} ${codeLineWrapping}` : codeLine}
               style={{ top: `${line.top}px` }}
             >
               {line.text}

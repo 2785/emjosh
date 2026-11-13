@@ -128,6 +128,8 @@ export class AcpChatStore {
   private readonly _disposeComposerSubscription: () => void;
   private readonly _disposeHostReaction: () => void;
   private _attachmentsClientPromise: Promise<ConversationsClient['attachments']> | null = null;
+  /** Draft attachments whose inline pill has been seen in the composer. */
+  private _pilledAttachmentIds = new Set<string>();
   private _submissionSequence = 0;
   private _historyRefreshRequested = false;
   private _historyRefreshTask: Promise<void> | null = null;
@@ -198,6 +200,7 @@ export class AcpChatStore {
     );
     this._disposeComposerSubscription = this.composerModel.subscribe(() => {
       runInAction(() => this._draftText.set(this.composerModel.getText()));
+      this._dropAttachmentsWithDeletedPills();
     });
     const initialHost = this.hostAccess?.state;
     this._attachedHostGeneration =
@@ -689,6 +692,20 @@ export class AcpChatStore {
         void this._refreshAuthStatus(providerId);
       }
     }
+  }
+
+  /**
+   * Deleting an image's inline pill from the draft removes the image too. Only attachments whose
+   * pill was seen are affected, so an attachment restored without its pill stays.
+   */
+  private _dropAttachmentsWithDeletedPills(): void {
+    const present = this.composerModel.mentionIds();
+    if (!present) return;
+    const attachmentIds = new Set(this.draftAttachments.map(({ ref }) => ref.id));
+    for (const id of this._pilledAttachmentIds) {
+      if (!present.has(id) && attachmentIds.has(id)) this.removeDraftAttachment(id);
+    }
+    this._pilledAttachmentIds = new Set([...present].filter((id) => attachmentIds.has(id)));
   }
 
   /** Shows history saved from the conversation's last session until live history arrives. */

@@ -67,8 +67,11 @@ export type CodeLaidOut = {
   height: number;
   /** Full effective width — code blocks always fill their allocated area. */
   contentWidth: number;
-  lines: { top: number; text: string }[];
+  /** `rows` is how many visual rows the line takes (more than one only when wrapping). */
+  lines: { top: number; text: string; rows: number }[];
   lang?: string;
+  /** Long lines wrap instead of scrolling sideways. */
+  wrap: boolean;
 };
 
 /** Table block: formula-measured, single-line cells with horizontal overflow. */

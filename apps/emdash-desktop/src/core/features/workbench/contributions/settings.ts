@@ -32,6 +32,8 @@ const interfaceSettingsSchema = z.object({
   showLeftSidebarPrStatus: z.boolean(),
   showLeftSidebarTimestamps: z.boolean(),
   hideContextBar: z.boolean(),
+  chatWidth: z.enum(['comfortable', 'wide', 'full']),
+  wrapCodeBlocks: z.boolean(),
 });
 
 const themeSchema = z.enum(['emlight', 'emdark']).nullable().catch(null).optional().default(null);
@@ -64,6 +66,8 @@ export const interfaceSettingsContribution = defineSettingsContribution<
     showLeftSidebarPrStatus: true,
     showLeftSidebarTimestamps: true,
     hideContextBar: false,
+    chatWidth: 'wide',
+    wrapCodeBlocks: true,
   },
 });
 

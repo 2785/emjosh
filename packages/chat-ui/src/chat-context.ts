@@ -78,6 +78,8 @@ export type ChatContext = {
    * Call after fonts load (handled automatically) or after a typography change.
    */
   bumpEpoch(): void;
+  /** Wrap long lines in code blocks instead of scrolling them sideways. */
+  setWrapCode(enabled: boolean): void;
   /** Dispose the context's reactive root. Safe to call after all views are disposed. */
   dispose(): void;
 };
@@ -121,6 +123,11 @@ export function createChatContext(opts: ChatContextOptions = {}): ChatContext {
     sharedCaches,
     measureEpoch,
     bumpEpoch,
+    setWrapCode(enabled) {
+      if (theme.layout.wrapCode === enabled) return;
+      theme.layout.wrapCode = enabled;
+      bumpEpoch();
+    },
     dispose() {
       disposed = true;
       disposeRoot();
