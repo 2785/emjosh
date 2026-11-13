@@ -9,6 +9,10 @@ export type RemoteControlOperations = {
   revokeDevice(id: string): Promise<RemoteControlStatus>;
   enableTailscale(): Promise<RemoteControlStatus>;
   disableTailscale(): Promise<RemoteControlStatus>;
+  createWorkspace(input: {
+    projectId: string;
+    prompt: string;
+  }): Promise<{ id: string; name: string }>;
 };
 
 export function createRemoteControlWireController(operations: RemoteControlOperations): Controller {
@@ -17,6 +21,7 @@ export function createRemoteControlWireController(operations: RemoteControlOpera
     setEnabled: ({ enabled }) => operations.setEnabled(enabled),
     createPairingCode: () => operations.createPairingCode(),
     revokeDevice: ({ id }) => operations.revokeDevice(id),
+    createWorkspace: (input) => operations.createWorkspace(input),
     setTailscaleServe: ({ enabled }) =>
       enabled ? operations.enableTailscale() : operations.disableTailscale(),
   });

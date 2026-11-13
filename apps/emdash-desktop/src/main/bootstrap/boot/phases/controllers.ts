@@ -70,6 +70,7 @@ export async function bootControllers(
           }
         );
         scope.add(() => endpoint.close());
+        getRemoteControlService().setWorkspaceControl(endpoint.service);
       } catch (error) {
         log.warn('Workspace control endpoint did not start', { error });
       }

@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import type { Unsubscribe } from '@emdash/shared';
 import type { Logger } from '@emdash/shared/logger';
 import type { WireTransport } from '@emdash/wire/rpc';
+import type { WorkspaceControlService } from '@core/features/workspace-control/node/workspace-control-service';
 import type { NotificationSink } from '@core/services/notifications/api/ports';
 import { startRemoteControlServer, type RemoteControlServer } from './remote-control-server';
 import type { RemoteControlStore } from './remote-control-store';
@@ -59,6 +60,7 @@ export class RemoteControlService {
   private server: RemoteControlServer | null = null;
   private error: string | null = null;
   private tailscaleBinary: string | null | undefined;
+  private workspaceControl: Pick<WorkspaceControlService, 'createWorkspace'> | null = null;
 
   constructor(private readonly deps: RemoteControlServiceDeps) {}
 
@@ -94,6 +96,20 @@ export class RemoteControlService {
       await this.disableTailscale().catch(() => {});
     }
     return this.status();
+  }
+
+  /** Provided once workspace control is up; creating workspaces waits for it. */
+  setWorkspaceControl(service: Pick<WorkspaceControlService, 'createWorkspace'>): void {
+    this.workspaceControl = service;
+  }
+
+  async createWorkspace(input: { projectId: string; prompt: string }) {
+    if (!this.workspaceControl) throw new Error('Workspaces cannot be created yet.');
+    const created = await this.workspaceControl.createWorkspace(
+      { conversationId: null },
+      { projectId: input.projectId, prompt: input.prompt }
+    );
+    return { id: created.id, name: created.name };
   }
 
   createPairingCode(): { code: string; expiresAt: number } {

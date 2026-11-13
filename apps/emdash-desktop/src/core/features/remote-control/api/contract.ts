@@ -44,6 +44,11 @@ export const remoteControlContract = defineContract({
     input: z.object({ id: z.string() }),
     output: z.custom<RemoteControlStatus>(),
   }),
+  /** Starts a workspace in a project with a first prompt, as agents do over workspace control. */
+  createWorkspace: procedure({
+    input: z.object({ projectId: z.string(), prompt: z.string().min(1) }),
+    output: z.object({ id: z.string(), name: z.string() }),
+  }),
   setTailscaleServe: procedure({
     input: z.object({ enabled: z.boolean() }),
     output: z.custom<RemoteControlStatus>(),

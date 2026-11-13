@@ -158,7 +158,12 @@ export async function startRemoteControlServer(
     if (file.endsWith('index.html')) {
       const html = body
         .toString('utf8')
-        .replace('<head>', `<head>${headTags(options.productName)}`);
+        .replace('<head>', `<head>${headTags(options.productName)}`)
+        // Use the whole screen around the notch, and shrink with the on-screen keyboard.
+        .replace(
+          /<meta name="viewport"[^>]*>/,
+          '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">'
+        );
       return send(response, 200, type, html, 'no-cache');
     }
     // Hashed bundle files never change; everything else revalidates.
