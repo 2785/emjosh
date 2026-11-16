@@ -77,24 +77,37 @@ export function RemoteControlCard() {
                     ? 'Connect Tailscale on this computer to reach remote control from your devices.'
                     : tailscale.servedUrl
                       ? `Open ${tailscale.servedUrl} on a device in your tailnet. On iPhone, add it to the Home Screen to get notifications.`
-                      : `Serve remote control on your tailnet at https://${tailscale.dnsName}:8443/.`
+                      : tailscale.setupUrl
+                        ? 'Serve is off for your tailnet. Turn it on in Tailscale (once), then serve again.'
+                        : `Serve remote control on your tailnet at https://${tailscale.dnsName}:8443/.`
               }
               control={
                 tailscale?.dnsName ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      void act(async () =>
-                        (await getRemoteControlClient()).setTailscaleServe({
-                          enabled: !tailscale.servedUrl,
-                        })
-                      )
-                    }
-                  >
-                    {tailscale.servedUrl ? 'Stop serving' : 'Serve on tailnet'}
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {tailscale.setupUrl && !tailscale.servedUrl && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => window.open(tailscale.setupUrl!, '_blank')}
+                      >
+                        Turn on Serve
+                      </Button>
+                    )}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        void act(async () =>
+                          (await getRemoteControlClient()).setTailscaleServe({
+                            enabled: !tailscale.servedUrl,
+                          })
+                        )
+                      }
+                    >
+                      {tailscale.servedUrl ? 'Stop serving' : 'Serve on tailnet'}
+                    </Button>
+                  </div>
                 ) : null
               }
             />

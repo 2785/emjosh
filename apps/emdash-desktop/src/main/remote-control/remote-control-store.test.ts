@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { servesPort } from './remote-control-service';
+import { runTailscaleServe, servesPort, tailscaleSetupUrl } from './remote-control-service';
 import { PAIRING_CODE_TTL_MS, RemoteControlStore } from './remote-control-store';
 
 describe('remote control store', () => {
@@ -59,5 +59,34 @@ describe('servesPort', () => {
     expect(servesPort(config, 7425)).toBe(true);
     expect(servesPort(config, 7426)).toBe(false);
     expect(servesPort({}, 7425)).toBe(false);
+  });
+});
+
+describe('tailscaleSetupUrl', () => {
+  it('finds the link Tailscale prints when Serve is off for the tailnet', () => {
+    const output =
+      '\nServe is not enabled on your tailnet.\nTo enable, visit:\n\n         https://login.tailscale.com/f/serve?node=abc123\n';
+    expect(tailscaleSetupUrl(output)).toBe('https://login.tailscale.com/f/serve?node=abc123');
+    expect(tailscaleSetupUrl('Available within your tailnet')).toBeNull();
+  });
+});
+
+describe('runTailscaleServe', () => {
+  it('returns the setup link instead of waiting on the CLI', async () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'fake-tailscale-'));
+    const binary = join(scratch, 'tailscale');
+    writeFileSync(
+      binary,
+      '#!/bin/sh\necho "Serve is not enabled on your tailnet."\necho "    https://login.tailscale.com/f/serve?node=xyz"\nsleep 30\n',
+      { mode: 0o755 }
+    );
+    try {
+      const started = Date.now();
+      const result = await runTailscaleServe(binary, ['serve']);
+      expect(result.setupUrl).toBe('https://login.tailscale.com/f/serve?node=xyz');
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });

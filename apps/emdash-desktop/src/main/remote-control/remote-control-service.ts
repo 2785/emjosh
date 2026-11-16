@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import type { Unsubscribe } from '@emdash/shared';
@@ -33,6 +33,8 @@ export type RemoteControlStatus = {
     dnsName: string | null;
     /** The remote control URL when Tailscale Serve forwards to it. */
     servedUrl: string | null;
+    /** Where to turn on Serve for the tailnet (needed once), after an attempt found it off. */
+    setupUrl: string | null;
   };
   devices: {
     id: string;
@@ -60,6 +62,8 @@ export class RemoteControlService {
   private server: RemoteControlServer | null = null;
   private error: string | null = null;
   private tailscaleBinary: string | null | undefined;
+  /** Where to turn Serve on for the tailnet, when the last attempt found it off. */
+  private tailscaleSetupUrl: string | null = null;
   private workspaceControl: Pick<WorkspaceControlService, 'createWorkspace'> | null = null;
 
   constructor(private readonly deps: RemoteControlServiceDeps) {}
@@ -126,12 +130,16 @@ export class RemoteControlService {
     const binary = await this.findTailscale();
     if (!binary) throw new Error('Tailscale is not installed.');
     const { port } = await this.deps.store.load();
-    await run(binary, [
+    const result = await runTailscaleServe(binary, [
       'serve',
       '--bg',
       `--https=${TAILSCALE_HTTPS_PORT}`,
       `http://127.0.0.1:${port}`,
     ]);
+    this.tailscaleSetupUrl = result.setupUrl;
+    if (!result.setupUrl && result.code !== 0) {
+      throw new Error(result.output.trim() || 'Tailscale Serve did not start.');
+    }
     return this.status();
   }
 
@@ -231,7 +239,7 @@ export class RemoteControlService {
 
   private async tailscaleStatus(port: number): Promise<RemoteControlStatus['tailscale']> {
     const binary = await this.findTailscale();
-    if (!binary) return { installed: false, dnsName: null, servedUrl: null };
+    if (!binary) return { installed: false, dnsName: null, servedUrl: null, setupUrl: null };
     let dnsName: string | null = null;
     try {
       const { stdout } = await run(binary, ['status', '--json'], { timeout: 5_000 });
@@ -243,10 +251,12 @@ export class RemoteControlService {
       // Not running or not logged in.
     }
     const served = dnsName ? await this.servedByTailscale(binary, port) : false;
+    if (served) this.tailscaleSetupUrl = null;
     return {
       installed: true,
       dnsName,
       servedUrl: served && dnsName ? `https://${dnsName}:${TAILSCALE_HTTPS_PORT}/` : null,
+      setupUrl: this.tailscaleSetupUrl,
     };
   }
 
@@ -275,4 +285,51 @@ export function servesPort(config: unknown, port: number): boolean {
           : false
       )
   );
+}
+
+/**
+ * Runs a `tailscale serve` command. When Serve is off for the tailnet, the CLI prints a link to
+ * turn it on and then waits indefinitely; that link is returned instead of waiting.
+ */
+export function runTailscaleServe(
+  binary: string,
+  args: string[],
+  timeoutMs = 20_000
+): Promise<{ code: number | null; output: string; setupUrl: string | null }> {
+  return new Promise((resolve) => {
+    const child = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    let settled = false;
+    const finish = (code: number | null, setupUrl: string | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code, output, setupUrl });
+    };
+    const onData = (chunk: Buffer) => {
+      output += chunk.toString();
+      const setupUrl = tailscaleSetupUrl(output);
+      if (setupUrl) {
+        child.kill();
+        finish(null, setupUrl);
+      }
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    child.on('error', (error) => {
+      output += String(error);
+      finish(null, null);
+    });
+    child.on('close', (code) => finish(code, tailscaleSetupUrl(output)));
+    const timer = setTimeout(() => {
+      child.kill();
+      output += '\nTailscale did not respond in time.';
+      finish(null, tailscaleSetupUrl(output));
+    }, timeoutMs);
+  });
+}
+
+/** The "turn on Serve" link Tailscale prints when Serve is off for the tailnet. */
+export function tailscaleSetupUrl(output: string): string | null {
+  return /https:\/\/login\.tailscale\.com\/f\/[^\s]+/.exec(output)?.[0] ?? null;
 }

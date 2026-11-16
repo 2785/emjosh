@@ -22,6 +22,8 @@ export type RemoteControlStatus = {
     dnsName: string | null;
     /** Where paired devices open remote control, once Tailscale Serve forwards to it. */
     servedUrl: string | null;
+    /** Where to turn on Serve for the tailnet (needed once), after an attempt found it off. */
+    setupUrl: string | null;
   };
   devices: RemoteControlDevice[];
 };
