@@ -65,7 +65,7 @@ describe('remote control server', () => {
     });
     expect(response.status).toBe(204);
     const setCookie = response.headers.get('set-cookie')!;
-    expect(setCookie).toMatch(/HttpOnly; Secure; SameSite=Strict/);
+    expect(setCookie).toMatch(/HttpOnly; Secure; SameSite=Lax/);
     return setCookie.split(';')[0]!;
   }
 
@@ -85,7 +85,12 @@ describe('remote control server', () => {
 
   it('serves the app with the remote shim to a paired device, and nothing outside it', async () => {
     const cookie = await pairedCookie();
-    const html = await (await fetch(`${base}/`, { headers: { cookie } })).text();
+    const page = await fetch(`${base}/`, { headers: { cookie } });
+    // Each visit renews the cookie (and replaces an older Strict one).
+    expect(page.headers.get('set-cookie')).toBe(
+      `${cookie}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`
+    );
+    const html = await page.text();
     expect(html).toContain('<head><script src="/remote-shim.js"></script>');
     expect(await (await fetch(`${base}/assets/app.js`, { headers: { cookie } })).text()).toBe(
       'console.log(1)'

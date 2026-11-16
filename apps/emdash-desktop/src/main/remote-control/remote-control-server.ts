@@ -90,10 +90,7 @@ export async function startRemoteControlServer(
           ? await options.store.pair(body.code, typeof body.name === 'string' ? body.name : '')
           : null;
       if (!paired) return send(response, 403, 'text/plain', 'Invalid or expired code');
-      response.setHeader(
-        'Set-Cookie',
-        `${DEVICE_COOKIE}=${paired.token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=31536000`
-      );
+      response.setHeader('Set-Cookie', deviceCookie(paired.token));
       return send(response, 204, 'text/plain', '');
     }
     if (path === '/manifest.webmanifest') {
@@ -138,6 +135,10 @@ export async function startRemoteControlServer(
     }
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       return send(response, 405, 'text/plain', 'Method not allowed');
+    }
+    if (path === '/' || path === '/index.html') {
+      // Keeps the cookie a year past the last visit, and brings older cookies to its current form.
+      response.setHeader('Set-Cookie', deviceCookie(cookie(request, DEVICE_COOKIE)!));
     }
     return serveRenderer(path, response);
   }
@@ -219,6 +220,16 @@ export async function startRemoteControlServer(
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
+}
+
+/**
+ * The device cookie. `Lax`, not `Strict`: Chrome withholds `Strict` cookies when an installed
+ * web app is opened from the home screen or a notification (it counts as arriving from outside),
+ * which would ask a paired device to pair again. Cross-site POSTs still don't carry `Lax`
+ * cookies, and the WebSocket checks its origin.
+ */
+export function deviceCookie(token: string): string {
+  return `${DEVICE_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000`;
 }
 
 function send(
