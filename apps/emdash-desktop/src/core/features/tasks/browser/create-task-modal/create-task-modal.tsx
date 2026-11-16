@@ -31,7 +31,6 @@ import { useNavigate } from '@core/primitives/navigation/browser/navigation-hook
 import { getNavigation } from '@core/primitives/navigation/browser/navigation-selectors';
 import { createTaskModalDefaults, type CreateTaskStrategy } from './create-task-modal-defaults';
 import { LinkedEntitySection } from './linked-entity-section';
-import { TaskNameField } from './task-name-field';
 import { useCreateTaskCallback } from './use-create-task-callback';
 import { useCreateTaskState } from './use-create-task-state';
 
@@ -149,7 +148,6 @@ export const CreateTaskModal = observer(function CreateTaskModal({
       </Dialog.Header>
       <Dialog.Body>
         <div className="flex w-full flex-col gap-5">
-          <TaskNameField state={state.taskName} onSubmit={createOnEnter} />
           <LinkedEntitySection
             state={state}
             hasAnyIssueIntegration={hasAnyIssueIntegration}
@@ -179,7 +177,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
                 {
                   value: 'conversation',
                   label: 'Initial Conversation',
-                  content: <ConversationField onSubmit={createOnEnter} />,
+                  content: <ConversationField onSubmit={createOnEnter} autoFocus />,
                 },
                 {
                   value: 'workspace',

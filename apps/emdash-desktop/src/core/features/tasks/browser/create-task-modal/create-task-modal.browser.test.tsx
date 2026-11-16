@@ -76,7 +76,6 @@ vi.mock('./use-create-task-state', async () => {
 vi.mock('./use-create-task-callback', () => ({
   useCreateTaskCallback: () => ({ canCreate: false }),
 }));
-vi.mock('./task-name-field', () => ({ TaskNameField: () => null }));
 vi.mock('./issue-combobox-field', () => ({ IssueComboboxField: () => null }));
 vi.mock(
   '@core/features/tasks/contributions/browser/task-config/initial-conversation-section',
