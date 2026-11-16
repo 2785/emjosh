@@ -87,6 +87,10 @@ export type TableLaidOut = {
   tableWidth: number;
   header: string[];
   rows: string[][];
+  /** Cells wrap within their columns instead of the table scrolling sideways. */
+  wrap: boolean;
+  /** Too wide for its container on one line per cell (so wrapping would change it). */
+  overflows: boolean;
 };
 
 export type BlockLaidOut = ProseLaidOut | CodeLaidOut | TableLaidOut;

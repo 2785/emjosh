@@ -46,6 +46,13 @@ export const tdCell = style({
   },
 });
 
+/** Wrapping cells break within their column; layoutTable measured the resulting rows. */
+export const wrappingCell = style({
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+  verticalAlign: 'top',
+});
+
 /** Remove bottom border from the last row's td cells. */
 export const tdCellLastRow = style({
   borderBottom: 'none',
