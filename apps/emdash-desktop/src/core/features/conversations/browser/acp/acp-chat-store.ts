@@ -432,8 +432,11 @@ export class AcpChatStore {
     const submissionSequence = ++this._submissionSequence;
     const promptId = crypto.randomUUID();
     let optimisticId: string | undefined;
-    this.composerModel.clear();
+    // Hand the attachments to the prompt before clearing the text: clearing removes their pills,
+    // which would otherwise delete the attachments being sent.
     this.draftAttachments = [];
+    this._pilledAttachmentIds = new Set();
+    this.composerModel.clear();
     if (!this.affordances.isWorking) {
       optimisticId = promptId;
       this.chatState.session.setPendingPrompt({
