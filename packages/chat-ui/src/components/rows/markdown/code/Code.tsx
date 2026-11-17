@@ -25,6 +25,7 @@ import { applyTokenLines } from '@core/highlight/apply-tokens';
 import type { CodeLaidOut } from '@core/layout/layout-types';
 import type { CodeBlock } from '@core/markdown/document';
 import { For, createEffect, createMemo, onCleanup } from 'solid-js';
+import { CODE_LINE_ATTR } from './selection';
 import { codeLine, codeLineWrapping, codeWrapper, codeWrapperWrapping } from './code.css';
 import { codeGroup } from '@components/primitives/copy-button.css';
 
@@ -140,6 +141,7 @@ export function Code(props: CodeProps) {
               }}
               class={props.block.wrap ? `${codeLine} ${codeLineWrapping}` : codeLine}
               style={{ top: `${line.top}px` }}
+              {...{ [CODE_LINE_ATTR]: '' }}
             >
               {line.text}
             </div>

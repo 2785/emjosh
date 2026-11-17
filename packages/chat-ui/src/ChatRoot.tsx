@@ -52,6 +52,7 @@ import { createFrameScheduler } from './components/engine/frame-scheduler';
 import { createTweenRegistry } from './components/engine/tween-registry';
 import { SEGMENTERS, UNIT_REGISTRY } from './components/engine/unit-registry';
 import { UnitRow } from './components/engine/UnitRow';
+import { selectedCodeText } from './components/rows/markdown/code/selection';
 import { PinnedUserMessage } from './components/rows/message/PinnedUserMessage';
 import type { ChatCaches } from './core/caches';
 import type { ThemeVarKey } from './core/config';
@@ -352,7 +353,7 @@ export function ChatRoot(props: ChatRootProps) {
    * Copies a selection across message blocks as markdown (plain text) and HTML, so lists,
    * code and emphasis survive pasting into Slack or a document. The transcript draws text as
    * positioned spans, which the browser's own copy can't give structure to. A selection within
-   * one block keeps the browser's copy.
+   * one block keeps the browser's copy, except in code, whose lines it would run together.
    */
   const handleCopy = (event: ClipboardEvent) => {
     const selection = window.getSelection();
@@ -362,6 +363,13 @@ export function ChatRoot(props: ChatRootProps) {
       range.intersectsNode(el)
     );
     const blockIds = [...new Set(blockEls.map((el) => el.dataset.blockId!))];
+    if (blockIds.length === 1) {
+      const code = selectedCodeText(range, blockEls[0]!);
+      if (code === null) return;
+      event.preventDefault();
+      event.clipboardData.setData('text/plain', code);
+      return;
+    }
     if (blockIds.length < 2) return;
     const copied = selectedBlocks(blockIds, (messageId) => {
       const item = state().transcript.findItemById(messageId);
