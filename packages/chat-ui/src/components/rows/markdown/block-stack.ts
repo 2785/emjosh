@@ -12,6 +12,7 @@ import type {
 } from '@core/markdown/document';
 import { collapse } from '@core/spacing';
 import { BLOCK_REGISTRY } from './block-registry';
+import { tableWrapKey } from './table/wrap-key';
 
 // ── Per-block memo ────────────────────────────────────────────────────────────
 //
@@ -22,7 +23,9 @@ import { BLOCK_REGISTRY } from './block-registry';
 const blockMemo = new WeakMap<Block, { fingerprint: string; result: Measured<BlockLeafLayout> }>();
 
 export function measureBlockCached(block: Block, ctx: MeasureCtx): Measured<BlockLeafLayout> {
-  const fingerprint = `${ctx.measureEpoch ?? 0}|${ctx.width}|${ctx.isCollapsed(block.id)}`;
+  const fingerprint = `${ctx.measureEpoch ?? 0}|${ctx.width}|${ctx.isCollapsed(block.id)}|${
+    block.kind === 'table' && ctx.isCollapsed(tableWrapKey(block.id))
+  }`;
   const cached = blockMemo.get(block);
   if (cached?.fingerprint === fingerprint) return cached.result;
 
@@ -76,6 +79,7 @@ export function layoutBlockStack(
               height: 0,
               contentWidth: 0,
               lines: [],
+              wrap: false,
               raw: block as CodeBlock,
             };
           }
@@ -109,6 +113,8 @@ export function layoutBlockStack(
             tableWidth: 0,
             header: (block as TableBlock).header,
             rows: (block as TableBlock).rows,
+            wrap: false,
+            overflows: false,
             raw: block,
           };
         })(),

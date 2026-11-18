@@ -246,6 +246,8 @@ interface InitialConversationFieldProps {
   requirePromptDelivery?: boolean;
   /** Enter (without Shift) calls this instead of starting a new line. */
   onSubmit?: () => void;
+  /** Focuses the prompt once it can take input. */
+  autoFocus?: boolean;
 }
 
 export function InitialConversationField({
@@ -258,6 +260,7 @@ export function InitialConversationField({
   showAutoApproveToggle = true,
   requirePromptDelivery = false,
   onSubmit,
+  autoFocus = false,
 }: InitialConversationFieldProps) {
   const autoApproveSwitchId = useId();
   const editorApiRef = useRef<PromptEditorRef | null>(null);
@@ -313,6 +316,16 @@ export function InitialConversationField({
   );
   const canToggleChatUi = agentSupportsAcp(capabilities);
   const canDeliverInitialPrompt = state.initialPromptSupported;
+  const autoFocused = useRef(false);
+  useEffect(() => {
+    if (!autoFocus || autoFocused.current || !canDeliverInitialPrompt) return;
+    // The editor mounts its view after this render; focus on the next frame.
+    const frame = requestAnimationFrame(() => {
+      editorApiRef.current?.focus();
+      autoFocused.current = true;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus, canDeliverInitialPrompt]);
   const getDisabledReason = useCallback<AgentDisableReason>(
     (agent) =>
       requirePromptDelivery &&

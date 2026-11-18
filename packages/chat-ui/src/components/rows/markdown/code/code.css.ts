@@ -34,6 +34,19 @@ globalStyle(`.emdark ${codeWrapper} span`, {
   color: 'var(--shiki-dark)',
 });
 
+/** Wrapping code: no sideways scroll (layoutCode reserved a row per wrapped segment). */
+export const codeWrapperWrapping = style({
+  overflowX: 'hidden',
+});
+
+/** A wrapping code line breaks anywhere, so its row count matches the column math. */
+export const codeLineWrapping = style({
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-all',
+  left: '8px',
+  right: '8px',
+});
+
 /** Each code line div — font metrics come from --chat-type-code-* variables. */
 export const codeLine = style({
   position: 'absolute',

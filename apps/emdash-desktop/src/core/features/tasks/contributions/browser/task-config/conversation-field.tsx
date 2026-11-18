@@ -8,6 +8,7 @@ interface ConversationFieldProps {
   showAutoApproveToggle?: boolean;
   requirePromptDelivery?: boolean;
   onSubmit?: () => void;
+  autoFocus?: boolean;
 }
 
 export function ConversationField({
@@ -17,6 +18,7 @@ export function ConversationField({
   requirePromptDelivery,
   showAutoApproveToggle,
   onSubmit,
+  autoFocus,
 }: ConversationFieldProps) {
   const { initialConversation, linkedIssue, includeIssueContextByDefault } = useTaskState();
 
@@ -31,6 +33,7 @@ export function ConversationField({
       requirePromptDelivery={requirePromptDelivery}
       showAutoApproveToggle={showAutoApproveToggle}
       onSubmit={onSubmit}
+      autoFocus={autoFocus}
     />
   );
 }

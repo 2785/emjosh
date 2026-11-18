@@ -57,6 +57,10 @@ export type InterfaceSettings = {
   showLeftSidebarPrStatus: boolean;
   showLeftSidebarTimestamps: boolean;
   hideContextBar: boolean;
+  /** Max width of the chat column: 42rem, 64rem, or the whole pane. */
+  chatWidth: 'comfortable' | 'wide' | 'full';
+  /** Long lines in chat code blocks wrap instead of scrolling sideways. */
+  wrapCodeBlocks: boolean;
 };
 
 export type ProviderCustomConfig = {

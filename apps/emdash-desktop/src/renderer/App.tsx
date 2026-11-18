@@ -5,6 +5,9 @@ import { useAccountSession } from '@core/features/account/api/browser/useAccount
 import { useIntegrationAccountEvents } from '@core/features/integrations/api/browser/use-integration-account-events';
 import { IntegrationsProvider } from '@core/features/integrations/contributions/browser/integrations-provider';
 import { useLegacyPortStatus } from '@core/features/legacy-port/api/browser/useLegacyPort';
+import { MobileViewButton } from '@core/features/mobile/browser/mobile-view-button';
+import { MobileWorkspace } from '@core/features/mobile/browser/mobile-workspace';
+import { useLayoutMode } from '@core/features/mobile/browser/use-mobile-layout';
 import { TerminalPoolProvider } from '@core/features/terminals/browser/pty/pty-pool-provider';
 import { confirmOpenExternalLink } from '@core/features/workbench/api/browser/open-external-link';
 import { Onboarding } from '@core/features/workbench/browser/onboarding/onboarding';
@@ -30,6 +33,7 @@ type AppView = 'onboarding' | 'welcome' | 'workspace';
 type OnboardingStep = 'sign-in' | 'import';
 
 function AppContent() {
+  const layoutMode = useLayoutMode();
   useIntegrationAccountEvents();
   const [view, setView] = useState<AppView>(() =>
     localStorage.getItem(HAS_SEEN_ONBOARDING) === 'true' ? 'workspace' : 'onboarding'
@@ -102,7 +106,13 @@ function AppContent() {
         </>
       );
     }
-    return <Workspace />;
+    if (layoutMode === 'mobile') return <MobileWorkspace />;
+    return (
+      <>
+        <Workspace />
+        {layoutMode === 'desktop-on-mobile' && <MobileViewButton />}
+      </>
+    );
   };
 
   return (

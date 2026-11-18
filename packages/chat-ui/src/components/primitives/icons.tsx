@@ -1,6 +1,7 @@
 export { GenericFileIcon } from './icons/GenericFileIcon';
 export { IconCheck } from './icons/IconCheck';
 export { IconCopy } from './icons/IconCopy';
+export { IconWrapText } from './icons/IconWrapText';
 export { IconError } from './icons/IconError';
 export { IconPlanList } from './icons/IconPlanList';
 export { IconShieldAlert } from './icons/IconShieldAlert';

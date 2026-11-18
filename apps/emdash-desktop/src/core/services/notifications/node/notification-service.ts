@@ -221,6 +221,8 @@ export class NotificationService {
 
     if (decision.system) {
       await this.sinks.get('system')?.deliver(deliveryBatch);
+      // Remote devices (the remote control web app) get what the desktop banner gets.
+      await this.sinks.get('push')?.deliver(deliveryBatch);
     }
     if (decision.sound) {
       await this.sinks.get('sound')?.deliver(deliveryBatch);

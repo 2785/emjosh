@@ -14,10 +14,12 @@ import { useCaches } from '@components/contexts/CachesContext';
 import { useCommands } from '@components/contexts/CommandsContext';
 import { BlockFrame } from '@components/engine/block-frame';
 import { cancelIdle, scheduleIdle } from '@components/engine/dom-utils';
+import { CopyButton } from '@components/primitives/CopyButton';
 import type { MermaidLaidOut } from '@core/layout/layout-types';
 import type { MermaidBlock } from '@core/markdown/document';
 import { Show, createEffect, createSignal, onCleanup } from 'solid-js';
 import { mermaidError, mermaidPlaceholder, mermaidWrapper } from './mermaid.css';
+import { codeGroup } from '@components/primitives/copy-button.css';
 
 export type MermaidProps = {
   block: MermaidLaidOut;
@@ -75,7 +77,8 @@ export function Mermaid(props: MermaidProps) {
   }
 
   return (
-    <BlockFrame layout={props.block}>
+    <BlockFrame layout={props.block} class={codeGroup}>
+      <CopyButton text={props.rawBlock.source} variant="overlay" label="Copy diagram source" />
       <div
         class={mermaidWrapper}
         role="button"

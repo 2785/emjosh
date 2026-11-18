@@ -603,6 +603,65 @@ describe('AcpChatStore prompt submission', () => {
     expect(onAccepted).not.toHaveBeenCalled();
   });
 
+  it('drops an image when its inline pill is deleted, but keeps one that never had a pill', async () => {
+    const store = createStore(idleState(), vi.fn());
+    const view = store.composerModel.attach(document.createElement('div'));
+    try {
+      const pilled = promptAttachment('attachment-pilled', 'data:image/png;base64,AQ==');
+      const unpilled = promptAttachment('attachment-unpilled', 'data:image/png;base64,AQ==');
+      store.addDraftAttachments([pilled, unpilled]);
+      store.composerModel.insertMention({
+        id: pilled.ref.id,
+        label: 'Image 1',
+        name: 'Image 1',
+        kind: 'custom',
+        compact: true,
+        serializedText: '[Image 1]',
+      });
+      expect(store.draftText).toContain('[Image 1]');
+
+      store.composerModel.removeMention(pilled.ref.id);
+
+      expect(store.draftAttachments.map(({ ref }) => ref.id)).toEqual(['attachment-unpilled']);
+    } finally {
+      view.detach();
+      store.dispose();
+    }
+  });
+
+  it('sends an image with its inline pill without deleting it', async () => {
+    conversationClientTestState.deleteAttachment.mockClear();
+    const sendPrompt = vi.fn(async () => ({ success: true, data: { queued: false } }));
+    const store = createStore(idleState(), sendPrompt);
+    const view = store.composerModel.attach(document.createElement('div'));
+    try {
+      const attachment = promptAttachment('attachment-pilled-send', 'data:image/png;base64,AQ==');
+      store.addDraftAttachments([attachment]);
+      store.composerModel.insertMention({
+        id: attachment.ref.id,
+        label: 'Image 1',
+        name: 'Image 1',
+        kind: 'custom',
+        compact: true,
+        serializedText: '[Image 1]',
+      });
+
+      store.submitPrompt(store.draftText, store.draftAttachments);
+
+      await vi.waitFor(() =>
+        expect(sendPrompt).toHaveBeenCalledWith(
+          expect.objectContaining({ attachments: [attachment.ref] }),
+          undefined,
+          expect.any(String)
+        )
+      );
+      expect(conversationClientTestState.deleteAttachment).not.toHaveBeenCalled();
+    } finally {
+      view.detach();
+      store.dispose();
+    }
+  });
+
   it('restores the persisted draft when the live session is unavailable', async () => {
     const store = createStore(idleState(), vi.fn());
     const attachment = promptAttachment('attachment-no-session', 'data:image/png;base64,AQ==');

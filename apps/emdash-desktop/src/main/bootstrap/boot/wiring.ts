@@ -20,6 +20,7 @@ import { browserWebContentsRegistry } from '@main/host/browser/browser-webconten
 import { browserOperations } from '@main/host/browser/controller';
 import { createDevPerfOperations } from '@main/host/dev-perf/controller-operations';
 import { writeRendererLogEntry } from '@main/host/file-logger';
+import { getRemoteControlService } from '@main/host/remote-control';
 import { setTrayVisible } from '@main/host/tray';
 import { updateOperations } from '@main/host/updates/controller-operations';
 import { applyNativeTheme } from '@main/host/window';
@@ -63,6 +64,7 @@ export function createDesktopWireOptions(
     compensation: withCompensation,
     db: database.db,
     devPerfOperations: createDevPerfOperations(runtimes),
+    remoteControl: getRemoteControlService(),
     editorBuffer: database.editorBuffer,
     github: {
       cliAccountImporter: github.cliImport,

@@ -153,6 +153,12 @@ export {
   type ReconnectingTransportOptions,
 } from '../api/transports/reconnecting';
 export { streamTransport } from '../api/transports/stream';
+export {
+  decodeWireJson,
+  encodeWireJson,
+  socketTransport,
+  type SocketLike,
+} from '../api/transports/socket';
 export { applyValidation, type ValidatePolicy } from '../api/validation';
 export { type LeasedLiveModelProvider } from '../live/replica/leased-provider';
 export { type LiveModelMutationEnvelope, type LiveModelProvider } from '../live/replica/provider';

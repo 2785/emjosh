@@ -712,7 +712,15 @@ export const AcpChatPanel = observer(function AcpChatPanel() {
 
   const activeTab = pane.resolvedTabs.find((t) => t.isActive && t.kind === 'acp-chat');
   const store = activeTab ? (activeTab.resource as AcpChatTabResource).store : null;
+  return <AcpChatView store={store} />;
+});
 
+/** A conversation's chat: transcript and composer. Also used outside tabs (the mobile layout). */
+export const AcpChatView = observer(function AcpChatView({
+  store,
+}: {
+  store: AcpChatStore | null;
+}) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<ChatView | null>(null);
   const [composerSlot, setComposerSlot] = useState<HTMLElement | null>(null);

@@ -123,4 +123,79 @@ describe('Markdown table overflow', () => {
     scrollViewport!.scrollLeft = scrollViewport!.scrollWidth;
     expect(scrollViewport!.scrollLeft).toBeGreaterThan(0);
   });
+
+  const BIRDS = [
+    '| Bird | Typical habitat | Diet | Flight ability | Notable attributes |',
+    '| --- | --- | --- | --- | --- |',
+    '| Bald eagle | Lakes, rivers, and coastal regions | Fish and small mammals | Strong flier | Excellent long-distance vision |',
+    '| Emperor penguin | Antarctic sea ice and surrounding waters | Fish, squid, and crustaceans | Flightless | Survives extreme Antarctic winters |',
+    '| Hummingbird | Forests, gardens, and meadows | Nectar and insects | Can hover and fly backward | Exceptionally rapid wingbeats |',
+  ].join('\n');
+
+  it('wraps cells within the width when Wrap is on, reserving exactly the wrapped height', async () => {
+    const { host, context } = mountTable(BIRDS);
+    await waitForFontMeasurement(context);
+    const wrap = host.querySelector<HTMLButtonElement>('button[aria-label="Wrap cells"]');
+    expect(wrap).not.toBeNull();
+
+    wrap!.click();
+    await nextPaint();
+
+    const table = host.querySelector('table')!;
+    const scrollViewport = table.parentElement!;
+    expect(scrollViewport.scrollWidth).toBe(scrollViewport.clientWidth);
+    // The reserved frame matches the rendered table: no clipping, no gap.
+    expect(scrollViewport.offsetHeight).toBe(table.offsetHeight + 2 * TABLE_BORDER);
+    const firstRow = table.querySelector('tbody tr')!;
+    const header = table.querySelector('thead tr')!;
+    expect(firstRow.getBoundingClientRect().height).toBeGreaterThan(
+      header.getBoundingClientRect().height
+    );
+
+    host.querySelector<HTMLButtonElement>('button[aria-label="Stop wrapping"]')!.click();
+    await nextPaint();
+    const unwrapped = host.querySelector('table')!.parentElement!;
+    expect(unwrapped.scrollWidth).toBeGreaterThan(unwrapped.clientWidth);
+  });
+
+  it('offers no Wrap button for a table that already fits', async () => {
+    const { host, context } = mountTable(
+      ['| Name | Type |', '| --- | --- |', '| fontSize | number |'].join('\n')
+    );
+    await waitForFontMeasurement(context);
+    expect(host.querySelector('button[aria-label="Wrap cells"]')).toBeNull();
+    expect(host.querySelector('button[aria-label="Copy table"]')).not.toBeNull();
+  });
+
+  it('copies the table as markdown and HTML', async () => {
+    const written: Record<string, string>[] = [];
+    const original = navigator.clipboard.write;
+    Object.defineProperty(navigator.clipboard, 'write', {
+      configurable: true,
+      value: async (items: ClipboardItem[]) => {
+        for (const item of items) {
+          written.push({
+            text: await (await item.getType('text/plain')).text(),
+            html: await (await item.getType('text/html')).text(),
+          });
+        }
+      },
+    });
+    try {
+      const { host, context } = mountTable(
+        ['| Name | Type |', '| --- | --- |', '| fontSize | number |'].join('\n')
+      );
+      await waitForFontMeasurement(context);
+      host.querySelector<HTMLButtonElement>('button[aria-label="Copy table"]')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(written).toEqual([
+        {
+          text: '| Name | Type |\n| --- | --- |\n| fontSize | number |',
+          html: '<table><thead><tr><th>Name</th><th>Type</th></tr></thead><tbody><tr><td>fontSize</td><td>number</td></tr></tbody></table>',
+        },
+      ]);
+    } finally {
+      Object.defineProperty(navigator.clipboard, 'write', { configurable: true, value: original });
+    }
+  });
 });

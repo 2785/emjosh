@@ -240,6 +240,16 @@ export class PromptEditorModel implements PromptEditorRef {
     editor.commands.insertContentAt(1, mentionInsertContent(item));
   }
 
+  /** Ids of the mentions in the draft; null until the editor exists. */
+  mentionIds(): Set<string> | null {
+    if (!this.editor) return null;
+    const ids = new Set<string>();
+    this.editor.state.doc.descendants((node) => {
+      if (node.type.name === 'mention' && typeof node.attrs.id === 'string') ids.add(node.attrs.id);
+    });
+    return ids;
+  }
+
   removeMention(id: string): void {
     if (!this.editor) return;
     const tr = this.editor.state.tr;

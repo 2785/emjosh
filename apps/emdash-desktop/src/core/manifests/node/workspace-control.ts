@@ -107,7 +107,7 @@ export async function startWorkspaceControl(
       }) => void
     ): () => void;
   }
-): Promise<ControlMcpEndpoint> {
+): Promise<ControlMcpEndpoint & { service: WorkspaceControlService }> {
   const { db, taskService, telemetry, appSettings } = context;
   const projectDependencies = {
     db,
@@ -453,14 +453,16 @@ export async function startWorkspaceControl(
   };
 
   deps.initiatives = initiatives;
+  const service = new WorkspaceControlService(deps);
   const endpoint = await startControlMcpEndpoint({
-    service: new WorkspaceControlService(deps),
+    service,
     endpointFile: extras.endpointFile,
     version: extras.version,
     onError: (error) => log.warn('Workspace control endpoint error', { error }),
   });
   return {
     info: endpoint.info,
+    service,
     async close() {
       stopDelivery();
       stopEvents?.();

@@ -55,6 +55,41 @@ export const copyButtonOverlay = style([
     selectors: {
       [`${codeGroup}:hover &`]: { opacity: 1 },
     },
+    // Touch screens have no hover to reveal it.
+    '@media': { '(hover: none)': { opacity: 1 } },
+  },
+]);
+
+/** Top-right group of overlay buttons on a block (a table's Wrap and Copy). */
+export const overlayToolbar = style({
+  position: 'absolute',
+  top: '6px',
+  right: '6px',
+  zIndex: 10,
+  display: 'flex',
+  gap: '2px',
+  padding: '2px',
+  borderRadius: '6px',
+  background: vars.bg,
+  opacity: 0,
+  transition: 'opacity 150ms ease',
+  selectors: {
+    [`${codeGroup}:hover &`]: { opacity: 1 },
+    '&:focus-within': { opacity: 1 },
+  },
+  '@media': { '(hover: none)': { opacity: 1 } },
+});
+
+/** A button in an overlay toolbar. */
+export const overlayToolbarButton = style([
+  buttonBase,
+  {
+    opacity: 1,
+    borderRadius: '4px',
+    padding: '2px',
+    selectors: {
+      '&[aria-pressed="true"]': { color: vars.fg },
+    },
   },
 ]);
 

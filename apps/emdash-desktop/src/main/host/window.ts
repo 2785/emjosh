@@ -21,6 +21,7 @@ import { registerExternalLinkHandlers } from '@main/host/externalLinks';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
 import { APP_ORIGIN } from './protocol';
+import { loadWindowState, trackWindowState } from './window-state';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -30,9 +31,9 @@ export function applyNativeTheme(theme: Theme): void {
 }
 
 export function createMainWindow(): BrowserWindow {
+  const saved = loadWindowState();
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+    ...(saved ? saved.bounds : { width: 1400, height: 900 }),
     minWidth: 700,
     minHeight: 500,
     title: PRODUCT_NAME,
@@ -70,6 +71,9 @@ export function createMainWindow(): BrowserWindow {
     show: false,
   });
   watchWindow(mainWindow);
+  if (saved?.maximized) mainWindow.maximize();
+  if (saved?.fullScreen) mainWindow.setFullScreen(true);
+  trackWindowState(mainWindow);
   mainWindow.webContents.once('did-finish-load', () => {
     log.info('boot-timeline', {
       mark: 'window-did-finish-load',

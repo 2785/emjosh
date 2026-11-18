@@ -28,6 +28,7 @@
  *     portal a React composer into it.
  */
 
+import { ViewStateContext } from '@components/contexts/ViewStateContext';
 import {
   For,
   Show,
@@ -51,11 +52,14 @@ import { createFrameScheduler } from './components/engine/frame-scheduler';
 import { createTweenRegistry } from './components/engine/tween-registry';
 import { SEGMENTERS, UNIT_REGISTRY } from './components/engine/unit-registry';
 import { UnitRow } from './components/engine/UnitRow';
+import { selectedCodeText } from './components/rows/markdown/code/selection';
 import { PinnedUserMessage } from './components/rows/message/PinnedUserMessage';
 import type { ChatCaches } from './core/caches';
 import type { ThemeVarKey } from './core/config';
 import type { MeasureCtx } from './core/define';
 import { genericEstimate } from './core/layout/generic-estimate';
+import type { Block } from './core/markdown/document';
+import { blocksToHtml, blocksToMarkdown } from './core/markdown/serialize-blocks';
 import { STICK_THRESHOLD_PX } from './core/stick-to-bottom';
 import { unitReservedHeight } from './core/units';
 import { Virtualizer } from './core/virtualizer';
@@ -82,6 +86,7 @@ import {
   pinnedOverlay,
   pinnedOverlayColumn,
   scrollContainer,
+  unitRowColumn,
   unitRowWrapper,
   widthProbeClass,
 } from './chat-root.css';
@@ -343,6 +348,38 @@ export function ChatRoot(props: ChatRootProps) {
 
   let scrollEl: HTMLDivElement | undefined;
   let canvasEl: HTMLDivElement | undefined;
+
+  /**
+   * Copies a selection across message blocks as markdown (plain text) and HTML, so lists,
+   * code and emphasis survive pasting into Slack or a document. The transcript draws text as
+   * positioned spans, which the browser's own copy can't give structure to. A selection within
+   * one block keeps the browser's copy, except in code, whose lines it would run together.
+   */
+  const handleCopy = (event: ClipboardEvent) => {
+    const selection = window.getSelection();
+    if (!scrollEl || !event.clipboardData || !selection || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const blockEls = [...scrollEl.querySelectorAll<HTMLElement>('[data-block-id]')].filter((el) =>
+      range.intersectsNode(el)
+    );
+    const blockIds = [...new Set(blockEls.map((el) => el.dataset.blockId!))];
+    if (blockIds.length === 1) {
+      const code = selectedCodeText(range, blockEls[0]!);
+      if (code === null) return;
+      event.preventDefault();
+      event.clipboardData.setData('text/plain', code);
+      return;
+    }
+    if (blockIds.length < 2) return;
+    const copied = selectedBlocks(blockIds, (messageId) => {
+      const item = state().transcript.findItemById(messageId);
+      return item?.kind === 'message' ? caches().parseBlocks(messageId, item.text) : undefined;
+    });
+    if (!copied) return;
+    event.preventDefault();
+    event.clipboardData.setData('text/plain', copied.markdown);
+    event.clipboardData.setData('text/html', copied.html);
+  };
   let outerEl: HTMLDivElement | undefined;
   // Zero-height probe that carries contentClass; the width ResizeObserver
   // targets this so it only fires on genuine layout-width changes.
@@ -1645,173 +1682,204 @@ export function ChatRoot(props: ChatRootProps) {
       <ThemeContext.Provider value={theme}>
         <CachesContext.Provider value={caches()}>
           <CommandsContext.Provider value={commands}>
-            <TurnStateContext.Provider value={{ currentMessageId, turnStatus }}>
-              <div
-                ref={(el) => {
-                  outerEl = el;
-                }}
-                class={outerClip}
-              >
+            <ViewStateContext.Provider value={viewState}>
+              <TurnStateContext.Provider value={{ currentMessageId, turnStatus }}>
                 <div
                   ref={(el) => {
-                    scrollEl = el;
+                    outerEl = el;
                   }}
-                  data-chat-scroll
-                  class={`${scrollContainer}${props.class ? ` ${props.class}` : ''}`}
-                  style={scrollElStyle}
+                  class={outerClip}
                 >
-                  {/* Zero-height probe: same max-width cap as rows; the width
+                  <div
+                    ref={(el) => {
+                      scrollEl = el;
+                    }}
+                    data-chat-scroll
+                    onCopy={handleCopy}
+                    class={`${scrollContainer}${props.class ? ` ${props.class}` : ''}`}
+                    style={scrollElStyle}
+                  >
+                    {/* Zero-height probe: same max-width cap as rows; the width
                       ResizeObserver targets this to isolate layout-width changes
                       from canvas height mutations (streaming / tween updates). */}
-                  <div
-                    ref={(el) => {
-                      widthProbeEl = el;
-                    }}
-                    data-chat-width-probe
-                    aria-hidden="true"
-                    class={`${widthProbeClass} ${contentClass()}`}
-                  />
-                  <div
-                    ref={(el) => {
-                      canvasEl = el;
-                      el.style.height = `${contentH()}px`;
-                    }}
-                    data-chat-canvas
-                    class={`${canvas} ${contentClass()}`}
-                  >
-                    <For each={visible()}>
-                      {(unitIndex) => {
-                        const u = () => units().at(unitIndex);
-                        const isActiveTurn = () => {
-                          const unit = u();
-                          return unit ? activeTurnItemIds().has(unit.itemId) : false;
-                        };
-
-                        return (
-                          <Show when={u()}>
-                            <div
-                              class={unitRowWrapper}
-                              ref={(el) => {
-                                rowEls.set(unitIndex, el);
-                                // Seed initial transform; commit() reconciles on each frame.
-                                el.style.transform = `translateY(${virt.top(unitIndex) + padTop()}px)`;
-                                onCleanup(() => {
-                                  rowEls.delete(unitIndex);
-                                  appliedTop.delete(unitIndex);
-                                });
-                              }}
-                              data-index={String(unitIndex)}
-                            >
-                              <UnitRow
-                                unit={u()!}
-                                index={unitIndex}
-                                rowWidth={containerWidth()}
-                                theme={theme()}
-                                viewState={viewState()}
-                                virt={virt}
-                                onHeightChanged={onHeightChanged}
-                                tweenRegistry={tweenRegistry}
-                                isActiveTurn={isActiveTurn()}
-                                caches={caches()}
-                                measureEpoch={measureEpoch()}
-                                expandedId={expandedUserId()}
-                              />
-                            </div>
-                          </Show>
-                        );
+                    <div
+                      ref={(el) => {
+                        widthProbeEl = el;
                       }}
-                    </For>
+                      data-chat-width-probe
+                      aria-hidden="true"
+                      class={`${widthProbeClass} ${contentClass()}`}
+                    />
+                    <div
+                      ref={(el) => {
+                        canvasEl = el;
+                        el.style.height = `${contentH()}px`;
+                      }}
+                      data-chat-canvas
+                      class={canvas}
+                    >
+                      <For each={visible()}>
+                        {(unitIndex) => {
+                          const u = () => units().at(unitIndex);
+                          const isActiveTurn = () => {
+                            const unit = u();
+                            return unit ? activeTurnItemIds().has(unit.itemId) : false;
+                          };
+
+                          return (
+                            <Show when={u()}>
+                              <div
+                                class={unitRowWrapper}
+                                ref={(el) => {
+                                  rowEls.set(unitIndex, el);
+                                  // Seed initial transform; commit() reconciles on each frame.
+                                  el.style.transform = `translateY(${virt.top(unitIndex) + padTop()}px)`;
+                                  onCleanup(() => {
+                                    rowEls.delete(unitIndex);
+                                    appliedTop.delete(unitIndex);
+                                  });
+                                }}
+                                data-index={String(unitIndex)}
+                              >
+                                {/* Rows span the full width and center their content, so
+                                  dragging a selection into the gutter stays on that row
+                                  rather than jumping to the top of the transcript. */}
+                                <div class={`${unitRowColumn} ${contentClass()}`}>
+                                  <UnitRow
+                                    unit={u()!}
+                                    index={unitIndex}
+                                    rowWidth={containerWidth()}
+                                    theme={theme()}
+                                    viewState={viewState()}
+                                    virt={virt}
+                                    onHeightChanged={onHeightChanged}
+                                    tweenRegistry={tweenRegistry}
+                                    isActiveTurn={isActiveTurn()}
+                                    caches={caches()}
+                                    measureEpoch={measureEpoch()}
+                                    expandedId={expandedUserId()}
+                                  />
+                                </div>
+                              </div>
+                            </Show>
+                          );
+                        }}
+                      </For>
+                    </div>
                   </div>
-                </div>
-                <Show when={pin()}>
-                  {(ps) => {
-                    // Resolve the ChatMessage reactively via itemId (stable) so
-                    // a stale unit-index lookup can never hand a wrong item to
-                    // PinnedUserMessage. findItemById searches committed-then-active
-                    // so live active-turn user messages resolve too.
-                    const pinnedItem = (): ChatMessage | undefined => {
-                      const itemId = ps().itemId;
-                      if (!itemId) return undefined;
-                      const transcript = state().transcript;
-                      const item = transcript.findItemById(itemId);
-                      return item && item.kind === 'message' && item.role === 'user'
-                        ? (item as ChatMessage)
-                        : undefined;
-                    };
-                    return (
-                      <Show when={pinnedItem()}>
-                        {(item) => (
-                          <div
-                            class={pinnedOverlay}
-                            aria-hidden="true"
-                            style={{ transform: `translateY(${ps().overlayTop}px)` }}
-                          >
-                            {/* Position from the scroll-container width probe so
+                  <Show when={pin()}>
+                    {(ps) => {
+                      // Resolve the ChatMessage reactively via itemId (stable) so
+                      // a stale unit-index lookup can never hand a wrong item to
+                      // PinnedUserMessage. findItemById searches committed-then-active
+                      // so live active-turn user messages resolve too.
+                      const pinnedItem = (): ChatMessage | undefined => {
+                        const itemId = ps().itemId;
+                        if (!itemId) return undefined;
+                        const transcript = state().transcript;
+                        const item = transcript.findItemById(itemId);
+                        return item && item.kind === 'message' && item.role === 'user'
+                          ? (item as ChatMessage)
+                          : undefined;
+                      };
+                      return (
+                        <Show when={pinnedItem()}>
+                          {(item) => (
+                            <div
+                              class={pinnedOverlay}
+                              aria-hidden="true"
+                              style={{ transform: `translateY(${ps().overlayTop}px)` }}
+                            >
+                              {/* Position from the scroll-container width probe so
                                 classic scrollbar gutters cannot offset the pinned
                                 copy from the inline transcript row underneath. */}
-                            <div
-                              class={`${pinnedOverlayColumn} ${contentClass()}`}
-                              style={{
-                                'margin-left': `${contentColumnLeft()}px`,
-                                'margin-right': '0px',
-                                width: `${containerWidth()}px`,
-                                'max-width': 'none',
-                              }}
-                            >
-                              <PinnedUserMessage
-                                item={item()}
-                                rowWidth={containerWidth()}
-                                theme={theme()}
-                                caches={caches()}
-                                expandedId={expandedUserId}
-                              />
+                              <div
+                                class={`${pinnedOverlayColumn} ${contentClass()}`}
+                                style={{
+                                  'margin-left': `${contentColumnLeft()}px`,
+                                  'margin-right': '0px',
+                                  width: `${containerWidth()}px`,
+                                  'max-width': 'none',
+                                }}
+                              >
+                                <PinnedUserMessage
+                                  item={item()}
+                                  rowWidth={containerWidth()}
+                                  theme={theme()}
+                                  caches={caches()}
+                                  expandedId={expandedUserId}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </Show>
-                    );
-                  }}
-                </Show>
-                {/* Content overlay slot: absolute cover above transcript/scroll,
+                          )}
+                        </Show>
+                      );
+                    }}
+                  </Show>
+                  {/* Content overlay slot: absolute cover above transcript/scroll,
                     below the composer (z-index 15). Hosts portal loading/empty/
                     disabled states into this element. */}
-                <Show when={props.contentOverlay}>
-                  <div
-                    ref={(el) => {
-                      contentOverlaySlotEl = el;
-                    }}
-                    class={contentOverlaySlotClass}
-                  />
-                </Show>
-                {/* Composer slot: full-width blurred backdrop strip; the inner
+                  <Show when={props.contentOverlay}>
+                    <div
+                      ref={(el) => {
+                        contentOverlaySlotEl = el;
+                      }}
+                      class={contentOverlaySlotClass}
+                    />
+                  </Show>
+                  {/* Composer slot: full-width blurred backdrop strip; the inner
                     centered div is what the host portals its React composer
                     into, and what the ResizeObserver measures for padBottom. */}
-                <Show when={props.composer === 'slot'}>
-                  <div
-                    ref={(el) => {
-                      composerSlotLayerEl = el;
-                    }}
-                    class={`${effectiveComposerPlacement() === 'center' ? composerSlotCenteredClass : composerSlotClass}${composerAnimating() ? ` ${composerSlotAnimatingClass}` : ''}`}
-                  >
+                  <Show when={props.composer === 'slot'}>
                     <div
                       ref={(el) => {
-                        heroSlotEl = el;
+                        composerSlotLayerEl = el;
                       }}
-                      class={`${heroSlotClass} ${effectiveComposerPlacement() === 'center' ? heroSlotVisibleClass : heroSlotHiddenClass}`}
-                    />
-                    <div
-                      ref={(el) => {
-                        composerSlotEl = el;
-                      }}
-                      class={`${composerSlotInnerClass} ${effectiveComposerPlacement() === 'center' ? composerSlotInnerCenteredClass : composerSlotInnerBottomClass}`}
-                    />
-                  </div>
-                </Show>
-              </div>
-            </TurnStateContext.Provider>
+                      class={`${effectiveComposerPlacement() === 'center' ? composerSlotCenteredClass : composerSlotClass}${composerAnimating() ? ` ${composerSlotAnimatingClass}` : ''}`}
+                    >
+                      <div
+                        ref={(el) => {
+                          heroSlotEl = el;
+                        }}
+                        class={`${heroSlotClass} ${effectiveComposerPlacement() === 'center' ? heroSlotVisibleClass : heroSlotHiddenClass}`}
+                      />
+                      <div
+                        ref={(el) => {
+                          composerSlotEl = el;
+                        }}
+                        class={`${composerSlotInnerClass} ${effectiveComposerPlacement() === 'center' ? composerSlotInnerCenteredClass : composerSlotInnerBottomClass}`}
+                      />
+                    </div>
+                  </Show>
+                </div>
+              </TurnStateContext.Provider>
+            </ViewStateContext.Provider>
           </CommandsContext.Provider>
         </CachesContext.Provider>
       </ThemeContext.Provider>
     </DebugContext.Provider>
   );
+}
+
+/**
+ * The blocks with the given ids (`messageId#n`), in order, as markdown and HTML; one message's
+ * blocks stay together and messages are separated. Null when any block can't be found.
+ */
+export function selectedBlocks(
+  blockIds: readonly string[],
+  blocksOf: (messageId: string) => readonly Block[] | undefined
+): { markdown: string; html: string } | null {
+  const byMessage: { messageId: string; blocks: Block[] }[] = [];
+  for (const id of blockIds) {
+    const messageId = id.slice(0, id.lastIndexOf('#'));
+    const block = blocksOf(messageId)?.find((candidate) => candidate.id === id);
+    if (!block) return null;
+    const last = byMessage.at(-1);
+    if (last?.messageId === messageId) last.blocks.push(block);
+    else byMessage.push({ messageId, blocks: [block] });
+  }
+  return {
+    markdown: byMessage.map((group) => blocksToMarkdown(group.blocks)).join('\n\n'),
+    html: byMessage.map((group) => blocksToHtml(group.blocks)).join(''),
+  };
 }

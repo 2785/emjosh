@@ -1,4 +1,5 @@
 import { PageLayout, SettingsSection } from '@emdash/ui/react/patterns';
+import { RemoteControlCard } from '@core/features/settings/browser/components/RemoteControlCard';
 import { IS_PERSONAL } from '@core/primitives/app-identity/api/app-identity';
 import { AccountTab } from '../components/AccountTab';
 import { AgentConnectionRow } from '../components/AgentConnectionRow';
@@ -45,6 +46,11 @@ export function GeneralSettingsPage() {
       <SettingsSection title="Notifications" bare>
         <NotificationSettingsCard />
       </SettingsSection>
+      {IS_PERSONAL && (
+        <SettingsSection title="Remote control" bare>
+          <RemoteControlCard />
+        </SettingsSection>
+      )}
       <SettingsSection title="Preferences">
         <AutoGenerateTaskNamesRow />
         <AutoTrustWorktreesRow />

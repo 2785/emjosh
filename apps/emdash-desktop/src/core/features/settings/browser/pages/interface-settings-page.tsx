@@ -1,4 +1,5 @@
 import { PageLayout, SettingsSection } from '@emdash/ui/react/patterns';
+import ChatDisplaySettingsCard from '../components/ChatDisplaySettingsCard';
 import FilesSettingsCard from '../components/FilesSettingsCard';
 import FrameTintCard from '../components/FrameTintCard';
 import HiddenToolsSettingsCard from '../components/HiddenToolsSettingsCard';
@@ -33,6 +34,9 @@ export function InterfaceSettingsPage() {
       </SettingsSection>
       <SettingsSection title="Links">
         <LinkOpenBehaviorRow />
+      </SettingsSection>
+      <SettingsSection title="Chat" bare>
+        <ChatDisplaySettingsCard />
       </SettingsSection>
       <SettingsSection title="Terminal" bare>
         <TerminalSettingsCard />

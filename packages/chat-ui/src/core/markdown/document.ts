@@ -90,6 +90,8 @@ export type ProseBlock = {
   runs: InlineRun[];
   /** Nesting depth (for list items and blockquotes). */
   depth?: number;
+  /** A numbered list item's number (e.g. "3."); absent for bullets and other variants. */
+  marker?: string;
 };
 
 /**
