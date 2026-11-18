@@ -20,12 +20,12 @@ import { browserWebContentsRegistry } from '@main/host/browser/browser-webconten
 import { browserOperations } from '@main/host/browser/controller';
 import { createDevPerfOperations } from '@main/host/dev-perf/controller-operations';
 import { writeRendererLogEntry } from '@main/host/file-logger';
+import { getRemoteControlService } from '@main/host/remote-control';
 import { setTrayVisible } from '@main/host/tray';
 import { updateOperations } from '@main/host/updates/controller-operations';
 import { applyNativeTheme } from '@main/host/window';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
-import { getRemoteControlService } from '@main/remote-control/instance';
 import type { DatabaseBundle } from './phases/database';
 import type { ServicesBundle } from './phases/services';
 

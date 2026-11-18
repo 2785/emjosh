@@ -4,8 +4,8 @@ import iconFile from '@/assets/images/emjosh/emjosh.png?asset';
 import { PRODUCT_NAME } from '@core/primitives/app-identity/api/app-identity';
 import { serveDesktopWire } from '@main/gateway/desktop-wire';
 import { log } from '@main/lib/logger';
-import { RemoteControlService } from './remote-control-service';
-import { RemoteControlStore } from './remote-control-store';
+import { RemoteControlService } from '@main/remote-control/remote-control-service';
+import { RemoteControlStore } from '@main/remote-control/remote-control-store';
 
 let service: RemoteControlService | undefined;
 

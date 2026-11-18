@@ -4,11 +4,7 @@ import { join } from 'node:path';
 import { connect, serve, socketTransport, type SocketLike } from '@emdash/wire/rpc';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
-import {
-  DEVICE_COOKIE,
-  startRemoteControlServer,
-  type RemoteControlServer,
-} from './remote-control-server';
+import { startRemoteControlServer, type RemoteControlServer } from './remote-control-server';
 import { RemoteControlStore } from './remote-control-store';
 
 describe('remote control server', () => {

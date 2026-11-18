@@ -1,5 +1,5 @@
 import { PageLayout, SettingsSection } from '@emdash/ui/react/patterns';
-import { RemoteControlCard } from '@core/features/remote-control/browser/RemoteControlCard';
+import { RemoteControlCard } from '@core/features/settings/browser/components/RemoteControlCard';
 import { IS_PERSONAL } from '@core/primitives/app-identity/api/app-identity';
 import { AccountTab } from '../components/AccountTab';
 import { AgentConnectionRow } from '../components/AgentConnectionRow';
