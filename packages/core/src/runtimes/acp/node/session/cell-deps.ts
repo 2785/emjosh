@@ -29,6 +29,8 @@ export interface SessionCellDeps {
   supportsSteering?: boolean;
   /** Agent-initiated turns end on a provider marker (see IAcpBehavior.reportsAgentTurnEnd). */
   reportsAgentTurnEnd?: boolean;
+  /** See IAcpBehavior.holdsTurnsForBackgroundAgents. */
+  holdsTurnsForBackgroundAgents?: boolean;
   resolveAttachment: ResolvePromptAttachment;
   logger: Logger;
   callbacks?: SessionCellCallbacks;

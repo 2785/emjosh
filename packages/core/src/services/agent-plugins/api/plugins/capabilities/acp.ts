@@ -100,6 +100,12 @@ export interface IAcpBehavior {
    */
   reportsAgentTurnEnd?: boolean;
 
+  /**
+   * A prompted turn's response arrives only after every background agent launched in it has
+   * finished, so the runtime marks them completed when the turn ends.
+   */
+  holdsTurnsForBackgroundAgents?: boolean;
+
   /** Recognize provider-specific proof that session/load's requested session is missing. */
   isSessionNotFound?(error: unknown, sessionId: string): boolean;
 

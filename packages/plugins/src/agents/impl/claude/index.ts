@@ -160,6 +160,8 @@ export const provider = registerPluginBehavior(plugin, {
     },
     enrich: enrichClaudeUpdate,
     reportsAgentTurnEnd: true,
+    // The adapter defers a turn's result until the background agents it spawned finish.
+    holdsTurnsForBackgroundAgents: true,
   },
   auth: {
     checkStatus: claudeAuthStatus,

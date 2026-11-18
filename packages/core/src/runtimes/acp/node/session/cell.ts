@@ -535,7 +535,11 @@ export class SessionCell {
     const previousRunningAgentCount = this.lastRunningAgentCount;
     const endingTurnId = this.transcript.activeTurn?.id ?? null;
     this.transcript.settleTurn(outcome);
-    this.settleEarlierBackgroundAgents(endingTurnId);
+    // When the provider holds a turn open for its background agents, a turn that ended normally
+    // has none still running, including ones it launched itself.
+    const ownAgentsFinished =
+      this.deps.holdsTurnsForBackgroundAgents === true && outcome.kind === 'done';
+    this.settleEarlierBackgroundAgents(ownAgentsFinished ? null : endingTurnId);
     this.dispatchAgentsChangedIfNeeded(previousRunningAgentCount);
     this.emitTranscriptChanged();
     this.applyEvent({ type: 'TurnEnded', outcome: machineOutcome(outcome) });
@@ -797,7 +801,8 @@ export class SessionCell {
    * turn with nothing on the ACP stream, and would otherwise stay running (and keep the session
    * generating) forever. A turn ending after the launch turn is the last point its completion
    * could have gone unreported. An agent genuinely still running then shows completed early; its
-   * real completion still arrives later as a notification turn.
+   * real completion still arrives later as a notification turn. A null `endingTurnId` marks every
+   * running background agent completed.
    */
   private settleEarlierBackgroundAgents(endingTurnId: string | null): void {
     const stale = this.transcript.agents.filter(

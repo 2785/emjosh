@@ -280,6 +280,31 @@ describe('SessionCell prompts', () => {
     expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'running' }]);
     expect(cell.sessionState.isGenerating).toBe(true);
   });
+  it('completes a turn’s own background agents when the provider holds the turn for them', async () => {
+    const { cell, agent } = makePendingCell(new FakeAcpAgent(), {
+      holdsTurnsForBackgroundAgents: true,
+    });
+    cell.applySessionReady();
+    agent.prompt = vi.fn().mockImplementation(async () => {
+      cell.push(backgroundAgentLaunch('agent-1'));
+      return { stopReason: 'end_turn' };
+    });
+    await cell.prompt({ text: 'launch an agent' });
+    expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'completed' }]);
+    expect(cell.sessionState.isGenerating).toBe(false);
+  });
+  it('fails a held turn’s background agents when it is cancelled', async () => {
+    const { cell, agent } = makePendingCell(new FakeAcpAgent(), {
+      holdsTurnsForBackgroundAgents: true,
+    });
+    cell.applySessionReady();
+    agent.prompt = vi.fn().mockImplementation(async () => {
+      cell.push(backgroundAgentLaunch('agent-1'));
+      return { stopReason: 'cancelled' };
+    });
+    await cell.prompt({ text: 'launch an agent' });
+    expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'failed' }]);
+  });
   it('completes background agents from earlier turns when a later turn ends', async () => {
     // Claude doesn't report an agent that finishes during a turn on the ACP stream.
     const { cell, agent } = makeCell();
