@@ -3,6 +3,19 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.17 — 2026-11-17
+
+- Remote control: use Emjosh from your phone or another computer over Tailscale, with push
+  notifications when workspaces finish or need you, and a dedicated phone layout.
+- Copying from chat keeps formatting (lists, code, emphasis) when pasted into Slack or docs,
+  and code keeps its line breaks; dragging past the text no longer jumps the selection.
+- Tables get copy and wrap buttons; diagrams get a copy button.
+- Settings for chat width and wrapping code blocks.
+- Deleting an image's pill from a message removes the image.
+- New Task opens with the cursor in the prompt; the name field is gone (agents name
+  workspaces).
+- The window reopens where it was left.
+
 ## 0.1.16 — 2026-11-10
 
 - Much faster typing, scrolling and switching with many workspaces: the main process no
