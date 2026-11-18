@@ -37,6 +37,8 @@ export interface AcpConnectionEntry extends AcpConnectionContext {
   supportsSteering: boolean;
   /** See IAcpBehavior.reportsAgentTurnEnd. */
   reportsAgentTurnEnd: boolean;
+  /** See IAcpBehavior.holdsTurnsForBackgroundAgents. */
+  holdsTurnsForBackgroundAgents: boolean;
   mcpCapabilities: Required<Pick<McpCapabilities, 'http' | 'sse'>>;
 }
 
@@ -175,6 +177,7 @@ async function provisionAcpConnection(
     supportsLoadSession: connection.data.supportsLoadSession,
     supportsSteering: connection.data.supportsSteering,
     reportsAgentTurnEnd: binding.behavior.reportsAgentTurnEnd === true,
+    holdsTurnsForBackgroundAgents: binding.behavior.holdsTurnsForBackgroundAgents === true,
     mcpCapabilities: connection.data.mcpCapabilities,
   };
 }

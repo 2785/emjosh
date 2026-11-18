@@ -295,6 +295,7 @@ export class SessionMaterializer {
       agent: connection.agent,
       supportsSteering: connection.supportsSteering,
       reportsAgentTurnEnd: connection.reportsAgentTurnEnd,
+      holdsTurnsForBackgroundAgents: connection.holdsTurnsForBackgroundAgents,
       resolveAttachment: this.deps.resolveAttachment,
       logger: this.deps.logger,
       callbacks,
