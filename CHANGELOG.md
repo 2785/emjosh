@@ -3,6 +3,10 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.18 — 2026-11-18
+
+- Fixed workspaces left spinning after their background agents had finished.
+
 ## 0.1.17 — 2026-11-17
 
 - Remote control: use Emjosh from your phone or another computer over Tailscale, with push
