@@ -43,6 +43,7 @@ function setup(rows: Omit<ControlWorkspace, 'pullRequest'>[]) {
       conversationId === 'conv-self' ? { taskId: 'self', provider: 'claude' } : null
     ),
     archiveWorkspace: vi.fn(async () => {}),
+    restoreWorkspace: vi.fn(async () => {}),
     renameWorkspace: vi.fn(async () => {}),
     addProject: vi.fn(async (input: { path: string; name: string }) => ({ id: 'new', ...input })),
     cloneProject: vi.fn(async (input: { repositoryUrl: string; name: string }) => ({
@@ -92,6 +93,23 @@ describe('WorkspaceControlService', () => {
     expect(deps.archiveWorkspace).toHaveBeenCalledTimes(1);
     expect(deps.archiveWorkspace).toHaveBeenCalledWith('p2', 'old');
     expect(deps.onArchived).toHaveBeenCalledWith(caller, [{ id: 'old', name: 'old' }]);
+  });
+
+  it('unarchives archived workspaces and skips the rest', async () => {
+    const { service, deps } = setup([
+      workspace({ id: 'live', name: 'live' }),
+      workspace({ id: 'old', projectId: 'p2', archived: true }),
+    ]);
+
+    const result = await service.unarchiveWorkspaces(['old', 'live', 'nope', 'old']);
+
+    expect(result.unarchived).toEqual(['old']);
+    expect(result.skipped).toEqual([
+      { id: 'live', reason: 'not archived' },
+      { id: 'nope', reason: 'not found' },
+    ]);
+    expect(deps.restoreWorkspace).toHaveBeenCalledTimes(1);
+    expect(deps.restoreWorkspace).toHaveBeenCalledWith('p2', 'old');
   });
 
   it("creates workspaces with the caller's agent unless one is given", async () => {

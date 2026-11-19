@@ -39,6 +39,7 @@ describe('control MCP endpoint', () => {
       pullRequestForBranch: async () => null,
       callerContext,
       archiveWorkspace: async () => {},
+      restoreWorkspace: async () => {},
       renameWorkspace: async () => {},
       addProject: async () => ({ id: 'x', name: 'x', path: '/x' }),
       cloneProject: async () => ({ id: 'x', name: 'x', path: '/x' }),
@@ -81,6 +82,10 @@ describe('control MCP endpoint', () => {
     expect(tools).toEqual([
       'add_project',
       'add_to_initiative',
+      'app_api_call',
+      'app_api_describe',
+      'app_api_list',
+      'app_api_read',
       'archive_workspaces',
       'clone_project',
       'create_initiative',
@@ -99,11 +104,13 @@ describe('control MCP endpoint', () => {
       'set_initiative_lead',
       'set_message_delivery',
       'subscribe',
+      'unarchive_workspaces',
       'unsubscribe',
       'wait_for_messages',
     ]);
     // Clients such as Claude Code put these into the agent's system prompt.
     expect(client.getInstructions()).toContain('call rename_workspace');
+    expect(client.getInstructions()).toContain('app_api_list');
     expect(client.getInstructions()).toContain('create_initiative');
     expect(client.getInstructions()).toContain('dedicated lead workspace that only orchestrates');
     expect(client.getInstructions()).toContain('background shell loop');

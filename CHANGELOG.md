@@ -3,6 +3,13 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.19 — 2026-11-19
+
+- Agents can unarchive workspaces.
+- Agents can do anything the app's UI can through Emjosh's MCP tools: settings, automations,
+  MCP servers, skills, the prompt library, project settings, conversations, terminals and more
+  (`app_api_list`, `app_api_describe`, `app_api_call`, `app_api_read`).
+
 ## 0.1.18 — 2026-11-18
 
 - Fixed workspaces left spinning after their background agents had finished.

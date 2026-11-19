@@ -27,10 +27,21 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish, get blocked, or need a decision. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
 - Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
+- Anything else the Emjosh app can do (its settings, automations, MCP servers, skills, prompt library, project settings, conversations, terminals, pull requests, and so on) is reachable through the app API: find operations with app_api_list, read their input with app_api_describe, then app_api_call or app_api_read. Use the dedicated tools above where one fits. Confirm with the user before anything destructive (deleting projects, workspaces, conversations, files or automations) they did not explicitly ask for.
 - If current_workspace returns null, you are not running inside an Emjosh workspace, and the points above about workspaces and initiatives don't apply.`;
 
+/** App values include maps, sets and bigints, which plain JSON drops or rejects. */
+function jsonReplacer(_key: string, value: unknown): unknown {
+  if (value instanceof Map) return Object.fromEntries(value);
+  if (value instanceof Set) return [...value];
+  if (typeof value === 'bigint') return value.toString();
+  return value;
+}
+
 function json(data: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  return {
+    content: [{ type: 'text' as const, text: JSON.stringify(data, jsonReplacer, 2) ?? 'null' }],
+  };
 }
 
 /** MCP tools over the control service, bound to one caller. */
@@ -170,6 +181,16 @@ export function buildControlMcpServer(
       inputSchema: { workspaceIds: z.array(z.string()).min(1) },
     },
     async ({ workspaceIds }) => json(await service.archiveWorkspaces(caller, workspaceIds))
+  );
+
+  server.registerTool(
+    'unarchive_workspaces',
+    {
+      description:
+        'Bring archived workspaces back (list them with list_workspaces includeArchived).',
+      inputSchema: { workspaceIds: z.array(z.string()).min(1) },
+    },
+    async ({ workspaceIds }) => json(await service.unarchiveWorkspaces(workspaceIds))
   );
 
   server.registerTool(
@@ -403,6 +424,58 @@ export function buildControlMcpServer(
       },
     },
     async (input) => json(await service.waitForMessages(caller, input))
+  );
+
+  server.registerTool(
+    'app_api_list',
+    {
+      description:
+        "List the Emjosh app's operations: everything its UI can do, by dotted path " +
+        "(e.g. 'appSettings.update', 'automations.create', 'mcp.saveServer'). Kinds: " +
+        "'procedure' (call with input), 'mutation' (call with key and input), 'state' (read " +
+        'with key). Filter by a word in the path to keep the list short.',
+      inputSchema: {
+        filter: z.string().optional().describe("Only paths containing this, e.g. 'settings'."),
+      },
+    },
+    async ({ filter }) => json(service.appApi().list(filter))
+  );
+
+  server.registerTool(
+    'app_api_describe',
+    {
+      description:
+        'The JSON Schema of an app operation’s input (and key, for mutations and states). ' +
+        'Types shown as {} are app objects: read the matching state or list first to see ' +
+        'their shape.',
+      inputSchema: { path: z.string() },
+    },
+    async ({ path }) => json(service.appApi().describe(path))
+  );
+
+  server.registerTool(
+    'app_api_call',
+    {
+      description:
+        'Call an app procedure or mutation, as the UI would. Mutations also need the key of ' +
+        'their live model (e.g. { projectId } for tasks.taskList.*). Describe it first. ' +
+        'Confirm with the user before destructive calls they did not ask for.',
+      inputSchema: {
+        path: z.string(),
+        input: z.unknown().optional().describe('The input; omit for operations without one.'),
+        key: z.unknown().optional().describe('Live model key; mutations only.'),
+      },
+    },
+    async ({ path, input, key }) => json(await service.appApi().call(path, input, key))
+  );
+
+  server.registerTool(
+    'app_api_read',
+    {
+      description: "Read an app live state's current value for a key (see app_api_describe).",
+      inputSchema: { path: z.string(), key: z.unknown().optional() },
+    },
+    async ({ path, key }) => json(await service.appApi().read(path, key))
   );
 
   return server;
