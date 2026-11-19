@@ -1,5 +1,6 @@
 import type { Initiative, InitiativeMessage } from '@core/features/initiatives/api/contract';
 import { ensureUniqueTaskDisplayName, isRandomTaskName } from '@core/features/tasks/api/task-names';
+import type { AppApi } from './app-api';
 
 /**
  * Workspace control: what an agent (inside Emjosh today, any MCP client later) can do with
@@ -113,6 +114,7 @@ export type WorkspaceControlDeps = {
     options?: Record<string, string | boolean>;
   } | null>;
   archiveWorkspace(projectId: string, taskId: string): Promise<void>;
+  restoreWorkspace(projectId: string, taskId: string): Promise<void>;
   renameWorkspace(projectId: string, taskId: string, name: string): Promise<void>;
   createWorkspace(
     input: CreateWorkspaceInput & {
@@ -125,6 +127,8 @@ export type WorkspaceControlDeps = {
   ): Promise<{ id: string; name: string; branch: string | null }>;
   onArchived?(caller: ControlCaller, workspaces: { id: string; name: string }[]): void;
   initiatives?: ControlInitiatives;
+  /** The rest of the app, for whatever the dedicated operations don't cover. */
+  appApi?: AppApi;
 };
 
 function baseName(path: string): string {
@@ -286,6 +290,32 @@ export class WorkspaceControlService {
     }
     if (archived.length > 0) this.deps.onArchived?.(caller, archived);
     return { archived: archived.map((workspace) => workspace.id), skipped };
+  }
+
+  /** Brings archived workspaces back. */
+  async unarchiveWorkspaces(
+    workspaceIds: string[]
+  ): Promise<{ unarchived: string[]; skipped: { id: string; reason: string }[] }> {
+    const byId = new Map(
+      (await this.deps.listWorkspaces({ includeArchived: true })).map((w) => [w.id, w])
+    );
+    const unarchived: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    for (const id of new Set(workspaceIds)) {
+      const workspace = byId.get(id);
+      if (!workspace) skipped.push({ id, reason: 'not found' });
+      else if (!workspace.archived) skipped.push({ id, reason: 'not archived' });
+      else {
+        await this.deps.restoreWorkspace(workspace.projectId, id);
+        unarchived.push(id);
+      }
+    }
+    return { unarchived, skipped };
+  }
+
+  appApi(): AppApi {
+    if (!this.deps.appApi) throw new Error('The app API is not available.');
+    return this.deps.appApi;
   }
 
   /**

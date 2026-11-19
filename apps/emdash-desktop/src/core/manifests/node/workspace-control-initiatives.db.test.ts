@@ -53,6 +53,7 @@ describe('workspace control initiatives and messages', () => {
         return ['lead', 'peer', 'other'].includes(taskId) ? { taskId, provider: 'claude' } : null;
       },
       archiveWorkspace: async () => {},
+      restoreWorkspace: async () => {},
       renameWorkspace: async () => {},
       addProject: async () => ({ id: 'x', name: 'x', path: '/x' }),
       cloneProject: async () => ({ id: 'x', name: 'x', path: '/x' }),

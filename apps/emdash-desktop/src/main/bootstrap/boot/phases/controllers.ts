@@ -1,5 +1,5 @@
 import type { Scope } from '@emdash/shared/concurrency';
-import type { Controller } from '@emdash/wire/rpc';
+import { connect, memoryTransportPair, type Connection, type Controller } from '@emdash/wire/rpc';
 import { app } from 'electron';
 import {
   desktopNodeControllers,
@@ -11,6 +11,7 @@ import { IS_PERSONAL } from '@core/primitives/app-identity/api/app-identity';
 import { agentStatusService } from '@main/core/agent-status/agent-status-service';
 import { controlEndpointFile } from '@main/core/workspace-control/endpoint-file';
 import type { DesktopRuntimes } from '@main/gateway/desktop-runtimes';
+import { serveDesktopWire } from '@main/gateway/desktop-wire';
 import { getRemoteControlService } from '@main/host/remote-control';
 import { log } from '@main/lib/logger';
 import { appScope } from '../../core/app-scope';
@@ -63,6 +64,7 @@ export async function bootControllers(
           {
             pullRequests: runtimes.clients.pullRequests,
             pullRequestsRegistration: services.pullRequestsRegistration,
+            appWire: inProcessDesktopWire(scope),
             endpointFile: controlEndpointFile(),
             version: app.getVersion(),
             logger: log,
@@ -108,4 +110,25 @@ function assertDomainKeyParity(): void {
       ', '
     )}], unknown controllers [${unknownControllers.join(', ')}]`
   );
+}
+
+/**
+ * The desktop wire served in-process, connected on first use: agents reach the app through the
+ * same calls and live states as the window.
+ */
+function inProcessDesktopWire(scope: Scope) {
+  let connection: Connection | null = null;
+  const open = (): Connection => {
+    if (connection) return connection;
+    const pair = memoryTransportPair();
+    scope.add(serveDesktopWire(pair.right));
+    // Long operations (cloning, deleting) run past the default call deadline.
+    connection = connect(pair.left, { callTimeoutMs: 10 * 60_000 });
+    scope.add(() => connection?.dispose());
+    return connection;
+  };
+  return {
+    call: (path: string, input: unknown) => open().call(path, input),
+    snapshot: (topic: string) => open().snapshot(topic),
+  };
 }

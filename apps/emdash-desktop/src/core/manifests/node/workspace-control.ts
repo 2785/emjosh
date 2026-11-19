@@ -15,6 +15,7 @@ import { createProjectOperations } from '@core/features/projects/node/controller
 import { createProjectFromRemote } from '@core/features/projects/node/operations/create-project-from-remote';
 import { formatTaskDisplayName, normalizeTaskName } from '@core/features/tasks/api/task-names';
 import { generateRandom } from '@core/features/tasks/node/name-generation/generateTaskName';
+import { AppApi, appApiCatalog, type AppWire } from '@core/features/workspace-control/node/app-api';
 import {
   startControlMcpEndpoint,
   type ControlMcpEndpoint,
@@ -27,6 +28,7 @@ import {
 } from '@core/features/workspace-control/node/workspace-control-service';
 import { workspaceRegistryTable as workspaces } from '@core/features/workspaces/api/node/registry/workspace-registry';
 import { getProvisionedWorkspaceBranch } from '@core/features/workspaces/api/node/workspace-branch';
+import { desktopDomainContracts } from '@core/manifests/shared/domain-contracts';
 import type { Project } from '@core/primitives/projects/api';
 import { resolveTaskBranchName } from '@core/primitives/tasks/api/resolve-task-branch-name';
 import { buildWorkspaceConfigFromPreset } from '@core/primitives/workspaces/api/build-workspace-config-from-preset';
@@ -94,6 +96,8 @@ export async function startWorkspaceControl(
   extras: {
     pullRequests: ContractClient<PullRequestsContract>;
     pullRequestsRegistration: Pick<PullRequestsRegistration, 'repositoryUrlsForProject'>;
+    /** The app's own wire, for the app API tools; without it they are unavailable. */
+    appWire?: AppWire;
     /** Where the endpoint URL and token are published for local MCP clients. */
     endpointFile: string;
     version: string;
@@ -369,6 +373,7 @@ export async function startWorkspaceControl(
     },
 
     archiveWorkspace: (projectId, taskId) => taskService.archiveTask(projectId, taskId, telemetry),
+    restoreWorkspace: (_projectId, taskId) => taskService.restoreTask(taskId),
 
     async renameWorkspace(projectId, taskId, name) {
       const result = await taskService.renameTask(projectId, taskId, name);
@@ -453,6 +458,8 @@ export async function startWorkspaceControl(
   };
 
   deps.initiatives = initiatives;
+  if (extras.appWire)
+    deps.appApi = new AppApi(appApiCatalog(desktopDomainContracts), extras.appWire);
   const service = new WorkspaceControlService(deps);
   const endpoint = await startControlMcpEndpoint({
     service,
