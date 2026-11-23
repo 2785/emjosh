@@ -2,6 +2,7 @@ import type { ChatContext } from '@emdash/chat-ui';
 import { getIntegrationsClient } from '@core/features/integrations/api/browser/client';
 import { registerIssueMentionIcons } from '@core/primitives/issues/browser/issue-mention-icons';
 import { advertisedCommandProvider } from './advertised-command-provider';
+import { CHAT_SANS_FONTS } from './chat-fonts';
 import { chatMentionProvider } from './chat-mention-provider';
 import { getChatUiRuntime } from './chat-ui-runtime';
 
@@ -19,7 +20,12 @@ let didPreloadIssueMentionIcons = false;
 export function initSharedChatContext(): ChatContext {
   if (!shared) {
     preloadIssueMentionIcons();
-    shared = getChatUiRuntime().createChatContext({
+    const runtime = getChatUiRuntime();
+    shared = runtime.createChatContext({
+      config: {
+        ...runtime.DEFAULT_CONFIG,
+        fonts: { ...runtime.DEFAULT_CONFIG.fonts, sans: [...CHAT_SANS_FONTS] },
+      },
       mentionProvider: chatMentionProvider,
       commandProvider: advertisedCommandProvider,
     });

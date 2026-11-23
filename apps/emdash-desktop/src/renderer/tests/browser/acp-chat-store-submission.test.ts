@@ -471,6 +471,7 @@ describe('AcpChatStore prompt submission', () => {
 
   beforeAll(() => {
     installChatUiRuntime({
+      DEFAULT_CONFIG: {} as never,
       createChatContext: () => ({}) as never,
       createChatState: () =>
         ({
