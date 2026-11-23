@@ -3,6 +3,10 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.20 — 2026-11-23
+
+- Fixed the gap before inline code, links and mentions in chat (and lines wrapping early).
+
 ## 0.1.19 — 2026-11-19
 
 - Agents can unarchive workspaces.

@@ -2,6 +2,7 @@
 import './perf/ui-perf-recorder';
 import {
   connectSession,
+  DEFAULT_CONFIG,
   createChatContext,
   createChatState,
   createChatView,
@@ -96,6 +97,7 @@ async function bootstrap() {
 
   installChatUiRuntime({
     connectSession,
+    DEFAULT_CONFIG,
     createChatContext,
     createChatState,
     createChatView,
