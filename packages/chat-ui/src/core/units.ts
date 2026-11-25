@@ -29,7 +29,14 @@
  */
 
 import type { Component } from 'solid-js';
-import type { ChatItem, PlanState, SyntheticItem, TerminalOutputSnapshot } from '@/model';
+import type {
+  ChatItem,
+  CollapsedTurn,
+  PlanState,
+  SyntheticItem,
+  TerminalOutputSnapshot,
+  TranscriptTurn,
+} from '@/model';
 import type { ChatCaches } from './caches';
 import type { MeasureCtx, RenderCtx } from './define';
 import type { Margin } from './spacing';
@@ -120,6 +127,8 @@ export type SegmentCtx = {
   plan: () => PlanState | null;
   pendingToolCallIds: () => Set<string>;
   terminalOutput: (terminalId: string) => TerminalOutputSnapshot | null;
+  /** Host hook that folds a turn into one collapsible group (see CollapsedTurn). */
+  collapseTurn?: (turn: TranscriptTurn) => CollapsedTurn | null;
 };
 
 // ── UnitDef ───────────────────────────────────────────────────────────────────

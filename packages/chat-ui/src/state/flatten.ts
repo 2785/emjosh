@@ -128,8 +128,7 @@ export function flattenTier(
     out.push(...group);
   };
 
-  for (const turn of turns) {
-    const items = turn.items as readonly ChatItem[];
+  const processItems = (items: readonly ChatItem[]): void => {
     for (let i = 0; i < items.length; ) {
       const item = items[i];
       if (item.kind !== 'thinking') {
@@ -143,6 +142,24 @@ export function flattenTier(
       const steps = items.slice(i, end) as ChatThinking[];
       processItem(steps.length === 1 ? item : thinkingGroup(steps));
       i = end;
+    }
+  };
+
+  for (const turn of turns) {
+    const items = turn.items as readonly ChatItem[];
+    const collapsed = ctx.collapseTurn?.(turn);
+    if (collapsed) {
+      const visible = items.find((item) => item.id === collapsed.visibleItemId);
+      processItem({
+        kind: 'turn-group',
+        id: `${turn.id}:turn-group`,
+        label: collapsed.label,
+        active: ctx.active,
+        items: visible ? items.filter((item) => item !== visible) : items,
+      });
+      if (visible) processItem(visible);
+    } else {
+      processItems(items);
     }
 
     if (ctx.active && shouldShowWorking(items)) {

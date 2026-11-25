@@ -63,7 +63,7 @@ import { blocksToHtml, blocksToMarkdown } from './core/markdown/serialize-blocks
 import { STICK_THRESHOLD_PX } from './core/stick-to-bottom';
 import { unitReservedHeight } from './core/units';
 import { Virtualizer } from './core/virtualizer';
-import type { ChatItem, ChatMessage, TranscriptTurn } from './model';
+import type { ChatItem, ChatMessage, CollapsedTurn, TranscriptTurn } from './model';
 import type { ChatState, ScrollMode } from './state/chat-state';
 import { flattenTier, makeUnitsView, collectUserTurnUnits } from './state/flatten';
 import type { UnitsView } from './state/flatten';
@@ -263,6 +263,8 @@ export type ChatRootProps = {
    * transcript while scrolling. Defaults to false.
    */
   pinUserMessages?: boolean;
+  /** Folds turns the host considers background activity into one collapsible row each. */
+  collapseTurn?: (turn: TranscriptTurn) => CollapsedTurn | null;
   /**
    * Controls whether ChatRoot renders an internal composer slot.
    * - `'slot'`: render a sticky bottom slot; internal ResizeObserver drives padBottom.
@@ -527,6 +529,7 @@ export function ChatRoot(props: ChatRootProps) {
     plan: () => state().session.state.plan,
     pendingToolCallIds: () => state().session.state.pendingToolCallIds,
     terminalOutput: (terminalId: string) => state().session.state.terminalOutput(terminalId),
+    collapseTurn: props.collapseTurn,
   });
 
   let committedUnitsArr: ReturnType<typeof flattenTier> = [];

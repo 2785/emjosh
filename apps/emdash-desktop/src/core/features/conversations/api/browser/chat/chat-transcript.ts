@@ -37,6 +37,7 @@ export type ChatTranscriptProps = Pick<
   ChatViewOptions,
   | 'stickToBottom'
   | 'pinUserMessages'
+  | 'collapseTurn'
   | 'composer'
   | 'composerPlacement'
   | 'contentOverlay'
@@ -85,6 +86,7 @@ export function ChatTranscript(props: ChatTranscriptProps): React.ReactElement {
       contentOverlay: p.contentOverlay,
       stickToBottom: p.stickToBottom,
       pinUserMessages: p.pinUserMessages,
+      collapseTurn: p.collapseTurn,
       class: p.class,
       contentClass: p.contentClass,
       commands: p.commands ?? {},

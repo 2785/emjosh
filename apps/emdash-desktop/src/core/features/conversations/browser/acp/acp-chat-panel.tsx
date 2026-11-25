@@ -72,6 +72,7 @@ import {
 } from './acp-dropped-file';
 import { labelImageAttachments } from './acp-image-labels';
 import { appendDraftCommentsContext } from './draft-comments-context';
+import { collapseInitiativeTurn } from './initiative-turns';
 import { buildIssueMentionHiddenContext } from './issue-mention-context';
 import { createTranscriptFileCommands } from './transcript-file-commands';
 
@@ -913,6 +914,7 @@ export const AcpChatView = observer(function AcpChatView({
         contentOverlay
         stickToBottom
         pinUserMessages
+        collapseTurn={collapseInitiativeTurn}
         onReady={handleReady}
         commands={transcriptCommands}
         onAtBottomChange={setAtBottom}

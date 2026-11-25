@@ -35,6 +35,7 @@ import {
 import { subagentFromItem, subagentUnitDef } from '@components/rows/tools/subagent/subagent.def';
 import { toolGroupUnitDef } from '@components/rows/tools/tool-group/tool-group.def';
 import { toolFromItem, toolUnitDef } from '@components/rows/tools/tool/tool.def';
+import { type TurnGroupData, turnGroupUnitDef } from '@components/rows/turn-group/turn-group.def';
 import { turnOutcomeUnitDef } from '@components/rows/turn-outcome/turn-outcome.def';
 import { workingUnitDef } from '@components/rows/working/working.def';
 import type { GroupChrome, ItemSegmenter, SegmentCtx, SegmentItem, UnitDef } from '@core/units';
@@ -53,6 +54,8 @@ import type {
   SyntheticItem,
   ThinkingGroupItem,
   ToolNode,
+  TurnGroupItem,
+  TurnGroupLine,
 } from '@/model';
 import { ROW_INSET_X } from './row-metrics';
 
@@ -170,6 +173,70 @@ function toolNodeSegment(kind: ToolNode['kind']): ItemSegmenter {
   };
 }
 
+// ── Collapsed turns ──────────────────────────────────────────────────────────
+
+/** Lines kept per message in a collapsed turn's log; the full text stays in the transcript. */
+const TURN_GROUP_MESSAGE_LINES = 12;
+
+function textLines(text: string, tone: TurnGroupLine['tone']): TurnGroupLine[] {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const kept = lines.slice(0, TURN_GROUP_MESSAGE_LINES).map((line) => ({ text: line, tone }));
+  if (lines.length > kept.length) {
+    kept.push({ text: `… ${lines.length - kept.length} more lines`, tone });
+  }
+  return kept;
+}
+
+function toolLine(data: ToolPresentationData): string {
+  switch (data.kind) {
+    case 'execute':
+      return `$ ${data.inputSummary ?? data.command.split('\n')[0] ?? ''}`;
+    case 'file-op':
+      return `${data.op} ${data.ops.map((op) => op.path).join(', ')}`;
+    case 'diff':
+      return `edit ${data.path}`;
+    case 'plan':
+      return `plan (${data.entries.length})`;
+    case 'subagent':
+      return `subagent ${data.name}`;
+    default:
+      return [data.name, data.inputSummary].filter(Boolean).join(' ');
+  }
+}
+
+/** One log line per tool call and per message line, in transcript order; reasoning is left out. */
+function turnGroupLines(items: readonly ChatItem[], ctx: SegmentCtx): TurnGroupLine[] {
+  return items.flatMap((item): TurnGroupLine[] => {
+    if (item.kind === 'message') {
+      return textLines(item.text, item.role === 'user' ? 'prompt' : 'assistant');
+    }
+    if (item.kind === 'notification') return [{ text: item.title, tone: 'tool' }];
+    if (item.kind.endsWith('-tool-call') || item.kind === 'tool-group') {
+      return [{ text: toolLine(toUnitData(item as ToolNode, ctx)), tone: 'tool' }];
+    }
+    return [];
+  });
+}
+
+const turnGroupSegmenter: ItemSegmenter = {
+  kind: 'turn-group',
+  chrome: COMPOSITE_CHROME,
+  segment: (item, ctx) => {
+    const group = item as TurnGroupItem;
+    const data: TurnGroupData = {
+      kind: 'turn-group',
+      id: group.id,
+      label: group.label,
+      active: group.active,
+      lines: turnGroupLines(group.items, ctx),
+    };
+    return [unit('turn-group', group, data, { key: 'self' })];
+  },
+};
+
 // ── SEGMENTERS ────────────────────────────────────────────────────────────────
 
 /**
@@ -208,6 +275,7 @@ export const SEGMENTERS: Record<string, ItemSegmenter> = {
   'create-plan-tool-call': toolNodeSegment('create-plan-tool-call'),
   'unknown-tool-call': toolNodeSegment('unknown-tool-call'),
   'tool-group': toolNodeSegment('tool-group'),
+  'turn-group': turnGroupSegmenter,
   working: nativePassthrough<SyntheticItem>('working', (item) => item, COMPOSITE_CHROME),
   'turn-outcome': nativePassthrough<SyntheticItem>(
     'turn-outcome',
@@ -240,6 +308,7 @@ export const UNIT_REGISTRY: Record<string, RegistryUnitDef> = {
   'resource-link': resourceLinkUnitDef as unknown as RegistryUnitDef,
   // Hierarchical composite: parent tool call with nested children
   'tool-group': toolGroupUnitDef as unknown as RegistryUnitDef,
+  'turn-group': turnGroupUnitDef as unknown as RegistryUnitDef,
   working: workingUnitDef as unknown as RegistryUnitDef,
   'turn-outcome': turnOutcomeUnitDef as unknown as RegistryUnitDef,
 };

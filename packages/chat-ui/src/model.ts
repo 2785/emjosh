@@ -326,7 +326,28 @@ export type TurnOutcomeItem = {
   outcome: TranscriptTurnOutcome;
 };
 
-export type SyntheticItem = ThinkingGroupItem | WorkingItem | TurnOutcomeItem;
+/**
+ * How a host collapses a turn it considers background activity (for example, one started by a
+ * message from another agent rather than the user): `label` heads the collapsed group, and
+ * `visibleItemId` names an item that stays shown below it, such as the reply meant for the user.
+ */
+export type CollapsedTurn = { label: string; visibleItemId: string | null };
+
+/** One line of a collapsed turn's expanded log. */
+export type TurnGroupLine = { text: string; tone: 'prompt' | 'assistant' | 'tool' };
+
+/** Presentation-only stand-in for a collapsed turn's items (see CollapsedTurn). */
+export type TurnGroupItem = {
+  kind: 'turn-group';
+  /** Synthetic id derived from the turn id, so disclosure state survives re-segmentation. */
+  id: string;
+  label: string;
+  /** True while the turn is still running. */
+  active: boolean;
+  items: readonly ChatItem[];
+};
+
+export type SyntheticItem = ThinkingGroupItem | WorkingItem | TurnOutcomeItem | TurnGroupItem;
 
 export type ChatItem =
   | TranscriptItem

@@ -1235,8 +1235,9 @@ export function leadPrompt(input: {
             'it before assigning that part elsewhere.',
         ]
       : []),
-    'Stay responsive. Messages from members are delivered into this chat but wait until your ' +
-      'current turn ends, so keep turns short. Do not do slow or non-trivial work yourself ' +
+    'Stay responsive. What needs you (members done, blocked or needing a decision, the ' +
+      "user's posts) is delivered into this chat in batches once your current turn ends, so " +
+      'keep turns short; status events and fyi messages wait in read_messages. Do not do slow or non-trivial work yourself ' +
       '(code changes, builds, test runs, long investigations); send it to a workspace. Do not ' +
       'change code in this workspace.',
   ].join('\n\n');
