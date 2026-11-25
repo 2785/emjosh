@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { type ControlMcpEndpoint, startControlMcpEndpoint } from './mcp-endpoint';
+import {
+  CONTROL_MCP_INSTRUCTIONS,
+  type ControlMcpEndpoint,
+  startControlMcpEndpoint,
+} from './mcp-endpoint';
 import { WorkspaceControlService } from './workspace-control-service';
 
 describe('control MCP endpoint', () => {
@@ -63,12 +67,13 @@ describe('control MCP endpoint', () => {
     return client;
   }
 
-  it('publishes its URL and token in a file only the user can read', async () => {
+  it('publishes its URL, token and instructions in a file only the user can read', async () => {
     const { file } = await start();
 
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(endpoint!.info);
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(endpoint!.info.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    expect(endpoint!.info.instructions).toBe(CONTROL_MCP_INSTRUCTIONS);
   });
 
   it('serves the workspace tools to authenticated callers, scoped to their conversation', async () => {

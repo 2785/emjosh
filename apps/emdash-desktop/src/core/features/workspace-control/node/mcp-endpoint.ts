@@ -10,8 +10,11 @@ import type { ControlCaller, WorkspaceControlService } from './workspace-control
 /** Header an Emjosh agent session sends to identify the conversation it runs in. */
 export const CALLER_CONVERSATION_HEADER = 'x-emjosh-conversation';
 
-/** Written to the endpoint file so local MCP clients can find and authenticate to Emjosh. */
-export type ControlEndpointInfo = { url: string; token: string };
+/**
+ * Written to the endpoint file so local MCP clients can find and authenticate to Emjosh.
+ * `instructions` is for agents that don't read MCP server instructions themselves.
+ */
+export type ControlEndpointInfo = { url: string; token: string; instructions: string };
 
 /** Added to agents' system prompts by MCP clients such as Claude Code. */
 export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace: a branch and worktree of one repository with its own agent chat. These tools manage workspaces and initiatives (groups of workspaces across repositories working towards one goal). Use them as described below without waiting to be asked.
@@ -544,7 +547,11 @@ export async function startControlMcpEndpoint(options: {
     server.listen(0, '127.0.0.1', () => resolve());
   });
   const { port } = server.address() as AddressInfo;
-  const info: ControlEndpointInfo = { url: `http://127.0.0.1:${port}/mcp`, token };
+  const info: ControlEndpointInfo = {
+    url: `http://127.0.0.1:${port}/mcp`,
+    token,
+    instructions: CONTROL_MCP_INSTRUCTIONS,
+  };
   await writeFile(options.endpointFile, JSON.stringify(info), { mode: 0o600 });
   await chmod(options.endpointFile, 0o600);
 

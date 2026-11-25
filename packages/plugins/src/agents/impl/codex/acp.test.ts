@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import type { Agent } from '@agentclientprotocol/sdk';
 import type { AcpClientFactory } from '@emdash/core/services/agent-plugins/api/plugins';
@@ -19,6 +22,11 @@ describe('codex acp behavior', () => {
 
   it('behavior.acp is defined', () => {
     expect(acpBehavior()).toBeDefined();
+  });
+
+  it('ends turns Codex starts itself on its marker, and does not hold turns for subagents', () => {
+    expect(acpBehavior().reportsAgentTurnEnd).toBe(true);
+    expect(acpBehavior().holdsTurnsForBackgroundAgents).toBeUndefined();
   });
 
   it('registers startup diagnostic enrichment only for Codex', () => {
@@ -67,6 +75,57 @@ describe('codex acp behavior', () => {
       const result = acpBehavior().buildSpawn(spawnCtx);
       expect(result.args.length).toBeGreaterThan(0);
       expect(result.args[0]).toContain('codex-acp');
+    });
+
+    describe('control instructions', () => {
+      const withCodexHome = (configToml: string | null, run: (home: string) => void) => {
+        const home = mkdtempSync(join(tmpdir(), 'codex-home-'));
+        try {
+          if (configToml !== null) writeFileSync(join(home, 'config.toml'), configToml);
+          run(home);
+        } finally {
+          rmSync(home, { recursive: true, force: true });
+        }
+      };
+      const developerInstructions = (env: Record<string, string> | undefined) =>
+        JSON.parse(env?.CODEX_CONFIG ?? '{}').developer_instructions;
+
+      it('sets no Codex config without them', () => {
+        expect(acpBehavior().buildSpawn(spawnCtx).env?.CODEX_CONFIG).toBeUndefined();
+      });
+
+      it('passes them as developer instructions', () => {
+        withCodexHome(null, (home) => {
+          const result = acpBehavior().buildSpawn({
+            ...spawnCtx,
+            env: { CODEX_HOME: home },
+            controlInstructions: 'Use the emjosh tools.',
+          });
+          expect(developerInstructions(result.env)).toBe('Use the emjosh tools.');
+        });
+      });
+
+      it("keeps the user's own developer instructions first", () => {
+        withCodexHome('model = "x"\ndeveloper_instructions = "Be terse."\n', (home) => {
+          const result = acpBehavior().buildSpawn({
+            ...spawnCtx,
+            env: { CODEX_HOME: home },
+            controlInstructions: 'Use the emjosh tools.',
+          });
+          expect(developerInstructions(result.env)).toBe('Be terse.\n\nUse the emjosh tools.');
+        });
+      });
+
+      it('ignores a config.toml it cannot parse', () => {
+        withCodexHome('developer_instructions = ', (home) => {
+          const result = acpBehavior().buildSpawn({
+            ...spawnCtx,
+            env: { CODEX_HOME: home },
+            controlInstructions: 'Use the emjosh tools.',
+          });
+          expect(developerInstructions(result.env)).toBe('Use the emjosh tools.');
+        });
+      });
     });
   });
 

@@ -153,6 +153,13 @@ export type NormalizedEvent =
       kind: 'title';
       title: string;
     }
+  /** The provider marks the end of an agent-initiated turn (see IAcpBehavior.reportsAgentTurnEnd). */
+  | { kind: 'agent_turn_end' }
+  /**
+   * Whether the provider will keep working on its own after the current turn (for example an
+   * active Codex goal). While pending, turn ends don't settle the session.
+   */
+  | { kind: 'agent_work_pending'; pending: boolean }
   | { kind: 'ignored' };
 
 export type EnrichHook = (event: NormalizedEvent, raw: SessionUpdate) => NormalizedEvent;

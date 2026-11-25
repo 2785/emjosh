@@ -42,6 +42,8 @@ export interface AcpRuntimeDeps {
   clock?: Clock;
   /** Extra MCP servers for one conversation's session, beyond the provider's configured ones. */
   sessionMcpServers?: (conversationId: string) => Promise<readonly McpServerRegistration[]>;
+  /** Host app instructions for agents launched from now on; see AcpSpawnContext. */
+  controlInstructions?: () => Promise<string | undefined>;
   lifecycle?: {
     session?: IdlePolicyConfig;
     sweepIntervalMs?: number;

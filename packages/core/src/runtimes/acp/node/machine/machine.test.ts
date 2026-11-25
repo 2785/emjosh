@@ -8,6 +8,7 @@ import {
   evolve,
   initialMachineState,
   phaseToLifecycle,
+  projectSessionState,
   SessionMachine,
 } from './machine';
 
@@ -255,6 +256,41 @@ describe('lifecycle control', () => {
 
     expect(state.queuedPrompts).toHaveLength(0);
     expect(effects).toContainEqual({ type: 'sendPrompt', prompt: queued });
+  });
+
+  it('goes straight into an agent turn when the provider continues on its own', () => {
+    const queued = { id: 'prompt-2', text: 'queued', createdAt: 200, updatedAt: 200 };
+    const s0 = evolve(makeWorking(), { type: 'PromptQueued', prompt: queued }).state;
+    const { state, effects } = evolve(s0, {
+      type: 'TurnEnded',
+      outcome: { kind: 'stopped', stopReason: 'end_turn' },
+      continues: true,
+    });
+
+    expect(phaseToLifecycle(state.phase)).toBe('ready');
+    expect(state.agentTurnActive).toBe(true);
+    expect(projectSessionState(state).isGenerating).toBe(true);
+    expect(effects.some((e) => e.type === 'agentEvent')).toBe(false);
+    expect(state.queuedPrompts).toEqual([queued]);
+    expect(effects.some((e) => e.type === 'sendPrompt')).toBe(false);
+
+    const ended = evolve(state, { type: 'AgentActivity', active: false });
+    expect(projectSessionState(ended.state).isGenerating).toBe(false);
+    expect(ended.effects).toContainEqual({ type: 'sendPrompt', prompt: queued });
+  });
+
+  it.each([
+    { outcome: { kind: 'errored' } as const, phase: 'error' },
+    { outcome: { kind: 'stopped', stopReason: 'cancelled' } as const, phase: 'stop' },
+  ])('ignores continues for $outcome.kind turns', ({ outcome, phase }) => {
+    const { state, effects } = evolve(makeWorking(), {
+      type: 'TurnEnded',
+      outcome,
+      continues: true,
+    });
+
+    expect(state.agentTurnActive).toBe(false);
+    expect(effects).toContainEqual({ type: 'agentEvent', phase });
   });
 
   it('drains queued prompts when a turn ends while background agents run', () => {

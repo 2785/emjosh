@@ -1,4 +1,5 @@
 export const AGENT_ENV_VARS = [
+  'AGY_ADC_AUTH',
   'AIMLAPI_API_KEY',
   'ALL_PROXY',
   'AMP_API_KEY',

@@ -284,7 +284,7 @@ export class AgentPluginHost {
 
   async buildAcpSpawn(
     providerId: string,
-    ctx: { cwd: string; env?: Record<string, string> }
+    ctx: { cwd: string; env?: Record<string, string>; controlInstructions?: string }
   ): Promise<Result<AgentHostAcpSpawn, AgentHostError>> {
     const provider = this.resolveAcp(providerId);
     if (!provider) return err({ type: 'capability-unsupported', providerId, capability: 'acp' });
@@ -294,6 +294,7 @@ export class AgentPluginHost {
       cwd: ctx.cwd,
       env: spawnContext.data.agentEnv,
       cli: spawnContext.data.cli,
+      ...(ctx.controlInstructions ? { controlInstructions: ctx.controlInstructions } : {}),
     });
     return ok({
       ...spawn,
