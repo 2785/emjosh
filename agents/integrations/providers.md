@@ -154,7 +154,9 @@ you select an OrcaRouter model from the OpenCode model picker.
 - Antigravity chats run `agy acp`. Its session config options (model, thinking level, and the
   `default`/`accept-edits`/`auto`/`plan` modes) drive the composer selectors directly. agy accepts
   HTTP MCP servers without advertising `mcpCapabilities.http`, so the plugin's connection adds it
-  (otherwise the `emjosh` server would be dropped). A prompted turn stays open while non-daemon
+  (otherwise the `emjosh` server would be dropped). agy doesn't show MCP server instructions to
+  the model, so the host's `controlInstructions` go into the system prompt through
+  `_meta.antigravity.systemPrompt.append` on session/new and session/load. A prompted turn stays open while non-daemon
   background work and one-shot timers run; daemon tasks let it end and wake the agent later with
   no end marker. Every agy model call ends with a `usage_update`, and a tool call follows at once
   when there is one, so the connection forwards a `usage_update` that nothing follows within

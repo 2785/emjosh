@@ -11,7 +11,7 @@ import {
   isAntigravitySessionNotFound,
   TURN_END_META_KEY,
   TURN_END_HOLD_MS,
-  withHttpMcp,
+  withSessionSetup,
   withTurnEndMarkers,
 } from './acp';
 import { enrichAntigravityUpdate } from './acp-enrich';
@@ -23,7 +23,13 @@ describe('antigravity acp behavior', () => {
     expect(pluginRegistry.get('antigravity')!.capabilities.acp.kind).toBe('supported');
     expect(
       acpBehavior().buildSpawn({ cwd: '/work', env: {}, cli: '/Users/me/.local/bin/agy' })
-    ).toEqual({ command: '/Users/me/.local/bin/agy', args: ['acp'], env: undefined });
+    ).toEqual({ command: '/Users/me/.local/bin/agy', args: ['acp'] });
+  });
+
+  it('passes the host instructions from the spawn context to its sessions', async () => {
+    const behavior = pluginRegistry.get('antigravity')!.behavior.acp!;
+    behavior.buildSpawn({ cwd: '/work', env: {}, cli: 'agy', controlInstructions: 'Hi.' });
+    expect(behavior.buildSpawn).toBeDefined();
   });
 
   it('marks agent-initiated turn ends through its enrich hook', () => {
@@ -42,14 +48,14 @@ describe('antigravity acp behavior', () => {
   });
 });
 
-describe('withHttpMcp', () => {
+describe('withSessionSetup', () => {
   const initialized: InitializeResponse = {
     protocolVersion: 1,
     agentCapabilities: { loadSession: true, promptCapabilities: { image: true } },
   };
 
   it('advertises HTTP MCP support and keeps the rest of the initialize response', async () => {
-    const agent = withHttpMcp(fakeAgent(initialized));
+    const agent = withSessionSetup(fakeAgent(initialized), () => undefined);
     const response = await agent.initialize({ protocolVersion: 1 });
     expect(response.agentCapabilities).toEqual({
       loadSession: true,
@@ -58,13 +64,38 @@ describe('withHttpMcp', () => {
     });
   });
 
-  it('forwards other methods to the wrapped agent and preserves optional ones', async () => {
+  it('appends the host instructions to the system prompt of new and loaded sessions', async () => {
     const inner = fakeAgent(initialized);
-    const agent = withHttpMcp(inner);
+    const agent = withSessionSetup(inner, () => 'Use the emjosh tools.');
+    await agent.newSession({ cwd: '/w', mcpServers: [], _meta: { other: 1 } });
+    await agent.loadSession!({ cwd: '/w', mcpServers: [], sessionId: 's' });
+    expect(inner.newSession).toHaveBeenCalledWith({
+      cwd: '/w',
+      mcpServers: [],
+      _meta: { other: 1, antigravity: { systemPrompt: { append: 'Use the emjosh tools.' } } },
+    });
+    expect(inner.loadSession).toHaveBeenCalledWith({
+      cwd: '/w',
+      mcpServers: [],
+      sessionId: 's',
+      _meta: { antigravity: { systemPrompt: { append: 'Use the emjosh tools.' } } },
+    });
+  });
+
+  it('leaves session requests untouched without host instructions', async () => {
+    const inner = fakeAgent(initialized);
+    await withSessionSetup(inner, () => undefined).newSession({ cwd: '/w', mcpServers: [] });
+    expect(inner.newSession).toHaveBeenCalledWith({ cwd: '/w', mcpServers: [] });
+  });
+
+  it('forwards other methods and keeps optional ones optional', async () => {
+    const inner = fakeAgent(initialized);
+    const agent = withSessionSetup(inner, () => undefined);
     await agent.cancel({ sessionId: 's' });
     expect(inner.cancel).toHaveBeenCalledWith({ sessionId: 's' });
-    expect(agent.loadSession).toBeDefined();
     expect(agent.extMethod).toBeUndefined();
+    const { loadSession: _omitted, ...withoutLoad } = inner;
+    expect(withSessionSetup(withoutLoad, () => 'x').loadSession).toBeUndefined();
   });
 });
 

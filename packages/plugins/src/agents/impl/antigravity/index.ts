@@ -3,8 +3,7 @@ import {
   registerPluginBehavior,
 } from '@emdash/core/services/agent-plugins/api/plugins';
 import { buildStandardCommand } from '@emdash/core/services/agent-plugins/api/plugins/helpers';
-import { createNativeAcpBehavior } from '../../helpers/acp-stdio';
-import { connectAntigravityAcp, isAntigravitySessionNotFound } from './acp';
+import { createAntigravityAcpBehavior, isAntigravitySessionNotFound } from './acp';
 import { enrichAntigravityUpdate } from './acp-enrich';
 import { antigravityAuthStatus } from './auth';
 import { buildAntigravityHookConfig } from './hooks';
@@ -126,8 +125,7 @@ export const plugin = definePlugin(
 
 export const provider = registerPluginBehavior(plugin, {
   acp: {
-    ...createNativeAcpBehavior(() => ({ args: ['acp'] })),
-    connect: connectAntigravityAcp,
+    ...createAntigravityAcpBehavior(),
     enrich: enrichAntigravityUpdate,
     reportsAgentTurnEnd: true,
     isSessionNotFound: isAntigravitySessionNotFound,

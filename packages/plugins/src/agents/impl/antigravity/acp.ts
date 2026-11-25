@@ -1,9 +1,5 @@
 import type { Client, SessionNotification } from '@agentclientprotocol/sdk';
-import type {
-  AcpAgentApi,
-  AcpClientFactory,
-  AcpProcessIo,
-} from '@emdash/core/services/agent-plugins/api/plugins';
+import type { AcpAgentApi, IAcpBehavior } from '@emdash/core/services/agent-plugins/api/plugins';
 import { connectStdioAcp } from '../../helpers/acp-stdio';
 
 /** `_meta` key on a `usage_update` that closed a turn; read by `enrichAntigravityUpdate`. */
@@ -16,15 +12,36 @@ export const TURN_END_META_KEY = 'emdash/antigravityTurnEnd';
  */
 export const TURN_END_HOLD_MS = 1_500;
 
-export function connectAntigravityAcp(io: AcpProcessIo, toClient: AcpClientFactory): AcpAgentApi {
-  return withHttpMcp(connectStdioAcp(io, (agent) => withTurnEndMarkers(toClient(agent))));
+/**
+ * `agy acp` on the resolved binary. The host's MCP instructions arrive with the spawn context but
+ * are needed on the connection; they are the same for every session on the host, so the latest
+ * value is kept for the next sessions.
+ */
+export function createAntigravityAcpBehavior(): Pick<IAcpBehavior, 'buildSpawn' | 'connect'> {
+  let instructions: string | undefined;
+  return {
+    buildSpawn: (ctx) => {
+      instructions = ctx.controlInstructions;
+      return { command: ctx.cli, args: ['acp'] };
+    },
+    connect: (io, toClient) =>
+      withSessionSetup(
+        connectStdioAcp(io, (agent) => withTurnEndMarkers(toClient(agent))),
+        () => instructions
+      ),
+  };
 }
 
 /**
- * `agy acp` accepts HTTP MCP servers in session/new and session/load but does not advertise
- * `mcpCapabilities.http`; without this the runtime would drop HTTP servers such as `emjosh`.
+ * - agy accepts HTTP MCP servers in session/new and session/load but does not advertise
+ *   `mcpCapabilities.http`; without it the runtime would drop HTTP servers such as `emjosh`.
+ * - agy doesn't show MCP server instructions to the model, so the host's go into the system
+ *   prompt through agy's `_meta.antigravity.systemPrompt.append` on session/new and session/load.
  */
-export function withHttpMcp(agent: AcpAgentApi): AcpAgentApi {
+export function withSessionSetup(
+  agent: AcpAgentApi,
+  instructions: () => string | undefined
+): AcpAgentApi {
   const initialize: AcpAgentApi['initialize'] = async (params) => {
     const response = await agent.initialize(params);
     const capabilities = response.agentCapabilities ?? {};
@@ -36,7 +53,25 @@ export function withHttpMcp(agent: AcpAgentApi): AcpAgentApi {
       },
     };
   };
-  return override(agent, { initialize });
+  const withInstructions = <T extends { _meta?: Record<string, unknown> | null }>(params: T): T => {
+    const append = instructions();
+    if (!append) return params;
+    const antigravity = (params._meta?.antigravity ?? {}) as Record<string, unknown>;
+    const systemPrompt = (antigravity.systemPrompt ?? {}) as Record<string, unknown>;
+    return {
+      ...params,
+      _meta: {
+        ...params._meta,
+        antigravity: { ...antigravity, systemPrompt: { ...systemPrompt, append } },
+      },
+    };
+  };
+  const loadSession = agent.loadSession?.bind(agent);
+  return override(agent, {
+    initialize,
+    newSession: (params) => agent.newSession(withInstructions(params)),
+    ...(loadSession && { loadSession: (params) => loadSession(withInstructions(params)) }),
+  });
 }
 
 /**
