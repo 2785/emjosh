@@ -324,6 +324,15 @@ describe('workspace dependencies', () => {
       ]);
     });
 
+    it('does not suggest folding a branch already merged into its base', async () => {
+      // After api merged, web rebased onto main and so contains api; api looks done instead.
+      contains.add('web>api');
+      mergedIntoBase.add('api');
+      await service.checkDependencies();
+
+      expect(await leadEvents()).toEqual([]);
+    });
+
     it('ignores and refuses to fold a workspace that is mid-rebase', async () => {
       // Mid-rebase onto web, api's HEAD sits on web's commits: it looks contained but isn't.
       contains.add('web>api').add('api>web');

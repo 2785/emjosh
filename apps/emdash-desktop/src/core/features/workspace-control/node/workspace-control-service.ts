@@ -506,6 +506,8 @@ export class WorkspaceControlService {
   /**
    * Tells each initiative's lead, once, about workspaces whose branch is contained in another
    * active workspace's of the same project, so it can fold them together (merge_workspaces).
+   * A branch already merged into its base is skipped: every branch rebased on that base contains
+   * it, and it looks done to the dependency check instead.
    */
   private async announceContainedWorkspaces(
     active: Omit<ControlWorkspace, 'pullRequest'>[],
@@ -527,6 +529,7 @@ export class WorkspaceControlService {
       );
       const found: { from: (typeof rows)[number]; into: (typeof rows)[number] }[] = [];
       for (const from of members) {
+        if (await this.mergedIntoBase(from.id)) continue;
         for (const into of members) {
           if (from.id === into.id || !(await contains(into.id, from.id))) continue;
           // Two branches on the same commit contain each other: report the pair once.
@@ -550,6 +553,11 @@ export class WorkspaceControlService {
         });
       }
     }
+  }
+
+  private async mergedIntoBase(workspaceId: string): Promise<boolean> {
+    const base = await this.deps.branchMergedInto?.(workspaceId).catch(() => null);
+    return !!base;
   }
 
   // ── Folding workspaces ─────────────────────────────────────────────────────
