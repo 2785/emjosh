@@ -1,3 +1,8 @@
+import {
+  parseWorkspaceLink,
+  workspaceLink as workspaceLinkHref,
+} from '@core/features/workspace-control/api/workspace-search';
+
 /** Longest label, e.g. "API" or "UI-2". */
 export const MAX_LABEL_LENGTH = 6;
 
@@ -32,14 +37,9 @@ function spreadsheetLetters(n: number): string {
   return label;
 }
 
-/** Link target that opens a workspace in the app (chat shows `[F](…)` as a button). */
-export function workspaceLinkTarget(id: string): string {
-  return `emjosh://workspace/${id}`;
-}
-
 /** A workspace's label as a markdown link that opens it: `[F](emjosh://workspace/<id>)`. */
 export function workspaceLink(id: string, label: string): string {
-  return `[${label}](${workspaceLinkTarget(id)})`;
+  return `[${label}](${workspaceLinkHref(id)})`;
 }
 
 /**
@@ -64,7 +64,19 @@ export function labelledName(name: string, label?: string | null, id?: string): 
   return `${id ? workspaceLink(id, label) : label} "${name}"`;
 }
 
-/** The text of a message with workspace links reduced to their label, for plain-text views. */
-export function stripWorkspaceLinks(text: string): string {
-  return text.replace(/\[([^\]]+)\]\(emjosh:\/\/workspace\/[^)\s]+\)/g, '$1');
+export type MessagePart = { text: string } | { label: string; workspaceId: string };
+
+/** Splits a message into plain text and `[label](emjosh://workspace/<id>)` links. */
+export function splitWorkspaceLinks(text: string): MessagePart[] {
+  const parts: MessagePart[] = [];
+  let last = 0;
+  for (const match of text.matchAll(/\[([^\]]+)\]\((emjosh:\/\/workspace\/[^)\s]+)\)/gi)) {
+    const workspaceId = parseWorkspaceLink(match[2]!);
+    if (!workspaceId) continue;
+    if (match.index > last) parts.push({ text: text.slice(last, match.index) });
+    parts.push({ label: match[1]!, workspaceId });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
 }

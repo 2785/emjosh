@@ -3,7 +3,7 @@ import {
   labelledName,
   nextLabel,
   normalizeLabel,
-  stripWorkspaceLinks,
+  splitWorkspaceLinks,
   workspaceChip,
   workspaceRef,
 } from './labels';
@@ -39,9 +39,17 @@ describe('initiative labels', () => {
     expect(workspaceChip('w1', 'Codex [parity]')).toBe('[Codex parity](emjosh://workspace/w1)');
   });
 
-  it('reduces workspace links to their label for plain text', () => {
+  it('splits a message into text and workspace links', () => {
     expect(
-      stripWorkspaceLinks('Workspace [F](emjosh://workspace/w1) "x" and [docs](https://a.b)')
-    ).toBe('Workspace F "x" and [docs](https://a.b)');
+      splitWorkspaceLinks(
+        'See [F](emjosh://workspace/w1) and [docs](https://a.b), [G](emjosh://workspace/w2)'
+      )
+    ).toEqual([
+      { text: 'See ' },
+      { label: 'F', workspaceId: 'w1' },
+      { text: ' and [docs](https://a.b), ' },
+      { label: 'G', workspaceId: 'w2' },
+    ]);
+    expect(splitWorkspaceLinks('plain')).toEqual([{ text: 'plain' }]);
   });
 });
