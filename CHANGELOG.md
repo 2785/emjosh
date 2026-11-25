@@ -3,6 +3,61 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.21 — 2026-11-25
+
+Antigravity and Codex:
+- Antigravity chats now run as structured chats with the emjosh tools. Their model, thinking level
+  and mode lists come from the Antigravity CLI.
+- Antigravity follows Emjosh's workspace instructions (renaming the workspace, initiative messages).
+- Antigravity shows working and done correctly, including when it wakes itself up for background
+  work.
+- Antigravity has a "Bypass permissions" mode with no approval prompts. In Auto mode, emjosh tools no
+  longer ask.
+- Antigravity works with Google sign-in, gcloud credentials (`AGY_ADC_AUTH=true`) or a Gemini API key.
+- Codex: the chat stays "working" through /goal and other work Codex starts on its own, and says done
+  once at the end.
+- Codex: new chats follow Emjosh's workspace instructions.
+- Codex: full access now applies to work Codex starts on its own, so emjosh tools and goal steps no
+  longer ask for approval.
+- Codex: the model list matches the installed Codex CLI.
+- The sidebar shows a small agent logo next to workspaces that run an agent other than your default
+  (e.g. Codex or Antigravity). Workspaces on the default agent stay unmarked; changing the default
+  agent in Settings changes which workspaces show one.
+
+Restarts and environment:
+- Chat agents that were working when Emjosh quit, reloaded or crashed now get an automatic "keep
+  going" message when the app comes back, so they pick up where they left off. Turn it off with
+  "Keep agents going after a restart" under Settings > General > Preferences.
+- Editors and tools opened from Emjosh (e.g. Open in Zed) get your shell environment, so
+  NODE_ENV=production no longer leaks into their terminals and breaks hot reload.
+- Agents no longer see ELECTRON_RUN_AS_NODE=1 in their shells.
+
+Initiatives:
+- Initiative workspaces can depend on each other: the lead records the order with
+  set_workspace_dependencies, and the sidebar numbers the workspaces involved and shows what each is
+  waiting on.
+- Dependencies clear themselves when the workspace they point at is archived or already part of the
+  dependent's branch. When one only looks done (PR merged, branch merged, marked done), the lead is
+  asked.
+- Workspaces can be marked done from the sidebar menu or with mark_workspace_done.
+- When one workspace's branch is contained in another's, the lead is told and can fold them with
+  merge_workspaces: the folded workspace hands over a summary of its context and is archived.
+- Workspaces in the middle of a rebase or merge are left alone until their branch is checked out
+  again.
+- Initiative leads are only woken for what needs them: members' done, blocked and decision messages,
+  the user's posts, and members waiting for approval or stopped with an error. Status events and fyi
+  messages are kept for read_messages and list_workspaces.
+- Messages that do wake an agent arrive bundled into one prompt instead of one turn each, and wait
+  while the agent is mid-turn.
+- In the chat, turns that only handle initiative activity collapse into an expandable "Initiative
+  activity (N)" row; the agent's reply to the user stays visible.
+
+Also:
+- Windows copies now update themselves: Emjosh downloads new releases and installs them when you
+  click Reload. Install this release by hand once.
+- App API: reading live app state (such as a conversation's session state and pending approvals)
+  works.
+
 ## 0.1.20 — 2026-11-23
 
 - Fixed the gap before inline code, links and mentions in chat (and lines wrapping early).
