@@ -11,6 +11,7 @@ import { connectStdioAcp } from '../../helpers/acp-stdio';
 import { resolveAdapterAsset } from '../../helpers/adapter-assets';
 import { enrichClaudeUpdate } from './acp-transform';
 import { claudeAdapter } from './adapter';
+import { CLAUDE_CLIENT_CAPABILITIES_META, carryAsyncTaskUpdate } from './async-tasks';
 import { claudeAuthStatus } from './auth';
 import { buildClaudeHookConfig } from './hooks';
 import { icon } from './icon';
@@ -155,9 +156,8 @@ export const provider = registerPluginBehavior(plugin, {
         CLAUDE_CODE_EXECUTABLE: ctx.cli,
       },
     }),
-    connect: (io, toClient) => {
-      return connectStdioAcp(io, toClient);
-    },
+    connect: (io, toClient) => connectStdioAcp(io, toClient, carryAsyncTaskUpdate),
+    clientCapabilitiesMeta: CLAUDE_CLIENT_CAPABILITIES_META,
     enrich: enrichClaudeUpdate,
     reportsAgentTurnEnd: true,
     // The adapter defers a turn's result until the background agents it spawned finish.

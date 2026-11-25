@@ -61,6 +61,11 @@ describe('describeAgentEvent', () => {
       })
     ).toEqual({ kind: 'attention', what: 'is waiting for the user to approve something' });
     expect(describeAgentEvent({ type: 'error' })?.kind).toBe('attention');
+    // A turn ending with background work still running is status too; its end follows as `stop`.
+    expect(describeAgentEvent({ type: 'background' })).toEqual({
+      kind: 'event',
+      what: 'finished its turn; background work it started is still running',
+    });
     expect(describeAgentEvent({ type: 'notification', payload: {} })).toBeNull();
   });
 });

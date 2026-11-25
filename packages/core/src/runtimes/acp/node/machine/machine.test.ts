@@ -72,6 +72,26 @@ describe('decide Prompt', () => {
     expect(result.data).toEqual([{ type: 'PromptStarted', prompt }]);
   });
 
+  it('starts while background tasks are running, without them counting as busy', () => {
+    const state = evolve(makeReady(), { type: 'BackgroundTasksChanged', runningCount: 2 }).state;
+    expect(state.backgroundTaskCount).toBe(2);
+    const result = decide(state, { type: 'Prompt', prompt });
+    expect(isOk(result)).toBe(true);
+    if (!isOk(result)) return;
+    expect(result.data).toEqual([{ type: 'PromptStarted', prompt }]);
+    expect(projectSessionState(state)).toMatchObject({
+      backgroundTaskCount: 2,
+      isGenerating: false,
+      canCancel: false,
+    });
+  });
+
+  it('forgets background tasks when the process closes', () => {
+    let state = evolve(makeReady(), { type: 'BackgroundTasksChanged', runningCount: 1 }).state;
+    state = evolve(state, { type: 'ProcessClosed', exitCode: 0 }).state;
+    expect(state.backgroundTaskCount).toBe(0);
+  });
+
   it('queues during an agent-initiated turn', () => {
     const state = evolve(makeReady(), { type: 'AgentActivity', active: true }).state;
     const result = decide(state, { type: 'Prompt', prompt });

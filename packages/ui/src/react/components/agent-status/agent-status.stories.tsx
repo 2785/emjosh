@@ -5,6 +5,7 @@ import { BrailleSpinner, type BrailleSpinnerVariant } from './braille-spinner';
 
 const STATUSES: Array<{ label: string; status: AgentStatusKind }> = [
   { label: 'Working', status: 'working' },
+  { label: 'Background Work', status: 'background' },
   { label: 'Awaiting Input', status: 'awaiting-input' },
   { label: 'Error', status: 'error' },
   { label: 'Completed', status: 'completed' },

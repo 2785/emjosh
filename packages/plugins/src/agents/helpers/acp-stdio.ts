@@ -1,5 +1,5 @@
 import { Readable, Writable } from 'node:stream';
-import { ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
+import { type AnyMessage, ClientSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
 import type {
   AcpAgentApi,
   AcpClientFactory,
@@ -13,12 +13,33 @@ type NativeAcpSpawnResult = Omit<AcpSpawnResult, 'command'> & {
   command?: string;
 };
 
-export function connectStdioAcp(io: AcpProcessIo, toClient: AcpClientFactory): AcpAgentApi {
+/**
+ * `mapIncoming` rewrites (or, returning null, drops) each message from the agent before the SDK
+ * validates it, for provider extensions the SDK would otherwise reject.
+ */
+export function connectStdioAcp(
+  io: AcpProcessIo,
+  toClient: AcpClientFactory,
+  mapIncoming?: (message: AnyMessage) => AnyMessage | null
+): AcpAgentApi {
   const stream = ndJsonStream(
     Writable.toWeb(io.stdin) as WritableStream<Uint8Array>,
     Readable.toWeb(io.stdout) as unknown as ReadableStream<Uint8Array>
   );
-  return new ClientSideConnection((agent) => toClient(agent as never), stream);
+  const readable = mapIncoming
+    ? stream.readable.pipeThrough(
+        new TransformStream<AnyMessage, AnyMessage>({
+          transform(message, controller) {
+            const mapped = mapIncoming(message);
+            if (mapped) controller.enqueue(mapped);
+          },
+        })
+      )
+    : stream.readable;
+  return new ClientSideConnection((agent) => toClient(agent as never), {
+    writable: stream.writable,
+    readable,
+  });
 }
 
 export function createNativeAcpBehavior(

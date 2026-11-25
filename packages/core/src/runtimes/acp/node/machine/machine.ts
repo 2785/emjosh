@@ -53,6 +53,12 @@ export interface SessionMachineState {
   readonly queuedPrompts: readonly QueuedPrompt[];
   readonly agentTurnActive: boolean;
   readonly backgroundAgentCount: number;
+  /**
+   * Running background tasks (shell commands, monitors) that outlive their turn. Informational
+   * only: unlike background agents they never make the session busy, so a lost completion can't
+   * hold a turn open.
+   */
+  readonly backgroundTaskCount: number;
 }
 
 export function initialMachineState(conversationId: string): SessionMachineState {
@@ -66,6 +72,7 @@ export function initialMachineState(conversationId: string): SessionMachineState
     queuedPrompts: [],
     agentTurnActive: false,
     backgroundAgentCount: 0,
+    backgroundTaskCount: 0,
   };
 }
 
@@ -99,6 +106,7 @@ export type DomainEvent =
   | { type: 'TurnEnded'; outcome: TurnOutcome; continues?: boolean }
   | { type: 'AgentActivity'; active: boolean }
   | { type: 'AgentsChanged'; runningCount: number }
+  | { type: 'BackgroundTasksChanged'; runningCount: number }
   | { type: 'CancellationRequested' }
   | { type: 'PermissionRequested'; request: AcpPermissionRequest }
   | { type: 'PermissionResolved'; requestId: string }
@@ -339,6 +347,12 @@ export function evolve(
         effects: [{ type: 'state' }],
       };
 
+    case 'BackgroundTasksChanged':
+      return {
+        state: { ...s, backgroundTaskCount: ev.runningCount },
+        effects: [{ type: 'state' }],
+      };
+
     case 'CancellationRequested': {
       if (s.phase.kind !== 'working' && !s.agentTurnActive && s.backgroundAgentCount === 0) {
         return warn(s, `CancellationRequested in phase '${s.phase.kind}'`);
@@ -386,7 +400,12 @@ export function evolve(
         cancelled: true,
       }));
       return {
-        state: { ...s, phase: { kind: 'closed', exitCode: ev.exitCode }, pendingPermissions: [] },
+        state: {
+          ...s,
+          phase: { kind: 'closed', exitCode: ev.exitCode },
+          pendingPermissions: [],
+          backgroundTaskCount: 0,
+        },
         effects: [
           ...drainEffects,
           { type: 'settleAgents', scope: 'all', status: 'failed' },
@@ -478,6 +497,7 @@ export function projectSessionState(s: SessionMachineState): SessionState {
     queuedPrompts: structuredClone([...s.queuedPrompts]),
     agentTurnActive: s.agentTurnActive,
     backgroundAgentCount: s.backgroundAgentCount,
+    backgroundTaskCount: s.backgroundTaskCount,
     isGenerating,
     canSubmit: isPromptReady(lifecycle),
     canCancel: s.phase.kind === 'working' || s.agentTurnActive || s.backgroundAgentCount > 0,
@@ -527,6 +547,9 @@ export class SessionMachine {
   }
   get backgroundAgentCount(): number {
     return this.machine.current().backgroundAgentCount;
+  }
+  get backgroundTaskCount(): number {
+    return this.machine.current().backgroundTaskCount;
   }
   get isBusy(): boolean {
     return isBusy(this.machine.current());

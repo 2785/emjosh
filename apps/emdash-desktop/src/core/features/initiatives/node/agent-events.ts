@@ -10,6 +10,12 @@ export function describeAgentEvent(event: {
   payload?: { notificationType?: string };
 }): { kind: InitiativeEventKind; what: string } | null {
   if (event.type === 'stop') return { kind: 'event', what: 'finished its turn' };
+  if (event.type === 'background') {
+    return {
+      kind: 'event',
+      what: 'finished its turn; background work it started is still running',
+    };
+  }
   if (event.type === 'error') return { kind: 'attention', what: 'stopped with an error' };
   if (event.type === 'notification' && event.payload?.notificationType === 'permission_prompt') {
     return { kind: 'attention', what: 'is waiting for the user to approve something' };

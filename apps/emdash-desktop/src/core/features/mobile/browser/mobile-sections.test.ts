@@ -22,10 +22,11 @@ describe('mobileTaskSections', () => {
       entry('waiting', { status: 'awaiting-input' }),
       entry('failed', { status: 'error' }),
       entry('busy', { status: 'working' }),
+      entry('background', { status: 'background', activityAt: '2026-10-15T00:00:00.000Z' }),
       entry('idle', { status: 'idle' }),
     ]);
     expect(sections.attention.map((e) => e.taskId)).toEqual(['waiting', 'failed', 'done']);
-    expect(sections.working.map((e) => e.taskId)).toEqual(['busy']);
+    expect(sections.working.map((e) => e.taskId)).toEqual(['busy', 'background']);
     expect(sections.recent.map((e) => e.taskId)).toEqual(['new', 'idle', 'old']);
   });
 

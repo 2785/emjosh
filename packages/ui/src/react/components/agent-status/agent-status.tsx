@@ -3,7 +3,13 @@ import { cx } from '@styles/utilities/cx';
 import * as React from 'react';
 import * as styles from './agent-status.css';
 
-export type AgentStatusKind = 'working' | 'awaiting-input' | 'error' | 'completed' | 'idle';
+export type AgentStatusKind =
+  | 'working'
+  | 'background'
+  | 'awaiting-input'
+  | 'error'
+  | 'completed'
+  | 'idle';
 
 type ActiveAgentStatusKind = Exclude<AgentStatusKind, 'idle'>;
 
@@ -21,6 +27,7 @@ export interface AgentStatusProps extends Omit<React.HTMLAttributes<HTMLSpanElem
 
 const STATUS_LABELS: Record<ActiveAgentStatusKind, string> = {
   working: 'Agent is working',
+  background: 'Waiting on background work',
   'awaiting-input': 'Agent is awaiting input',
   error: 'Agent error',
   completed: 'Agent completed',
@@ -90,6 +97,13 @@ function AgentStatusGlyph({ status }: { status: ActiveAgentStatusKind }) {
           {DOT_POINTS.map(([cx, cy], index) => (
             <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.85" className={styles.dot[index]} />
           ))}
+        </svg>
+      );
+
+    case 'background':
+      return (
+        <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="7.5" className={styles.backgroundShape} strokeWidth="1.25" />
         </svg>
       );
 
