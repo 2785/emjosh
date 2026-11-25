@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,14 @@ describe('built adapter bundles', () => {
     await expect(
       validateAdapterBundleAssets({ adapterDirectory, assets: adapterAssets })
     ).resolves.toBeUndefined();
+  });
+
+  it('drops ELECTRON_RUN_AS_NODE before any adapter code runs', async () => {
+    for (const asset of adapterAssets) {
+      const source = await readFile(join(adapterDirectory, adapterAssetFileName(asset)), 'utf8');
+      const firstStatement = source.replace(/^#!.*\n/, '').split('\n', 1)[0];
+      expect(firstStatement).toBe('delete process.env.ELECTRON_RUN_AS_NODE;');
+    }
   });
 
   it('boots each adapter from a directory without node_modules', async () => {

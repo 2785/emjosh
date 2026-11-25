@@ -45,8 +45,7 @@ async function resolveLaunchEnv(): Promise<NodeJS.ProcessEnv> {
   // Launch commands run with the login-shell PATH, which is captured
   // asynchronously at boot. Checking earlier would miss CLIs outside the
   // minimal PATH that GUI-launched apps start with.
-  await userShellEnvManager.current();
-  return buildExternalToolEnv();
+  return buildExternalToolEnv(await userShellEnvManager.current());
 }
 
 async function isExecutableFile(file: string, platform: PlatformKey): Promise<boolean> {

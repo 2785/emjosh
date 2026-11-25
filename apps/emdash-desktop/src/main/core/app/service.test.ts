@@ -89,8 +89,9 @@ vi.mock('@main/lib/logger', () => ({
   },
 }));
 
-vi.mock('@main/lib/childProcessEnv', () => ({
-  buildExternalToolEnv: () => mocks.launchEnv,
+vi.mock('@main/lib/userEnv', () => ({
+  buildLaunchedToolEnv: () => mocks.launchEnv,
+  userShellEnvManager: { current: async () => mocks.launchEnv },
 }));
 
 const { appService } = await import('./service');
