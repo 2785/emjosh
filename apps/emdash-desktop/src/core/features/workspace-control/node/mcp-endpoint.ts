@@ -317,9 +317,11 @@ export function buildControlMcpServer(
       description:
         'Initiative leads: record which workspaces of the initiative must land before this one ' +
         '(for example an API before its UI, or a shared change before a branch rebases on it). ' +
-        'Replaces its list; an empty list removes them. Cycles are rejected. Dependencies on ' +
-        'archived workspaces are dropped automatically; ones that look done are flagged in ' +
-        'list_workspaces and announced to you, for you to drop.',
+        'Replaces its list; an empty list removes them. Cycles are rejected. A dependency is ' +
+        'dropped automatically (and you are told) when the dependency is archived or the ' +
+        "workspace's branch already contains its work; ones that look done otherwise (PR " +
+        'merged, marked done) are flagged in list_workspaces and announced to you, for you to ' +
+        'drop.',
       inputSchema: {
         workspaceId: z.string().describe('The workspace that has to wait.'),
         dependsOn: z

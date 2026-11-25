@@ -37,7 +37,8 @@ export type ControlWorkspace = {
   pullRequest: ControlPullRequest | null;
   /**
    * The order its initiative's workspaces should land in, from what they declared they depend
-   * on. Absent unless a workspace in its initiative declared a dependency.
+   * on. Absent unless the workspace is part of a dependency (it depends on one, or one depends
+   * on it).
    */
   dependencyOrder?: WorkspaceDependencyOrder;
 };
@@ -94,6 +95,7 @@ export type ControlInitiatives = {
   /** Every live dependency; stale ones (archived or deleted tasks) are dropped on the way. */
   dependencies(): Promise<(InitiativeDependency & { initiativeId: string })[]>;
   setDependencies(taskId: string, dependsOnTaskIds: string[]): Promise<void>;
+  removeDependency(dependency: { taskId: string; dependsOnTaskId: string }): Promise<void>;
   setDependencyDoneNotice(
     dependency: { taskId: string; dependsOnTaskId: string },
     doneNotice: string | null
@@ -153,6 +155,8 @@ export type WorkspaceControlDeps = {
   setWorkspaceDone?(taskId: string, done: boolean): Promise<void>;
   /** The base branch the workspace's branch was merged into since it started; else null. */
   branchMergedInto?(workspaceId: string): Promise<string | null>;
+  /** Whether the workspace's branch already contains the other's work (rebased or merged). */
+  branchContains?(workspaceId: string, otherWorkspaceId: string): Promise<boolean>;
   createWorkspace(
     input: CreateWorkspaceInput & {
       provider: string | undefined;
@@ -348,11 +352,13 @@ export class WorkspaceControlService {
     const result = new Map<string, WorkspaceDependencyOrder>();
     const initiatives = this.deps.initiatives;
     if (!initiatives) return result;
-    const dependencies = await initiatives.dependencies();
-    if (dependencies.length === 0) return result;
+    const declared = await initiatives.dependencies();
+    if (declared.length === 0) return result;
 
     const active = await this.deps.listWorkspaces({ includeArchived: false });
     const byId = new Map(active.map((row) => [row.id, row]));
+    const dependencies = await this.dropContainedDependencies(declared, byId);
+    if (dependencies.length === 0) return result;
     const doneReasons = new Map<string, string | null>();
     for (const id of new Set(dependencies.map((d) => d.dependsOnTaskId))) {
       const row = byId.get(id);
@@ -366,7 +372,9 @@ export class WorkspaceControlService {
         members.map((row) => row.id),
         edges
       );
-      for (const member of members) {
+      const linked = new Set(edges.flatMap((edge) => [edge.taskId, edge.dependsOnTaskId]));
+      // Only workspaces that are part of a dependency get an order; the rest are unaffected.
+      for (const member of members.filter((row) => linked.has(row.id))) {
         const dependsOn = edges
           .filter((edge) => edge.taskId === member.id)
           .map((edge) => ({
@@ -384,6 +392,40 @@ export class WorkspaceControlService {
       await this.announceDoneDependencies(initiativeId, edges, byId, doneReasons);
     }
     return result;
+  }
+
+  /**
+   * Drops dependencies whose workspace's branch already contains the dependency's work (it
+   * rebased onto it or merged it in): waiting on it means nothing any more. Unlike "looks done",
+   * this is unambiguous, so the lead is only told. Returns the remaining dependencies.
+   */
+  private async dropContainedDependencies<
+    T extends InitiativeDependency & { initiativeId: string },
+  >(dependencies: T[], byId: Map<string, { name: string }>): Promise<T[]> {
+    const branchContains = this.deps.branchContains;
+    if (!branchContains) return dependencies;
+    const initiatives = this.requireInitiatives();
+    const kept: T[] = [];
+    for (const edge of dependencies) {
+      const contained = await branchContains(edge.taskId, edge.dependsOnTaskId).catch(() => false);
+      if (!contained) {
+        kept.push(edge);
+        continue;
+      }
+      await initiatives.removeDependency(edge);
+      const name = (id: string) => byId.get(id)?.name ?? id;
+      const leadTaskId = (await initiatives.get(edge.initiativeId))?.leadTaskId ?? null;
+      await initiatives.post({
+        initiativeId: edge.initiativeId,
+        fromTaskId: null,
+        toTaskId: leadTaskId,
+        kind: 'event',
+        body:
+          `Dropped the dependency of "${name(edge.taskId)}" on "${name(edge.dependsOnTaskId)}": ` +
+          `its branch already contains "${name(edge.dependsOnTaskId)}"'s work.`,
+      });
+    }
+    return kept;
   }
 
   private async announceDoneDependencies(

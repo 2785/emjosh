@@ -26,6 +26,7 @@ import {
   type WorkspaceControlDeps,
   WorkspaceControlService,
 } from '@core/features/workspace-control/node/workspace-control-service';
+import { isAncestor, worktreeTip } from '@core/features/workspace-control/node/worktree-branches';
 import { workspaceRegistryTable as workspaces } from '@core/features/workspaces/api/node/registry/workspace-registry';
 import { getProvisionedWorkspaceBranch } from '@core/features/workspaces/api/node/workspace-branch';
 import { desktopDomainContracts } from '@core/manifests/shared/domain-contracts';
@@ -55,15 +56,6 @@ async function git(cwd: string, args: string[]): Promise<string | null> {
     return stdout.trim() || null;
   } catch {
     return null;
-  }
-}
-
-async function gitSucceeds(cwd: string, args: string[]): Promise<boolean> {
-  try {
-    await execFileAsync('git', args, { cwd });
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -245,6 +237,36 @@ export async function startWorkspaceControl(
     return row?.location === 'remote' ? null : (row?.path ?? null);
   };
 
+  /**
+   * Where a local worktree workspace's branch is (see worktreeTip), with what it started from.
+   */
+  const workspaceTip = async (taskId: string) => {
+    const [row] = await db
+      .select({
+        projectId: tasks.projectId,
+        createdAt: tasks.createdAt,
+        path: workspaces.path,
+        location: workspaces.location,
+        kind: workspaces.kind,
+        config: workspaces.config,
+      })
+      .from(tasks)
+      .innerJoin(workspaces, eq(workspaces.id, tasks.workspaceId))
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!row?.path || row.location === 'remote' || row.kind !== 'worktree') return null;
+    const startedAt = Date.parse(row.createdAt.replace(' ', 'T') + 'Z') / 1000;
+    const tip = await worktreeTip(row.path, startedAt);
+    if (!tip) return null;
+    const setup = row.config?.git;
+    return {
+      ...tip,
+      projectId: row.projectId,
+      path: row.path,
+      fromBranch: setup?.kind === 'create-branch' ? setup.fromBranch : null,
+    };
+  };
+
   const deps: WorkspaceControlDeps = {
     async addProject({ path, name }) {
       const created = await projectOperations.createProject({ type: 'local', name, path });
@@ -392,43 +414,26 @@ export async function startWorkspaceControl(
     },
 
     async branchMergedInto(taskId) {
-      const [row] = await db
-        .select({
-          projectId: tasks.projectId,
-          createdAt: tasks.createdAt,
-          workspaceConfig: workspaces.config,
-        })
-        .from(tasks)
-        .innerJoin(workspaces, eq(workspaces.id, tasks.workspaceId))
-        .where(eq(tasks.id, taskId))
-        .limit(1);
-      const setup = row?.workspaceConfig?.git;
-      if (!row || setup?.kind !== 'create-branch') return null;
-      const repoPath = await repositoryPath(row.projectId);
-      if (!repoPath) return null;
-      const base = setup.fromBranch;
+      const tip = await workspaceTip(taskId);
+      if (!tip?.workedOn || !tip.fromBranch) return null;
+      const base = tip.fromBranch;
       const candidates = [
         ...(base.remote ? [`refs/remotes/${base.remote.name}/${base.branch}`] : []),
         `refs/remotes/origin/${base.branch}`,
         `refs/heads/${base.branch}`,
       ];
-      // A fresh branch is trivially "merged" (it is the base commit), so its tip must also be
-      // a commit made after the workspace started.
-      const tipTime = Number(
-        await git(repoPath, ['log', '-1', '--format=%ct', `refs/heads/${setup.branchName}`])
-      );
-      const createdAt = Date.parse(row.createdAt.replace(' ', 'T') + 'Z') / 1000;
-      if (!Number.isFinite(tipTime) || !(tipTime > createdAt)) return null;
       for (const ref of new Set(candidates)) {
-        const merged = await gitSucceeds(repoPath, [
-          'merge-base',
-          '--is-ancestor',
-          `refs/heads/${setup.branchName}`,
-          ref,
-        ]);
-        if (merged) return base.branch;
+        if (await isAncestor(tip.path, tip.sha, ref)) {
+          return base.branch;
+        }
       }
       return null;
+    },
+
+    async branchContains(taskId, otherTaskId) {
+      const [tip, other] = await Promise.all([workspaceTip(taskId), workspaceTip(otherTaskId)]);
+      if (!tip || !other?.workedOn || tip.projectId !== other.projectId) return false;
+      return isAncestor(tip.path, other.sha, tip.sha);
     },
 
     archiveWorkspace: (projectId, taskId) => taskService.archiveTask(projectId, taskId, telemetry),

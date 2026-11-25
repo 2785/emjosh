@@ -392,7 +392,7 @@ describe('SidebarStore initiative grouping', () => {
     ]);
   });
 
-  it('orders members by their dependencies after the lead', () => {
+  it('orders members by their dependencies after the lead, independent ones last', () => {
     const edge = (taskId: string, dependsOnTaskId: string) => ({
       taskId,
       dependsOnTaskId,
@@ -403,7 +403,7 @@ describe('SidebarStore initiative grouping', () => {
         id: 'i-accounts',
         name: 'Accounts v2',
         leadTaskId: 'lead',
-        taskIds: ['lead', 'ui', 'api', 'docs'],
+        taskIds: ['lead', 'solo', 'ui', 'api', 'docs'],
         dependencies: [edge('ui', 'api'), edge('docs', 'ui')],
       },
     ];
@@ -411,7 +411,7 @@ describe('SidebarStore initiative grouping', () => {
       {
         id: 'p',
         createdAt: '2026-01-01T00:00:00.000Z',
-        taskIds: ['docs', 'ui', 'lead', 'api'],
+        taskIds: ['solo', 'docs', 'ui', 'lead', 'api'],
       },
     ]);
     const tasks = (
@@ -432,6 +432,7 @@ describe('SidebarStore initiative grouping', () => {
       'api',
       'ui',
       'docs',
+      'solo',
     ]);
   });
 

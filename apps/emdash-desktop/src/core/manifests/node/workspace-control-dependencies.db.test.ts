@@ -14,12 +14,15 @@ describe('workspace dependencies', () => {
   let initiativeId: string;
   const merged = new Set<string>();
   const mergedIntoBase = new Set<string>();
+  /** "web>api": web's branch contains api's work. */
+  const contains = new Set<string>();
   const lead = { conversationId: 'conv-lead' };
   const api = { conversationId: 'conv-api' };
 
   beforeEach(async () => {
     merged.clear();
     mergedIntoBase.clear();
+    contains.clear();
     fixture = await openFixture('empty');
     fixture.db.insert(projects).values({ id: 'p', name: 'p' }).run();
     for (const id of IDS) {
@@ -54,6 +57,7 @@ describe('workspace dependencies', () => {
           ? { url: `https://example.com/${branch}`, number: 7, title: branch, state: 'merged' }
           : null,
       branchMergedInto: async (taskId) => (mergedIntoBase.has(taskId) ? 'main' : null),
+      branchContains: async (taskId, otherTaskId) => contains.has(`${taskId}>${otherTaskId}`),
       setWorkspaceDone: async (taskId, done) => {
         fixture.db
           .update(tasks)
@@ -121,8 +125,9 @@ describe('workspace dependencies', () => {
         { workspaceId: 'web', name: 'web', looksDone: null },
       ],
     });
+    // Only workspaces that are part of a dependency get an order.
     expect(await orders()).toEqual({
-      lead: { rank: 1, waitingOn: [] },
+      lead: undefined,
       api: { rank: 1, waitingOn: [] },
       web: { rank: 2, waitingOn: ['api'] },
       docs: { rank: 3, waitingOn: ['api', 'web'] },
@@ -165,7 +170,7 @@ describe('workspace dependencies', () => {
       .run();
 
     expect(await orders()).toEqual({
-      lead: { rank: 1, waitingOn: [] },
+      lead: undefined,
       api: { rank: null, inCycle: true, waitingOn: ['web'] },
       web: { rank: null, inCycle: true, waitingOn: ['api'] },
       docs: { rank: null, waitingOn: ['web'] },
@@ -209,6 +214,28 @@ describe('workspace dependencies', () => {
         'drop the dependency with set_workspace_dependencies.',
     ]);
     expect(fixture.db.select().from(taskDependencies).all()).toHaveLength(2);
+  });
+
+  it("drops a dependency once the workspace's branch contains the dependency's work", async () => {
+    await service.setWorkspaceDependencies(lead, { workspaceId: 'web', dependsOn: ['api'] });
+    await service.setWorkspaceDependencies(lead, { workspaceId: 'docs', dependsOn: ['api'] });
+    merged.add('api');
+
+    contains.add('web>api');
+    expect(await orders()).toEqual({
+      lead: undefined,
+      web: undefined,
+      api: { rank: 1, waitingOn: [] },
+      docs: { rank: 2, waitingOn: [] },
+    });
+    expect(fixture.db.select().from(taskDependencies).all()).toEqual([
+      expect.objectContaining({ taskId: 'docs', dependsOnTaskId: 'api' }),
+    ]);
+    // Dropped and announced; the remaining one is only flagged as looking done.
+    expect(await leadEvents()).toEqual([
+      'Dropped the dependency of "web" on "api": its branch already contains "api"\'s work.',
+      expect.stringContaining('"docs" depends on "api", which looks done (PR #7 merged)'),
+    ]);
   });
 
   it('lets the lead or the workspace itself mark it done', async () => {

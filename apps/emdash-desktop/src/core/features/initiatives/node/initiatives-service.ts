@@ -214,6 +214,11 @@ export class InitiativesService {
     this.emit({ type: 'initiatives-changed' });
   }
 
+  async removeDependency(dependency: { taskId: string; dependsOnTaskId: string }): Promise<void> {
+    await this.deleteDependency(dependency);
+    this.emit({ type: 'initiatives-changed' });
+  }
+
   private async deleteDependency(dependency: { taskId: string; dependsOnTaskId: string }) {
     await this.db
       .delete(taskDependencies)

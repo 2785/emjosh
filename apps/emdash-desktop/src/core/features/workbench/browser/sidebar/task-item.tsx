@@ -101,7 +101,7 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
   const initiativeId = registeredTaskData(task)?.initiativeId ?? null;
   const initiative = initiativeId ? getInitiativesStore().byId.get(initiativeId) : undefined;
   const isLead = initiative?.leadTaskId === taskId;
-  const dependencies = initiative && !isLead ? taskDependencyView(initiative, taskId) : undefined;
+  const dependencies = initiative ? taskDependencyView(initiative, taskId) : undefined;
   const isMarkedDone = registeredTaskData(task)?.status === 'done';
 
   const workspaceStore = getTaskWorkspace(projectId, taskId);

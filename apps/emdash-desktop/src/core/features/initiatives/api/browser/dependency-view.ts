@@ -22,13 +22,19 @@ export function initiativeDependencyOrder(initiative: Initiative): DependencyOrd
   return order;
 }
 
-/** Where a task sits in its initiative's order; undefined when the initiative has none. */
+/**
+ * Where a task sits in its initiative's order; undefined unless it is part of a dependency (it
+ * depends on a task, or a task depends on it).
+ */
 export function taskDependencyView(
   initiative: Initiative,
   taskId: string
 ): TaskDependencyView | undefined {
+  const linked = initiative.dependencies.some(
+    (dependency) => dependency.taskId === taskId || dependency.dependsOnTaskId === taskId
+  );
+  if (!linked) return undefined;
   const order = initiativeDependencyOrder(initiative);
-  if (!order.hasDependencies) return undefined;
   return {
     rank: order.ranks.get(taskId) ?? null,
     inCycle: order.inCycle.has(taskId),

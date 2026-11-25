@@ -192,13 +192,16 @@ export class SidebarStore {
     for (const initiative of initiatives) {
       const unordered = grouped.get(initiative.id);
       if (!unordered?.length) continue;
-      // The lead heads its initiative's list, then members in dependency order (stable), those
-      // on or behind a cycle last.
+      // The lead heads its initiative's list, then members that are part of a dependency in
+      // landing order (those on or behind a cycle after them), then the independent ones.
       const { ranks } = initiativeDependencyOrder(initiative);
-      const sortKey = (entry: TaskEntry) =>
-        entry.task.data.id === initiative.leadTaskId
-          ? 0
-          : (ranks.get(entry.task.data.id) ?? Number.MAX_SAFE_INTEGER);
+      const linked = new Set(initiative.dependencies.flatMap((d) => [d.taskId, d.dependsOnTaskId]));
+      const sortKey = (entry: TaskEntry) => {
+        const id = entry.task.data.id;
+        if (id === initiative.leadTaskId) return 0;
+        if (!linked.has(id)) return Number.MAX_SAFE_INTEGER;
+        return ranks.get(id) ?? Number.MAX_SAFE_INTEGER - 1;
+      };
       const members = [...unordered].sort((a, b) => sortKey(a) - sortKey(b));
       rows.push(
         {
