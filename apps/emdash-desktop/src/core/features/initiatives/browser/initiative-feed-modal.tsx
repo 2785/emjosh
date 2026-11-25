@@ -3,7 +3,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useRef, useState } from 'react';
 import { getInitiativesClient } from '@core/features/initiatives/api/browser/client';
 import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
-import type { InitiativeMessage } from '@core/features/initiatives/api/contract';
+import { isInitiativeEvent, type InitiativeMessage } from '@core/features/initiatives/api/contract';
 import { useModalController } from '@core/manifests/browser/modal-api';
 import { defineModal } from '@core/primitives/modals/react';
 import { cn } from '@core/primitives/styling/browser/cn';
@@ -12,7 +12,7 @@ import { findTask } from './task-lookup';
 export type InitiativeFeedModalArgs = { initiativeId: string };
 
 function sender(message: InitiativeMessage): string {
-  if (!message.fromTaskId) return message.kind === 'event' ? 'Emjosh' : 'You';
+  if (!message.fromTaskId) return isInitiativeEvent(message.kind) ? 'Emjosh' : 'You';
   return findTask(message.fromTaskId)?.name ?? 'A workspace';
 }
 
@@ -98,7 +98,7 @@ export const InitiativeFeedModal = observer(function InitiativeFeedModal({
               <p
                 className={cn(
                   'whitespace-pre-wrap',
-                  message.kind === 'event' && 'text-foreground-muted italic'
+                  isInitiativeEvent(message.kind) && 'text-foreground-muted italic'
                 )}
               >
                 {message.body}

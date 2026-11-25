@@ -166,7 +166,7 @@ describe('workspace control initiatives and messages', () => {
       leadWorkspaceId: 'lead',
       workspaceIds: ['peer'],
     });
-    await service.postMessage(peer, { text: 'halfway', toWorkspaceId: 'lead' });
+    await service.postMessage(peer, { text: 'halfway', toWorkspaceId: 'lead', kind: 'fyi' });
     await initiatives.post({
       initiativeId: initiative.id,
       fromTaskId: 'peer',

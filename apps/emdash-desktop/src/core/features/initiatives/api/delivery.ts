@@ -38,7 +38,11 @@ export function formatInitiativeDelivery(input: {
       : entry.sender
         ? `Workspace "${entry.sender}"${entry.fromLead ? ' (lead)' : ''}`
         : 'The user';
-    const label = [from, entry.kind === 'event' ? null : entry.kind, entry.direct ? 'to you' : null]
+    const label = [
+      from,
+      entry.kind === 'event' || entry.kind === 'message' ? null : entry.kind,
+      entry.direct ? 'to you' : null,
+    ]
       .filter(Boolean)
       .join(' · ');
     return `— ${label}\n${entry.body}`;

@@ -59,9 +59,11 @@ export function messageReachesTask(
  *
  * - `attention` events wake whoever they reach; other events wake nobody.
  * - The user's posts wake everyone they reach.
- * - The lead wakes for `done`, `blocked` and `decision` addressed to it (or to everyone), not for
- *   `fyi` or for messages between other workspaces.
- * - Other tasks wake for anything addressed to them, and for broadcasts that aren't `fyi`.
+ * - The lead wakes for anything addressed to it except `fyi` (a message without a kind comes from
+ *   an agent that can't mark it, so it may be the report the lead waits for), for `done`,
+ *   `blocked` and `decision` broadcasts, and not for messages between other workspaces.
+ * - Other tasks wake for anything addressed to them, and for `done`, `blocked` and `decision`
+ *   broadcasts.
  */
 export function messageWakesTask(
   message: Pick<InitiativeMessage, 'kind' | 'fromTaskId' | 'toTaskId'>,
@@ -71,11 +73,10 @@ export function messageWakesTask(
   if (message.kind === 'attention') return true;
   if (message.kind === 'event') return false;
   if (message.fromTaskId === null) return true;
-  if (taskId === leadTaskId) {
-    return message.kind !== 'fyi' && (message.toTaskId === null || message.toTaskId === taskId);
-  }
-  if (message.toTaskId === taskId) return true;
-  return message.kind !== 'fyi';
+  const marked = message.kind !== 'fyi' && message.kind !== 'message';
+  if (message.toTaskId === null) return marked;
+  if (message.toTaskId !== taskId) return false;
+  return taskId !== leadTaskId || message.kind !== 'fyi';
 }
 
 /** A workspace's latest status event and latest message, as shown in list_workspaces. */
@@ -413,7 +414,7 @@ export class InitiativesService {
         initiativeId: input.initiativeId,
         fromTaskId: input.fromTaskId,
         toTaskId: input.toTaskId ?? null,
-        kind: input.kind ?? 'fyi',
+        kind: input.kind ?? 'message',
         body,
       })
       .returning();
@@ -619,7 +620,7 @@ function toMessage(row: typeof initiativeMessages.$inferSelect): InitiativeMessa
     initiativeId: row.initiativeId,
     fromTaskId: row.fromTaskId,
     toTaskId: row.toTaskId,
-    kind: row.kind === 'message' ? 'fyi' : row.kind,
+    kind: row.kind,
     body: row.body,
     createdAt: row.createdAt,
   };

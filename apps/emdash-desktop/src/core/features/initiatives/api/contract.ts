@@ -35,6 +35,12 @@ export type InitiativeMessageKind = (typeof initiativeMessageKinds)[number];
  */
 export type InitiativeEventKind = 'event' | 'attention';
 
+/**
+ * A message posted without a kind: by the user, by an agent whose tools predate kinds, or before
+ * kinds existed. Addressed to the lead it wakes it like `done`; as a broadcast it stays quiet.
+ */
+export type UntypedMessageKind = 'message';
+
 export function isInitiativeEvent(kind: InitiativeMessage['kind']): kind is InitiativeEventKind {
   return kind === 'event' || kind === 'attention';
 }
@@ -46,7 +52,7 @@ export type InitiativeMessage = {
   fromTaskId: string | null;
   /** Addressed task; null for everyone. */
   toTaskId: string | null;
-  kind: InitiativeMessageKind | InitiativeEventKind;
+  kind: InitiativeMessageKind | UntypedMessageKind | InitiativeEventKind;
   body: string;
   createdAt: string;
 };

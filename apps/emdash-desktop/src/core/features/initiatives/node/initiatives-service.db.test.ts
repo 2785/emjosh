@@ -1,6 +1,6 @@
 import { openFixture } from '@tooling/utils/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { initiativeMessages, projects, tasks } from '@core/services/app-db/node/schema';
+import { projects, tasks } from '@core/services/app-db/node/schema';
 import { InitiativesService } from './initiatives-service';
 
 describe('InitiativesService', () => {
@@ -159,16 +159,19 @@ describe('InitiativesService', () => {
       service.post({ initiativeId: id, ...input });
 
     const done = await post({ fromTaskId: 't2', toTaskId: 't1', kind: 'done', body: 'done' });
-    const fyi = await post({ fromTaskId: 't2', toTaskId: 't1', body: 'still on it' });
+    const fyi = await post({ fromTaskId: 't2', toTaskId: 't1', kind: 'fyi', body: 'still on it' });
+    // From an agent whose tools predate kinds: it may be the report the lead waits for.
+    const untyped = await post({ fromTaskId: 't3', toTaskId: 't1', body: 'finished, PR is up' });
     const finished = await post({ fromTaskId: 't3', kind: 'event', body: 't3 finished' });
     const approval = await post({ fromTaskId: 't3', kind: 'attention', body: 't3 waits' });
     const broadcast = await post({ fromTaskId: 't1', body: 'plan' });
     const actNow = await post({ fromTaskId: 't1', kind: 'decision', body: 'pick one' });
     const direct = await post({ fromTaskId: 't1', toTaskId: 't3', body: 'rebase' });
 
-    expect(fyi.kind).toBe('fyi');
+    expect(untyped.kind).toBe('message');
     expect(await service.deliveryTargets(done)).toEqual({ wake: ['t1'], quiet: [] });
     expect(await service.deliveryTargets(fyi)).toEqual({ wake: [], quiet: ['t1'] });
+    expect(await service.deliveryTargets(untyped)).toEqual({ wake: ['t1'], quiet: [] });
     expect(await service.deliveryTargets(finished)).toEqual({ wake: [], quiet: ['t1'] });
     expect(await service.deliveryTargets(approval)).toEqual({ wake: ['t1'], quiet: [] });
     expect(await service.deliveryTargets(broadcast)).toEqual({ wake: [], quiet: ['t2', 't3'] });
@@ -182,17 +185,8 @@ describe('InitiativesService', () => {
     });
     expect(activity.get('t3')).toEqual({
       lastEvent: expect.objectContaining({ kind: 'attention', body: 't3 waits' }),
-      lastMessage: null,
+      lastMessage: expect.objectContaining({ kind: 'message', body: 'finished, PR is up' }),
     });
-  });
-
-  it('reads untyped messages from before kinds as fyi', async () => {
-    const { id } = await service.create('Accounts v2');
-    fixture.db
-      .insert(initiativeMessages)
-      .values({ id: 'm1', initiativeId: id, fromTaskId: 't1', kind: 'message', body: 'old' })
-      .run();
-    expect((await service.messages({ initiativeId: id })).map((m) => m.kind)).toEqual(['fyi']);
   });
 
   it('drops the lead when it leaves the initiative', async () => {
