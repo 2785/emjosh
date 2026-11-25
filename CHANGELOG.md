@@ -3,6 +3,26 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.24 — 2026-11-25
+
+- Find a workspace from free text: Cmd+Shift+K or "Find Workspace" opens a search that matches
+  names, branches, PR/MR URLs and numbers, ids, ticket ids, projects and initiatives instantly,
+  archived workspaces included (unarchiving asks first). When that isn't enough, "Ask an agent"
+  runs a quick read-only search through workspaces, initiative feeds and chats, and lists several
+  ranked matches with a reason each, favouring active and recent workspaces. It shows its steps and
+  elapsed time and can be cancelled.
+- Cmd+K offers "Ask an agent to find …" for URLs, PR numbers, tickets and longer descriptions, and
+  shows instant workspace matches (PR, branch, id, ticket, archived) inline.
+- Agents name workspaces as links (`emjosh://workspace/<id>`). Chats show them as chips with a
+  tooltip (name, project, status) that open the workspace, asking before unarchiving. Links to
+  unknown workspaces show as plain text. Links that aren't web or workspace links no longer open a
+  blank window.
+- Initiative workspaces get short labels, shown in the sidebar and the initiative feed; labels in
+  feed messages open the workspace.
+- A new Agent CLIs settings page shows the installed version of each agent CLI and updates them.
+- Packaging fails when the packaged app lacks the native SQLite module, instead of producing an
+  app that can't start.
+
 ## 0.1.23 — 2026-11-25
 
 - A Claude chat whose turn has ended while background shell commands or background agents it
