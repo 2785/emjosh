@@ -7,6 +7,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { initiativeMessageKinds } from '@core/features/initiatives/api/contract';
 import type { ControlCaller, WorkspaceControlService } from './workspace-control-service';
+import { getWorkspaceSearch } from './workspace-search-registry';
 
 /** Header an Emjosh agent session sends to identify the conversation it runs in. */
 export const CALLER_CONVERSATION_HEADER = 'x-emjosh-conversation';
@@ -34,6 +35,7 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
 - Anything else the Emjosh app can do (its settings, automations, MCP servers, skills, prompt library, project settings, conversations, terminals, pull requests, and so on) is reachable through the app API: find operations with app_api_list, read their input with app_api_describe, then app_api_call or app_api_read. Use the dedicated tools above where one fits. Confirm with the user before anything destructive (deleting projects, workspaces, conversations, files or automations) they did not explicitly ask for.
+- Whenever you name a workspace to the user (in any message, including a short label such as a letter), write it as a markdown link with the workspace scheme, \`[<workspace name>](emjosh://workspace/<workspace id>)\`, which the chat shows as a clickable chip that opens it; use the id from list_workspaces or current_workspace, never a guessed one. To find which workspace the user means (a PR/MR, branch, ticket, or description), call find_workspaces.
 - If current_workspace returns null, you are not running inside an Emjosh workspace, and the points above about workspaces and initiatives don't apply.`;
 
 /** App values include maps, sets and bigints, which plain JSON drops or rejects. */
@@ -148,6 +150,24 @@ export function buildControlMcpServer(
       },
     },
     async (input) => json(await service.listWorkspaces(input))
+  );
+
+  server.registerTool(
+    'find_workspaces',
+    {
+      description:
+        'Find the workspace the user means from free text: a PR/MR URL or number, a branch, a ' +
+        'workspace or initiative id, a ticket id, or words from its name, project or ' +
+        'initiative. Searches archived workspaces too and ranks the hits (reasons say what ' +
+        'matched; a PR URL also matches workspaces whose chat mentions it). Use this before ' +
+        'digging through list_workspaces or transcripts.',
+      inputSchema: { query: z.string().min(1) },
+    },
+    async ({ query }) => {
+      const search = getWorkspaceSearch();
+      if (!search) throw new Error('Workspace search is not available.');
+      return json(await search.search(query));
+    }
   );
 
   server.registerTool(

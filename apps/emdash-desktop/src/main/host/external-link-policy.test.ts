@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isInternalAppUrl } from './external-link-policy';
+import { decideMainWindowLink, isInternalAppUrl } from './external-link-policy';
 
 const DEV_RENDERER_URL = 'http://localhost:5173';
 const PACKAGED_RENDERER_URL = 'app://emdash/index.html';
@@ -40,5 +40,24 @@ describe('isInternalAppUrl', () => {
   it('rejects unparsable URLs', () => {
     expect(isInternalAppUrl('not a url', PACKAGED_RENDERER_URL)).toBe(false);
     expect(isInternalAppUrl('', PACKAGED_RENDERER_URL)).toBe(false);
+  });
+});
+
+describe('decideMainWindowLink', () => {
+  it.each([DEV_RENDERER_URL, PACKAGED_RENDERER_URL])('for renderer %s', (renderer) => {
+    expect(decideMainWindowLink(renderer, renderer)).toBe('stay');
+    expect(decideMainWindowLink('https://gitlab.com/g/r/-/merge_requests/1', renderer)).toBe(
+      'external'
+    );
+    expect(decideMainWindowLink('http://localhost:3000', renderer)).toBe('external');
+    // Never a new window: workspace links are handled by the renderer, the rest is denied.
+    for (const url of [
+      'emjosh://workspace/abc',
+      'file:///etc/passwd',
+      'javascript:alert(1)',
+      'x',
+    ]) {
+      expect(decideMainWindowLink(url, renderer)).toBe('deny');
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { formatHostRef, LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
 import type { Logger } from '@emdash/shared/logger';
@@ -32,14 +33,20 @@ import {
   type WorkspaceControlDeps,
   WorkspaceControlService,
 } from '@core/features/workspace-control/node/workspace-control-service';
-import { isAncestor, worktreeTip } from '@core/features/workspace-control/node/worktree-branches';
+import { setWorkspaceSearch } from '@core/features/workspace-control/node/workspace-search-registry';
+import { WorkspaceSearchService } from '@core/features/workspace-control/node/workspace-search-service';
+import {
+  checkedOutBranch,
+  isAncestor,
+  worktreeTip,
+} from '@core/features/workspace-control/node/worktree-branches';
 import { workspaceRegistryTable as workspaces } from '@core/features/workspaces/api/node/registry/workspace-registry';
 import { getProvisionedWorkspaceBranch } from '@core/features/workspaces/api/node/workspace-branch';
 import { desktopWireContract } from '@core/manifests/shared/desktop-wire-contract';
 import type { Project } from '@core/primitives/projects/api';
 import { resolveTaskBranchName } from '@core/primitives/tasks/api/resolve-task-branch-name';
 import { buildWorkspaceConfigFromPreset } from '@core/primitives/workspaces/api/build-workspace-config-from-preset';
-import { projects, tasks } from '@core/services/app-db/node/schema';
+import { initiativeMessages, projects, tasks } from '@core/services/app-db/node/schema';
 import { selectCurrentPr } from '@core/services/pull-requests/api';
 import type { PullRequestsContract } from '@core/services/pull-requests/api/contract';
 import type { PullRequestsRegistration } from '@core/services/pull-requests/node/pull-requests-registration';
@@ -101,6 +108,34 @@ function toControlPr(pr: {
   };
 }
 
+/** Where chat transcripts are kept on this machine. */
+export type TranscriptDirs = {
+  /** The ACP runtime's per-conversation history cache (recent turns, any provider). */
+  acpHistory: string;
+  /** Claude Code's session logs (`~/.claude/projects`), full transcripts of claude chats. */
+  claudeProjects: string;
+};
+
+/** The transcript files of one conversation, most complete first. */
+export function transcriptPaths(
+  dirs: TranscriptDirs,
+  conversation: {
+    id: string;
+    provider: string | null;
+    cwd: string | null;
+    sessionId: string | null;
+  }
+): string[] {
+  const paths: string[] = [];
+  if (conversation.provider === 'claude' && conversation.cwd && conversation.sessionId) {
+    // Claude Code names a project's directory after its path, every other character a dash.
+    const project = conversation.cwd.replace(/[^a-zA-Z0-9]/g, '-');
+    paths.push(join(dirs.claudeProjects, project, `${conversation.sessionId}.jsonl`));
+  }
+  paths.push(join(dirs.acpHistory, `${conversation.id.replace(/[^\w-]/g, '_')}.json`));
+  return paths;
+}
+
 /** Starts the workspace control MCP endpoint over the app's own services. */
 export async function startWorkspaceControl(
   context: DesktopControllerContext,
@@ -113,6 +148,14 @@ export async function startWorkspaceControl(
     endpointFile: string;
     version: string;
     logger: Logger;
+    /** Transcripts the workspace search looks through; without them it skips chats. */
+    transcripts?: TranscriptDirs;
+    /** One tool-less run of a cheap model, for workspace search questions. */
+    runSearchModel?(input: {
+      system: string;
+      prompt: string;
+      signal?: AbortSignal;
+    }): Promise<string>;
     /** Batching of initiative deliveries; DEFAULT_DELIVERY_WINDOW when omitted. */
     deliveryWindow?: Partial<typeof DEFAULT_DELIVERY_WINDOW>;
     /** Subscribes to live agent status events; returns the unsubscribe function. */
@@ -594,6 +637,64 @@ export async function startWorkspaceControl(
   if (extras.appWire) deps.appApi = new AppApi(appApiCatalog(desktopWireContract), extras.appWire);
   const service = new WorkspaceControlService(deps);
 
+  const worktreePaths = async () =>
+    new Map(
+      (
+        await db
+          .select({ taskId: tasks.id, path: workspaces.path, location: workspaces.location })
+          .from(tasks)
+          .innerJoin(workspaces, eq(workspaces.id, tasks.workspaceId))
+          .where(isNull(tasks.deletedAt))
+      ).flatMap((row) => (row.path && row.location !== 'remote' ? [[row.taskId, row.path]] : []))
+    );
+  let pathsOfSearch: Promise<Map<string, string>> | null = null;
+  const search = new WorkspaceSearchService({
+    async listWorkspaces() {
+      // Paths are read once per search, not once per workspace.
+      pathsOfSearch = worktreePaths();
+      return deps.listWorkspaces({ includeArchived: true });
+    },
+    pullRequestForBranch: deps.pullRequestForBranch,
+    async initiativeNames() {
+      const all = await initiatives.list({ includeArchived: true });
+      return new Map(all.map((initiative) => [initiative.id, initiative.name]));
+    },
+    initiativeMessages: () =>
+      db
+        .select({ fromTaskId: initiativeMessages.fromTaskId, body: initiativeMessages.body })
+        .from(initiativeMessages),
+    async actualBranch(taskId) {
+      const path = (await (pathsOfSearch ?? worktreePaths()))?.get(taskId);
+      return path ? checkedOutBranch(path) : null;
+    },
+    transcriptFiles: extras.transcripts
+      ? async (taskIds) => {
+          const rows = taskIds.length
+            ? await db
+                .select({
+                  id: conversations.id,
+                  taskId: conversations.taskId,
+                  provider: conversations.provider,
+                  cwd: conversations.cwd,
+                  sessionId: conversations.providerSessionId,
+                })
+                .from(conversations)
+                .where(inArray(conversations.taskId, taskIds))
+            : [];
+          return rows.flatMap((row) =>
+            row.taskId
+              ? transcriptPaths(extras.transcripts!, row).map((path) => ({
+                  workspaceId: row.taskId!,
+                  path,
+                }))
+              : []
+          );
+        }
+      : undefined,
+    runModel: extras.runSearchModel,
+  });
+  setWorkspaceSearch(search);
+
   // Dependencies: dropped with archived or deleted workspaces; ones that look done (merged,
   // marked done) are announced to the lead on a timer and when a workspace's agent stops.
   function checkDependencies() {
@@ -623,6 +724,7 @@ export async function startWorkspaceControl(
     info: endpoint.info,
     service,
     async close() {
+      setWorkspaceSearch(null);
       stopDelivery();
       coalescer.dispose();
       stopEvents?.();

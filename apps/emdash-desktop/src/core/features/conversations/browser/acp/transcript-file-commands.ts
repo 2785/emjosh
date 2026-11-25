@@ -1,6 +1,11 @@
 import type { ChatCommands } from '@core/features/conversations/api/browser/chat/chat-transcript';
-// TODO(conversations-extraction): Inject task editor/file-opening behavior into ACP chat.
 import { openFileInAdjacentPane } from '@core/features/editor/api/browser/open-file-in-file-editor';
+// TODO(conversations-extraction): Inject task editor/file-opening behavior into ACP chat.
+import { workspaceLinkTooltip } from '@core/features/workspace-control/api/browser/open-workspace';
+import {
+  parseWorkspaceLink,
+  WORKSPACE_LINK_PREFIX,
+} from '@core/features/workspace-control/api/workspace-search';
 
 const EXPLICIT_SCHEME_RE = /^[A-Za-z][A-Za-z\d+.-]*:/u;
 const EDITOR_LOCATION_SUFFIX_RE = /(?::(\d+)(?::\d+)?|#L(\d+)(?:C\d+)?)$/u;
@@ -37,6 +42,12 @@ export type TranscriptFileCommands = {
  */
 export function classifyTranscriptLink(href: string): TranscriptLinkClassification {
   const target = href.trim();
+  const workspaceId = parseWorkspaceLink(target);
+  if (workspaceId) {
+    const tooltip = workspaceLinkTooltip(workspaceId);
+    return tooltip ? { kind: 'workspace', workspaceId, tooltip } : { kind: 'plain' };
+  }
+  if (target.toLowerCase().startsWith(WORKSPACE_LINK_PREFIX)) return { kind: 'plain' };
   if (!target || target.startsWith('#') || target.startsWith('?') || target.startsWith('//')) {
     return { kind: 'external' };
   }

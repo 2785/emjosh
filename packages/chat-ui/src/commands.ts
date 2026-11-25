@@ -75,7 +75,18 @@ export type ChatCommands = {
    */
   classifyLink?: (
     href: string
-  ) => { kind: 'workspace-file'; path: string; line?: number } | { kind: 'external' };
+  ) =>
+    | { kind: 'workspace-file'; path: string; line?: number }
+    | { kind: 'workspace'; workspaceId: string; tooltip?: string }
+    /** Not navigable (e.g. a link to a workspace that no longer exists): render as plain text. */
+    | { kind: 'plain' }
+    | { kind: 'external' };
+
+  /**
+   * Called when the user clicks a link that `classifyLink` classed as `workspace` (a link to
+   * another Emjosh workspace, rendered as a chip).
+   */
+  onOpenWorkspace?: (arg: { workspaceId: string; label: string; itemId: string }) => void;
 
   /**
    * Called when the user clicks a Mermaid diagram block preview.

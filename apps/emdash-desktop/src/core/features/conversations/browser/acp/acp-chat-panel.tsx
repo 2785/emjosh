@@ -54,6 +54,7 @@ import {
   getRegisteredTaskData,
   getTaskStore,
 } from '@core/features/tasks/api/browser/task-state/task-selectors';
+import { openWorkspaceLink } from '@core/features/workspace-control/api/browser/open-workspace';
 import { openModal } from '@core/manifests/browser/modal-api';
 import { projectAvailabilityUi } from '@core/manifests/browser/project-availability-ui';
 import { openExternal } from '@core/primitives/desktop-host/browser/host-client';
@@ -854,6 +855,22 @@ export const AcpChatView = observer(function AcpChatView({
         });
       },
       classifyLink: fileCommands?.classifyLink,
+      onOpenWorkspace: ({ workspaceId }) => {
+        void openWorkspaceLink(workspaceId, async (name) => {
+          const outcome = await openModal('confirmActionModal', {
+            title: 'Unarchive workspace',
+            description: `"${name}" is archived. Unarchive it and open it?`,
+            confirmLabel: 'Unarchive and open',
+          });
+          return outcome.success;
+        })
+          .then((result) => {
+            if (result === 'not-found') toast.error('That workspace no longer exists');
+          })
+          .catch((error: unknown) =>
+            toast.error('Could not open the workspace', { description: String(error) })
+          );
+      },
       onOpenFile: fileCommands?.onOpenFile,
       onClickMention: (arg: Parameters<NonNullable<ChatCommands['onClickMention']>>[0]) => {
         if (!store) return;
