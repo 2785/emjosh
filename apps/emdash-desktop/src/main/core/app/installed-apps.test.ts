@@ -6,7 +6,9 @@ import { OPEN_IN_APPS } from '@core/primitives/open-in-apps/api/open-in-apps';
 import { runCommand, type RunCommand } from './app-path-lookup';
 import { createInstalledAppDetector } from './installed-apps';
 
-const mocks = vi.hoisted(() => ({ currentEnv: vi.fn(async () => ({})) }));
+const mocks = vi.hoisted(() => ({
+  currentEnv: vi.fn(async (): Promise<Record<string, string>> => ({})),
+}));
 
 vi.mock('@main/lib/logger', () => ({
   log: { info: vi.fn(), warn: vi.fn() },
@@ -88,10 +90,7 @@ describe('installed app detection', () => {
     mocks.currentEnv.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          finishCapture = () => {
-            process.env.PATH = binDir;
-            resolve({});
-          };
+          finishCapture = () => resolve({ PATH: binDir });
         })
     );
     const detector = createInstalledAppDetector({ platform: 'linux', apps: [OPEN_IN_APPS.zed] });

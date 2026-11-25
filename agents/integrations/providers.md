@@ -11,9 +11,9 @@
 
 codex, claude, grok, devin, qwen, qoder, droid, antigravity, cursor, copilot, amp, commandcode, opencode, hermes, charm, auggie, goose, kimi, kilocode, kiro, rovo, cline, codebuddy, continue, codebuff, freebuff, mistral, muse, jules, junie, oh-my-pi, pi, prime-agent, autohand, letta, mimocode, zero
 
-## Current ACP-Capable Providers (23)
+## Current ACP-Capable Providers (24)
 
-codex, claude, opencode, grok, devin, qwen, qoder, droid, cursor, copilot, hermes, auggie, goose, kimi, kilocode, kiro, cline, mistral, junie, mimocode, oh-my-pi, prime-agent, codebuddy
+codex, claude, opencode, grok, devin, qwen, qoder, droid, antigravity, cursor, copilot, hermes, auggie, goose, kimi, kilocode, kiro, cline, mistral, junie, mimocode, oh-my-pi, prime-agent, codebuddy
 
 ## Provider Metadata Includes
 
@@ -121,6 +121,26 @@ you select an OrcaRouter model from the OpenCode model picker.
   provider-owned `collaboration_mode` config category to the chat composer's Default/Plan selector
   and persists that selection with the conversation; filesystem and approval controls remain in
   the existing permission-mode selector.
+- Codex ACP brackets every turn with `session_info_update` `_meta.codex.threadStatus`
+  (`active`/`idle`), including turns Codex starts itself (`/goal` continuations). The Codex
+  enrich hook maps `idle` to the generic `agent_turn_end` event, so those turns end on the marker
+  instead of after a short silence (`reportsAgentTurnEnd`). An active goal runs as a series of
+  Codex-started turns, so enrich maps `_meta.goal` to `agent_work_pending` (pending while the goal
+  is `active`): while pending, turn ends don't settle the session, and a prompted turn ending goes
+  straight into an agent turn, so the chat stays working until the goal stops. Codex does not hold a turn for its
+  subagents: their results reach the parent only on its next turn, so
+  `holdsTurnsForBackgroundAgents` stays off.
+- codex-acp applies the ACP permission mode only to turns it starts (`turn/start`); turns Codex
+  starts itself (goal continuations) use the thread's settings. A pnpm patch
+  (`patches/@agentclientprotocol__codex-acp@*.patch`, pinned by `codex/adapter-patch.test.ts`)
+  also applies the mode to the thread with `thread/settings/update` on session create/load and on
+  every mode change. Re-check it when upgrading codex-acp.
+- Codex doesn't pass MCP server instructions to the model. The host app writes its control
+  instructions into the control endpoint file; the ACP runtime passes them to `buildSpawn` as
+  `controlInstructions`, and the Codex plugin sends them as `developer_instructions` through
+  codex-acp's `CODEX_CONFIG`, after any `developer_instructions` in `$CODEX_HOME/config.toml`.
+  A `CODEX_CONFIG` set in the provider's custom env replaces this, and project-level
+  `.codex/config.toml` developer instructions are not merged.
 - Agents that cannot receive an automated initial prompt via argv or stdin declare `pty-only`
   prompt delivery. Their TUI opens without an initial prompt, and automation flows exclude them
   unless they also support ACP.
@@ -131,6 +151,24 @@ you select an OrcaRouter model from the OpenCode model picker.
 - Qwen Code hooks use the documented Qwen settings schema in `$QWEN_HOME/settings.json` (falling back to `~/.qwen/settings.json`). Emdash installs command hooks for permission requests and session end/stop events while preserving unrelated user hooks.
 - Antigravity CLI installs lifecycle hooks in `~/.gemini/config/plugins/emdash/` to report
   working and completion status while preserving existing user hooks.
+- Antigravity chats run `agy acp`. Its session config options (model, thinking level, and the
+  `default`/`accept-edits`/`auto`/`plan` modes) drive the composer selectors directly. agy accepts
+  HTTP MCP servers without advertising `mcpCapabilities.http`, so the plugin's connection adds it
+  (otherwise the `emjosh` server would be dropped). agy doesn't show MCP server instructions to
+  the model, so the host's `controlInstructions` go into the system prompt through
+  `_meta.antigravity.systemPrompt.append` on session/new and session/load.
+  agy has no ACP mode that never asks (`auto` still asks before MCP tool calls and commands
+  that leave its sandbox, and `--dangerously-skip-permissions` covers the whole process), so the
+  plugin adds a `bypass` choice to agy's `mode` option: agy runs in `auto` and the plugin approves
+  every permission request. In `auto`, the plugin approves calls to the host's `emjosh` MCP tools
+  (kind `other`, title `Run mcp_emjosh_<tool>`); the ACP SDK drops agy's non-standard `name`
+  field, so the title is the only tool identity on a permission request. A prompted turn stays open while non-daemon
+  background work and one-shot timers run; daemon tasks let it end and wake the agent later with
+  no end marker. Every agy model call ends with a `usage_update`, and a tool call follows at once
+  when there is one, so the connection forwards a `usage_update` that nothing follows within
+  1.5 s marked as a turn end and enrich turns it into `endsAgentTurn`. Missing sessions fail with
+  `-32002 Session not found: <id>` and no `data.uri`, recognized by `isSessionNotFound`. Sign-in
+  is `agy acp --login` (Keychain), `AGY_ADC_AUTH=true` (gcloud ADC), or `GEMINI_API_KEY`.
 - Muse Code installs managed hooks through `managed_hooks_path` in `settings.json`.
   `SessionStart`, `UserPromptSubmit`, and `Stop` report session, working, and completion events.
   `managed_hooks_env_vars` forwards the Emdash hook routing variables.

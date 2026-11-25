@@ -1,6 +1,11 @@
 import type { Scope } from '@emdash/shared/concurrency';
 import { connect, memoryTransportPair, type Connection, type Controller } from '@emdash/wire/rpc';
 import { app } from 'electron';
+import { startInterruptedTurnResumer } from '@core/features/conversations/node/interrupted-turns';
+import {
+  sendAcpConversationPrompt,
+  startAcpConversationSession,
+} from '@core/features/conversations/node/wire-controller';
 import {
   desktopNodeControllers,
   type DesktopControllerContext,
@@ -48,6 +53,18 @@ export async function bootControllers(
         const controller = await contribution.create(context);
         if (controller.dispose) controllerScope.add(() => controller.dispose?.());
         return [domain, controller] as const;
+      })
+    );
+    const sessionOptions = { ...options, runtimes: runtimes.broker };
+    scope.add(
+      startInterruptedTurnResumer({
+        db: database.db,
+        projects: services.projects,
+        isEnabled: () => database.appSettings.get('resumeInterruptedTurns'),
+        start: (conversationId) => startAcpConversationSession(sessionOptions, conversationId),
+        send: (conversationId, text) =>
+          sendAcpConversationPrompt(sessionOptions, conversationId, text),
+        logger: log,
       })
     );
     if (IS_PERSONAL) {

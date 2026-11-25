@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { desktopDomainContracts } from '@core/manifests/shared/domain-contracts';
+import { desktopWireContract } from '@core/manifests/shared/desktop-wire-contract';
 import { AppApi, appApiCatalog } from './app-api';
 
 function setup() {
@@ -7,7 +7,7 @@ function setup() {
     call: vi.fn(async (_path: string, _input: unknown) => 'called' as unknown),
     snapshot: vi.fn(async (_topic: string) => ({ data: ['task'] as unknown })),
   };
-  return { api: new AppApi(appApiCatalog(desktopDomainContracts), wire), wire };
+  return { api: new AppApi(appApiCatalog(desktopWireContract), wire), wire };
 }
 
 describe('app API', () => {
@@ -52,6 +52,20 @@ describe('app API', () => {
       mutationId: expect.any(String),
     });
     await expect(api.call('tasks.taskList.restore', { taskId: 't1' })).rejects.toThrow();
+  });
+
+  it('addresses every live state by its full topic, under its domain', () => {
+    const states = appApiCatalog(desktopWireContract).filter((entry) => entry.kind === 'state');
+    expect(states.map((entry) => entry.path)).toEqual(
+      expect.arrayContaining([
+        'conversations.acp.session.state',
+        'conversations.providerSettings.model.value',
+      ])
+    );
+    for (const entry of states) {
+      if (entry.kind !== 'state') continue;
+      expect(entry.topicId.split('.')[0]).toBe(entry.path.split('.')[0]);
+    }
   });
 
   it('reads live states by key and rejects unknown paths', async () => {

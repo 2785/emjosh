@@ -51,6 +51,7 @@ export class AcpRuntime {
     this.connections = createAcpConnectionSource({
       host: deps.host,
       agentHost: deps.agentHost,
+      controlInstructions: deps.controlInstructions,
       logger: deps.logger,
       clock: deps.clock,
       idleTtlMs: deps.lifecycle?.connectionIdleTtlMs ?? 120_000,

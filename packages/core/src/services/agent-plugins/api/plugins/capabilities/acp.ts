@@ -30,6 +30,11 @@ export type AcpSpawnContext = {
   env: Record<string, string>;
   /** Absolute path to the resolved host CLI binary (mirrors prompt's CommandContext.cli). */
   cli: string;
+  /**
+   * The host app's instructions for its MCP tools, set when the app serves them. Agents that
+   * don't read MCP server instructions should pass these to the model themselves.
+   */
+  controlInstructions?: string;
 };
 
 export type AcpSpawnResult = {
@@ -95,8 +100,9 @@ export interface IAcpBehavior {
   enrich?: EnrichHook;
 
   /**
-   * `enrich` marks the event ending each agent-initiated turn (a `usage` event with
-   * `endsAgentTurn`), so the runtime ends those turns on it rather than after a short silence.
+   * `enrich` marks the end of each agent-initiated turn (an `agent_turn_end` event, or a `usage`
+   * event with `endsAgentTurn`), so the runtime ends those turns on it rather than after a short
+   * silence.
    */
   reportsAgentTurnEnd?: boolean;
 

@@ -108,6 +108,9 @@ export function createAcpComponent(options: CreateAcpComponentOptions) {
         sessionMcpServers: config.controlEndpointFile
           ? (conversationId) => readControlMcpServer(config.controlEndpointFile!, conversationId)
           : undefined,
+        controlInstructions: config.controlEndpointFile
+          ? async () => (await readControlEndpoint(config.controlEndpointFile!))?.instructions
+          : undefined,
         lifecycle: config.lifecycle,
         logger: runtimeLogger,
       } satisfies AcpRuntimeDeps);
@@ -122,18 +125,33 @@ export function createAcpComponent(options: CreateAcpComponentOptions) {
   });
 }
 
+/** The host's control endpoint file; null if the endpoint isn't running. */
+async function readControlEndpoint(
+  endpointFile: string
+): Promise<{ url: string; token: string; instructions?: string } | null> {
+  let info: { url?: unknown; token?: unknown; instructions?: unknown };
+  try {
+    info = JSON.parse(await readFile(endpointFile, 'utf8'));
+  } catch {
+    return null;
+  }
+  if (typeof info.url !== 'string' || typeof info.token !== 'string') return null;
+  return {
+    url: info.url,
+    token: info.token,
+    ...(typeof info.instructions === 'string' && info.instructions
+      ? { instructions: info.instructions }
+      : {}),
+  };
+}
+
 /** The host's control endpoint as an MCP server for one conversation; none if not running. */
 async function readControlMcpServer(
   endpointFile: string,
   conversationId: string
 ): Promise<McpServerRegistration[]> {
-  let info: { url?: unknown; token?: unknown };
-  try {
-    info = JSON.parse(await readFile(endpointFile, 'utf8'));
-  } catch {
-    return [];
-  }
-  if (typeof info.url !== 'string' || typeof info.token !== 'string') return [];
+  const info = await readControlEndpoint(endpointFile);
+  if (!info) return [];
   return [
     {
       name: 'emjosh',

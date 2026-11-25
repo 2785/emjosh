@@ -2,7 +2,7 @@ import { exec, execFile, spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { app } from 'electron';
-import { buildExternalToolEnv } from '@main/lib/childProcessEnv';
+import { buildLaunchedToolEnv } from '@main/lib/userEnv';
 
 const UNKNOWN_VERSION = 'unknown';
 
@@ -16,7 +16,7 @@ export const execCommand = (
       {
         maxBuffer: opts?.maxBuffer ?? 8 * 1024 * 1024,
         timeout: opts?.timeout ?? 30_000,
-        env: buildExternalToolEnv(),
+        env: buildLaunchedToolEnv(),
         windowsHide: true,
       },
       (error, stdout) => {
@@ -37,7 +37,7 @@ export const execFileCommand = (
       args,
       {
         timeout: opts?.timeout ?? 30_000,
-        env: buildExternalToolEnv(),
+        env: buildLaunchedToolEnv(),
       },
       (error) => {
         if (error) return reject(error);
@@ -50,7 +50,7 @@ export const spawnDetachedCommand = (file: string, args: string[]): Promise<void
   new Promise((resolve, reject) => {
     const child = spawn(file, args, {
       detached: true,
-      env: buildExternalToolEnv(),
+      env: buildLaunchedToolEnv(),
       stdio: 'ignore',
     });
 
@@ -76,7 +76,7 @@ const execFileOutput = (
       {
         maxBuffer: opts?.maxBuffer ?? 8 * 1024 * 1024,
         timeout: opts?.timeout ?? 30_000,
-        env: buildExternalToolEnv(),
+        env: buildLaunchedToolEnv(),
       },
       (error, stdout, stderr) => {
         if (error) return reject(error);

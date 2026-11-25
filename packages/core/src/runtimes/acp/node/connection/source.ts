@@ -47,6 +47,8 @@ export type PooledAcpProcess = AcpConnectionEntry;
 export interface CreateAcpConnectionSourceDeps {
   host: AcpConnectionProcessHost;
   agentHost: AgentPluginHost;
+  /** See AcpSpawnContext.controlInstructions. */
+  controlInstructions?: () => Promise<string | undefined>;
   logger: Logger;
   clock?: Clock;
   idleTtlMs?: number;
@@ -131,9 +133,11 @@ async function provisionAcpConnection(
   }
 
   const routeKey = makeAcpConnectionKey(key.providerId, key.cwd);
+  const controlInstructions = await deps.controlInstructions?.().catch(() => undefined);
   const spawn = await deps.agentHost.buildAcpSpawn(key.providerId, {
     cwd: key.cwd,
     env: key.env,
+    ...(controlInstructions ? { controlInstructions } : {}),
   });
   if (!spawn.success) {
     throw acpErr.spawnFailed(toSerializedError(new Error(agentHostErrorMessage(spawn.error))))

@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@agentclientprotocol/codex-acp@1.13.1':
+    hash: a48f40d0e407b33ea0b797dc8bd8d0bddd5d10fdb9e27b2f1ec32f3d9fe8b1ae
+    path: patches/@agentclientprotocol__codex-acp@1.13.1.patch
   ssh2@1.17.0:
     hash: 7d283671fb93073e2c74fd830fad75df3bf657ded2f1262061f5f94e6e3693ed
     path: patches/ssh2@1.17.0.patch
@@ -647,7 +650,7 @@ importers:
         version: 0.81.2(@anthropic-ai/sdk@0.106.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))
       '@agentclientprotocol/codex-acp':
         specifier: ^1.13.1
-        version: 1.13.1
+        version: 1.13.1(patch_hash=a48f40d0e407b33ea0b797dc8bd8d0bddd5d10fdb9e27b2f1ec32f3d9fe8b1ae)
       '@typescript/native-preview':
         specifier: 7.0.0-dev.20260609.1
         version: 7.0.0-dev.20260609.1
@@ -9339,7 +9342,7 @@ snapshots:
       - '@anthropic-ai/sdk'
       - '@modelcontextprotocol/sdk'
 
-  '@agentclientprotocol/codex-acp@1.13.1':
+  '@agentclientprotocol/codex-acp@1.13.1(patch_hash=a48f40d0e407b33ea0b797dc8bd8d0bddd5d10fdb9e27b2f1ec32f3d9fe8b1ae)':
     dependencies:
       '@agentclientprotocol/sdk': 1.5.0(zod@4.6.5)
       '@openai/codex': 0.156.1

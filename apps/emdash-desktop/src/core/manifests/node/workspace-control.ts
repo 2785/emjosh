@@ -29,7 +29,7 @@ import {
 import { isAncestor, worktreeTip } from '@core/features/workspace-control/node/worktree-branches';
 import { workspaceRegistryTable as workspaces } from '@core/features/workspaces/api/node/registry/workspace-registry';
 import { getProvisionedWorkspaceBranch } from '@core/features/workspaces/api/node/workspace-branch';
-import { desktopDomainContracts } from '@core/manifests/shared/domain-contracts';
+import { desktopWireContract } from '@core/manifests/shared/desktop-wire-contract';
 import type { Project } from '@core/primitives/projects/api';
 import { resolveTaskBranchName } from '@core/primitives/tasks/api/resolve-task-branch-name';
 import { buildWorkspaceConfigFromPreset } from '@core/primitives/workspaces/api/build-workspace-config-from-preset';
@@ -572,8 +572,7 @@ export async function startWorkspaceControl(
   };
 
   deps.initiatives = initiatives;
-  if (extras.appWire)
-    deps.appApi = new AppApi(appApiCatalog(desktopDomainContracts), extras.appWire);
+  if (extras.appWire) deps.appApi = new AppApi(appApiCatalog(desktopWireContract), extras.appWire);
   const service = new WorkspaceControlService(deps);
 
   // Dependencies: dropped with archived or deleted workspaces; ones that look done (merged,
