@@ -28,6 +28,28 @@ describe('initiative deliveries', () => {
     expect(parseInitiativeDelivery(text)).toEqual({ initiativeName: 'Accounts v2', count: 2 });
   });
 
+  it('names the sender with its initiative label', () => {
+    const text = formatInitiativeDelivery({
+      initiativeName: 'X',
+      entries: [
+        {
+          kind: 'done',
+          sender: 'Codex parity',
+          senderLabel: 'F',
+          senderId: 'ws-f',
+          fromLead: false,
+          direct: true,
+          body: 'Done.',
+        },
+        { kind: 'fyi', sender: 'Lead', fromLead: true, direct: false, body: 'Heads up.' },
+      ],
+    });
+    expect(text).toContain(
+      '— Workspace [F](emjosh://workspace/ws-f) "Codex parity" · done · to you\nDone.'
+    );
+    expect(text).toContain('— Workspace "Lead" (lead) · fyi\nHeads up.');
+  });
+
   it('labels a message without a kind by its sender only', () => {
     const text = formatInitiativeDelivery({
       initiativeName: 'X',

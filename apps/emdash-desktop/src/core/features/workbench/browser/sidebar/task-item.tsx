@@ -1,5 +1,5 @@
-import { ContextMenu, Tooltip } from '@emdash/ui/react/primitives';
-import { CircleCheck, Crown, Layers, Unlink } from 'lucide-react';
+import { ContextMenu, toast, Tooltip } from '@emdash/ui/react/primitives';
+import { CircleCheck, Crown, Layers, Tag, Unlink } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { getInitiativesClient } from '@core/features/initiatives/api/browser/client';
 import {
@@ -7,6 +7,7 @@ import {
   taskDependencyView,
 } from '@core/features/initiatives/api/browser/dependency-view';
 import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
+import { InitiativeLabel } from '@core/features/initiatives/contributions/browser/initiative-label';
 import { getProjectStore } from '@core/features/projects/api/browser/stores/project-selectors';
 import { projectViewDef } from '@core/features/projects/contributions/views';
 import { useAppSettingsKey } from '@core/features/settings/api/browser/use-app-settings-key';
@@ -102,6 +103,7 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
   const initiativeId = registeredTaskData(task)?.initiativeId ?? null;
   const initiative = initiativeId ? getInitiativesStore().byId.get(initiativeId) : undefined;
   const isLead = initiative?.leadTaskId === taskId;
+  const label = initiative?.labels[taskId];
   const dependencies = initiative ? taskDependencyView(initiative, taskId) : undefined;
   const isMarkedDone = registeredTaskData(task)?.status === 'done';
 
@@ -139,6 +141,12 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
             >
               <Crown className="size-4" />
               Make initiative lead
+            </ContextMenu.Item>
+          )}
+          {initiative && (
+            <ContextMenu.Item onClick={() => editLabel(taskId, label)}>
+              <Tag className="size-4" />
+              {label ? 'Change label…' : 'Set label…'}
             </ContextMenu.Item>
           )}
           {initiative && (
@@ -198,6 +206,7 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
               className="size-3.5 shrink-0 text-foreground-tertiary-passive"
             />
           )}
+          {label && rowVariant === 'underInitiative' && <InitiativeLabel label={label} />}
           {dependencies && rowVariant === 'underInitiative' && (
             <DependencyRank view={dependencies} />
           )}
@@ -235,6 +244,22 @@ const RenderPrBadge = observer(function RenderPrBadge({ task }: { task: TaskStor
     </span>
   ) : null;
 });
+
+/** Asks for a task's label in its initiative; an empty answer clears it. */
+function editLabel(taskId: string, current: string | undefined) {
+  const answer = window.prompt(
+    'Label in the initiative (e.g. "F" or "API"; empty clears it)',
+    current
+  );
+  if (answer === null || answer.trim() === (current ?? '')) return;
+  void getInitiativesClient()
+    .then((client) => client.setLabel({ taskId, label: answer.trim() || null }))
+    .catch((error: unknown) =>
+      toast.error('Could not set the label', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    );
+}
 
 /** The task's place in its initiative's landing order, with what it waits on on hover. */
 function DependencyRank({ view }: { view: TaskDependencyView }) {

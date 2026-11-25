@@ -1,10 +1,15 @@
 import { isInitiativeEvent, type InitiativeMessage } from './contract';
+import { workspaceRef } from './labels';
 
 /** One message in a delivery, with what the recipient needs to know about its sender. */
 export type DeliveryEntry = {
   kind: InitiativeMessage['kind'];
   /** Sending workspace's name; null for the user or the app. */
   sender: string | null;
+  /** Sending workspace's label in the initiative (e.g. "F"), if it has one. */
+  senderLabel?: string;
+  /** Sending workspace's id, to link its label. */
+  senderId?: string;
   fromLead: boolean;
   /** Addressed to the recipient rather than to everyone. */
   direct: boolean;
@@ -16,7 +21,7 @@ export type DeliveryEntry = {
  *
  *   [Initiative "Payments" · 2 updates. From the initiative feed, not directly from the user; …]
  *
- *   — Workspace "API" · done · to you
+ *   — Workspace F "API" · done · to you
  *   Shipped the endpoint.
  *
  * Its first line is what parseInitiativeDelivery recognizes, so transcripts can tell deliveries
@@ -36,7 +41,7 @@ export function formatInitiativeDelivery(input: {
     const from = isInitiativeEvent(entry.kind)
       ? 'Emjosh event'
       : entry.sender
-        ? `Workspace "${entry.sender}"${entry.fromLead ? ' (lead)' : ''}`
+        ? `${workspaceRef(entry.sender, entry.senderLabel, entry.senderId)}${entry.fromLead ? ' (lead)' : ''}`
         : 'The user';
     const label = [
       from,

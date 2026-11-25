@@ -247,6 +247,7 @@ describe('WorkspaceControlService', () => {
         archived: false,
         createdAt: '2026-11-10T00:00:00Z',
         taskIds: [],
+        labels: {},
         leadTaskId: null,
         dependencies: [],
       };
@@ -288,7 +289,7 @@ describe('WorkspaceControlService', () => {
         pushBranch: false,
         provider: 'claude',
       });
-      expect(initiatives.setTaskInitiative).toHaveBeenCalledWith(['new'], 'i1');
+      expect(initiatives.setTaskInitiative).toHaveBeenCalledWith(['new'], 'i1', { label: null });
       expect(initiatives.setLead).toHaveBeenCalledWith('i1', 'new');
       expect(result.lead).toEqual({ id: 'new', name: 'new', created: true });
       expect(result.initiative.leadTaskId).toBe('new');

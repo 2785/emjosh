@@ -6,6 +6,12 @@ import {
   type InitiativeMessageKind,
 } from '@core/features/initiatives/api/contract';
 import { dependencyOrder } from '@core/features/initiatives/api/dependency-order';
+import {
+  labelledName,
+  normalizeLabel,
+  workspaceChip,
+  workspaceRef,
+} from '@core/features/initiatives/api/labels';
 import { ensureUniqueTaskDisplayName, isRandomTaskName } from '@core/features/tasks/api/task-names';
 import type { AppApi } from './app-api';
 
@@ -34,6 +40,13 @@ export type ControlWorkspace = {
   agentStatus: string | null;
   lastActivityAt: string | null;
   initiativeId: string | null;
+  /** Short name within its initiative (e.g. "F"); absent outside one or without a label. */
+  label?: string;
+  /**
+   * Markdown link that opens the workspace (its label, else its name); write it as is when
+   * naming the workspace to the user.
+   */
+  link?: string;
   /** The user or the lead marked the workspace done (its task status). */
   markedDone?: boolean;
   pullRequest: ControlPullRequest | null;
@@ -78,6 +91,8 @@ export type CreateWorkspaceInput = {
   provider?: string;
   /** Initiative to put the new workspace in. */
   initiativeId?: string;
+  /** Its label in the initiative; the next free letter when omitted, none with null. */
+  label?: string | null;
 };
 
 export type WorkspaceTip = {
@@ -117,7 +132,12 @@ export type ControlInitiatives = {
   subscriptions(initiativeId: string, taskId: string): Promise<InitiativeSubscription[]>;
   subscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
   unsubscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
-  setTaskInitiative(taskIds: string[], initiativeId: string | null): Promise<void>;
+  setTaskInitiative(
+    taskIds: string[],
+    initiativeId: string | null,
+    options?: { label?: string | null }
+  ): Promise<void>;
+  setLabel(taskId: string, label: string | null): Promise<void>;
   /** Every live dependency; stale ones (archived or deleted tasks) are dropped on the way. */
   dependencies(): Promise<(InitiativeDependency & { initiativeId: string })[]>;
   setDependencies(taskId: string, dependsOnTaskIds: string[]): Promise<void>;
@@ -330,6 +350,7 @@ export class WorkspaceControlService {
         const latest = row.initiativeId ? activity.get(row.initiativeId)?.get(row.id) : undefined;
         return {
           ...row,
+          link: workspaceChip(row.id, row.name, row.label),
           pullRequest: await this.pullRequestOf(row, pullRequests),
           ...(latest && { initiativeActivity: latest }),
         };
@@ -451,7 +472,7 @@ export class WorkspaceControlService {
     T extends InitiativeDependency & { initiativeId: string },
   >(
     dependencies: T[],
-    byId: Map<string, { name: string }>,
+    byId: Map<string, { name: string; label?: string }>,
     contains: (holderId: string, heldId: string) => Promise<boolean>
   ): Promise<T[]> {
     const initiatives = this.requireInitiatives();
@@ -462,7 +483,7 @@ export class WorkspaceControlService {
         continue;
       }
       await initiatives.removeDependency(edge);
-      const name = (id: string) => byId.get(id)?.name ?? id;
+      const name = (id: string) => refOf(byId, id);
       const leadTaskId = (await initiatives.get(edge.initiativeId))?.leadTaskId ?? null;
       await initiatives.post({
         initiativeId: edge.initiativeId,
@@ -470,8 +491,8 @@ export class WorkspaceControlService {
         toTaskId: leadTaskId,
         kind: 'event',
         body:
-          `Dropped the dependency of "${name(edge.taskId)}" on "${name(edge.dependsOnTaskId)}": ` +
-          `its branch already contains "${name(edge.dependsOnTaskId)}"'s work.`,
+          `Dropped the dependency of ${name(edge.taskId)} on ${name(edge.dependsOnTaskId)}: ` +
+          `its branch already contains ${name(edge.dependsOnTaskId)}'s work.`,
       });
     }
     return kept;
@@ -538,12 +559,14 @@ export class WorkspaceControlService {
         }
       }
       if (found.length === 0) continue;
-      const posted = new Set(
-        (await initiatives.messages({ initiativeId, limit: 100_000 })).map((m) => m.body)
+      const posted = (await initiatives.messages({ initiativeId, limit: 100_000 })).map(
+        (m) => m.body
       );
       for (const { from, into } of found) {
         const body = containmentNotice(from, into);
-        if (posted.has(body)) continue;
+        // Compared by the pair, so a renamed or relabelled workspace isn't announced again.
+        const pair = containmentPairTag(from, into);
+        if (posted.some((text) => text.endsWith(pair))) continue;
         await initiatives.post({
           initiativeId,
           fromTaskId: null,
@@ -734,6 +757,8 @@ export class WorkspaceControlService {
         )
         .catch(() => false)) ?? false;
     const { skipped } = await initiatives.moveDependencies(from.id, into.id);
+    const fromName = labelledName(from.name, from.label, from.id);
+    const intoName = labelledName(into.name, into.label, into.id);
     await this.deps.archiveWorkspace(from.projectId, from.id);
     await initiatives.post({
       initiativeId,
@@ -741,8 +766,8 @@ export class WorkspaceControlService {
       toTaskId: (await initiatives.get(initiativeId))?.leadTaskId ?? null,
       kind: 'event',
       body:
-        `Folded "${from.name}" into "${into.name}" and archived "${from.name}". Handoff summary ` +
-        `(${source}) ${delivered ? `delivered to "${into.name}"` : `could not be delivered to "${into.name}"'s chat`}.` +
+        `Folded ${fromName} into ${intoName} and archived ${fromName}. Handoff summary ` +
+        `(${source}) ${delivered ? `delivered to ${intoName}` : `could not be delivered to ${intoName}'s chat`}.` +
         (skipped.length > 0
           ? ` Dependencies not moved (would form a cycle): ${skipped.join('; ')}.`
           : '') +
@@ -770,7 +795,7 @@ export class WorkspaceControlService {
   private async announceDoneDependencies(
     initiativeId: string,
     edges: InitiativeDependency[],
-    byId: Map<string, { name: string }>,
+    byId: Map<string, { name: string; label?: string }>,
     doneReasons: Map<string, string | null>
   ): Promise<void> {
     const initiatives = this.requireInitiatives();
@@ -782,14 +807,14 @@ export class WorkspaceControlService {
       // Only newly done dependencies are announced; one that stopped looking done is re-armed.
       if (!reason || edge.doneNotice) continue;
       leadTaskId ??= (await initiatives.get(initiativeId))?.leadTaskId ?? null;
-      const name = (id: string) => byId.get(id)?.name ?? id;
+      const name = (id: string) => refOf(byId, id);
       await initiatives.post({
         initiativeId,
         fromTaskId: null,
         toTaskId: leadTaskId,
         kind: 'attention',
         body:
-          `Workspace "${name(edge.taskId)}" depends on "${name(edge.dependsOnTaskId)}", which ` +
+          `Workspace ${name(edge.taskId)} depends on ${name(edge.dependsOnTaskId)}, which ` +
           `looks done (${reason}). If so, drop the dependency with set_workspace_dependencies.`,
       });
     }
@@ -957,8 +982,9 @@ export class WorkspaceControlService {
       ? await this.deps.callerContext(caller.conversationId)
       : null;
     const provider = input.provider ?? context?.provider;
+    const { label: _label, ...workspaceInput } = input;
     const created = await this.deps.createWorkspace({
-      ...input,
+      ...workspaceInput,
       provider,
       // The new agent runs like the caller's (the same permission mode, above all), as far as
       // they run the same agent.
@@ -966,13 +992,21 @@ export class WorkspaceControlService {
     });
     if (input.initiativeId) {
       const initiatives = this.requireInitiatives();
-      await initiatives.setTaskInitiative([created.id], input.initiativeId);
+      await initiatives.setTaskInitiative([created.id], input.initiativeId, {
+        ...(input.label !== undefined && { label: input.label }),
+      });
+      const label = (await initiatives.get(input.initiativeId))?.labels[created.id];
       await initiatives.post({
         initiativeId: input.initiativeId,
         fromTaskId: context?.taskId ?? null,
         kind: 'event',
-        body: `Workspace "${created.name}" was created${input.prompt ? ' and given a first task' : ''}.`,
+        body: `${workspaceRef(created.name, label, created.id)} was created${input.prompt ? ' and given a first task' : ''}.`,
       });
+      return {
+        ...created,
+        ...(label && { label }),
+        link: workspaceChip(created.id, created.name, label),
+      };
     }
     return created;
   }
@@ -1029,8 +1063,9 @@ export class WorkspaceControlService {
       ...(input.includeCallingWorkspace !== false && taskId ? [taskId] : []),
       ...(input.workspaceIds ?? []),
     ];
-    if (members.length > 0)
-      await initiatives.setTaskInitiative([...new Set(members)], initiative.id);
+    // The lead joins through setLead, without a label.
+    const labelled = [...new Set(members)].filter((id) => id !== existingLead?.id);
+    if (labelled.length > 0) await initiatives.setTaskInitiative(labelled, initiative.id);
 
     const lead = existingLead
       ? { id: existingLead.id, name: existingLead.name, created: false }
@@ -1047,6 +1082,7 @@ export class WorkspaceControlService {
                   : null,
             }),
             initiativeId: initiative.id,
+            label: null,
             // The lead doesn't change code, so its branch has nothing to publish.
             pushBranch: false,
           })),
@@ -1072,9 +1108,36 @@ export class WorkspaceControlService {
     return initiative;
   }
 
-  async addToInitiative(input: { initiativeId: string; workspaceIds: string[] }) {
-    await this.requireInitiatives().setTaskInitiative(input.workspaceIds, input.initiativeId);
+  /** Moves workspaces into an initiative; each gets the next free label unless one is given. */
+  async addToInitiative(input: {
+    initiativeId: string;
+    workspaceIds: string[];
+    label?: string | null;
+  }) {
+    await this.requireInitiatives().setTaskInitiative(input.workspaceIds, input.initiativeId, {
+      ...(input.label !== undefined && { label: input.label }),
+    });
     return this.requireInitiatives().get(input.initiativeId);
+  }
+
+  /**
+   * Sets or (with null) clears a workspace's label in its initiative. Only the initiative's lead
+   * (or a client outside Emjosh) may. Labels are unique and never reused within an initiative.
+   */
+  async setWorkspaceLabel(
+    caller: ControlCaller,
+    input: { workspaceId: string; label: string | null }
+  ): Promise<{ workspaceId: string; label: string | null }> {
+    const initiatives = this.requireInitiatives();
+    const initiative = await initiatives.initiativeOfTask(input.workspaceId);
+    if (!initiative) throw new Error(`Workspace '${input.workspaceId}' is not in an initiative.`);
+    const taskId = await this.callerTaskId(caller);
+    if (taskId && taskId !== initiative.leadTaskId) {
+      throw new Error(`Only the lead of initiative "${initiative.name}" sets labels.`);
+    }
+    const label = input.label?.trim() ? normalizeLabel(input.label) : null;
+    await initiatives.setLabel(input.workspaceId, label);
+    return { workspaceId: input.workspaceId, label };
   }
 
   async removeFromInitiative(input: { workspaceIds: string[] }) {
@@ -1254,13 +1317,25 @@ export function leadPrompt(input: {
 
 /** The lead's notice that one workspace's branch is contained in another's. */
 export function containmentNotice(
-  from: { id: string; name: string },
-  into: { id: string; name: string }
+  from: { id: string; name: string; label?: string },
+  into: { id: string; name: string; label?: string }
 ): string {
+  const fromName = labelledName(from.name, from.label, from.id);
+  const intoName = labelledName(into.name, into.label, into.id);
   return (
-    `"${from.name}"'s branch is contained in "${into.name}"'s; fold "${from.name}" into ` +
-    `"${into.name}"? (merge_workspaces from ${from.id} into ${into.id})`
+    `${fromName}'s branch is contained in ${intoName}'s; fold ${fromName} into ${intoName}? ` +
+    containmentPairTag(from, into)
   );
+}
+
+function containmentPairTag(from: { id: string }, into: { id: string }): string {
+  return `(merge_workspaces from ${from.id} into ${into.id})`;
+}
+
+/** A workspace by id as `F "name"`, or its id when it isn't known. */
+function refOf(byId: Map<string, { name: string; label?: string }>, id: string): string {
+  const row = byId.get(id);
+  return row ? labelledName(row.name, row.label, id) : id;
 }
 
 /** What the folded workspace's agent is asked for. */

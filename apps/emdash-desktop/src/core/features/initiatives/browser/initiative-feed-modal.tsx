@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { getInitiativesClient } from '@core/features/initiatives/api/browser/client';
 import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
 import { isInitiativeEvent, type InitiativeMessage } from '@core/features/initiatives/api/contract';
+import { stripWorkspaceLinks } from '@core/features/initiatives/api/labels';
+import { InitiativeLabel } from '@core/features/initiatives/contributions/browser/initiative-label';
 import { useModalController } from '@core/manifests/browser/modal-api';
 import { defineModal } from '@core/primitives/modals/react';
 import { cn } from '@core/primitives/styling/browser/cn';
@@ -22,6 +24,7 @@ export const InitiativeFeedModal = observer(function InitiativeFeedModal({
 }: InitiativeFeedModalArgs) {
   const controller = useModalController('initiativeFeedModal');
   const initiative = getInitiativesStore().byId.get(initiativeId);
+  const labels = initiative?.labels ?? {};
   const [messages, setMessages] = useState<InitiativeMessage[]>([]);
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -89,9 +92,20 @@ export const InitiativeFeedModal = observer(function InitiativeFeedModal({
           {messages.map((message) => (
             <div key={message.id} className="flex flex-col gap-0.5">
               <div className="flex items-baseline gap-2 text-xs text-foreground-passive">
-                <span className="font-medium text-foreground-muted">{sender(message)}</span>
+                <span className="flex items-baseline gap-1 font-medium text-foreground-muted">
+                  {message.fromTaskId && labels[message.fromTaskId] && (
+                    <InitiativeLabel label={labels[message.fromTaskId]!} className="self-center" />
+                  )}
+                  {sender(message)}
+                </span>
                 {message.toTaskId && (
-                  <span>→ {findTask(message.toTaskId)?.name ?? 'workspace'}</span>
+                  <span className="flex items-baseline gap-1">
+                    →
+                    {labels[message.toTaskId] && (
+                      <InitiativeLabel label={labels[message.toTaskId]!} className="self-center" />
+                    )}
+                    {findTask(message.toTaskId)?.name ?? 'workspace'}
+                  </span>
                 )}
                 <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
               </div>
@@ -101,7 +115,7 @@ export const InitiativeFeedModal = observer(function InitiativeFeedModal({
                   isInitiativeEvent(message.kind) && 'text-foreground-muted italic'
                 )}
               >
-                {message.body}
+                {stripWorkspaceLinks(message.body)}
               </p>
             </div>
           ))}
