@@ -1,15 +1,18 @@
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type {
   Initiative,
   InitiativeChange,
+  InitiativeDependency,
   InitiativeMessage,
 } from '@core/features/initiatives/api/contract';
+import { findCycle } from '@core/features/initiatives/api/dependency-order';
 import type { AppDb } from '@core/services/app-db/node/db';
 import { appDbPokes } from '@core/services/app-db/node/pokes';
 import {
   initiativeMessages,
   initiatives,
   initiativeSubscriptions,
+  taskDependencies,
   tasks,
 } from '@core/services/app-db/node/schema';
 
@@ -72,6 +75,7 @@ export class InitiativesService {
       .where(options.includeArchived ? undefined : isNull(initiatives.archivedAt))
       .orderBy(asc(initiatives.createdAt));
     if (rows.length === 0) return [];
+    const dependencies = await this.dependencies();
     const members = await this.db
       .select({ id: tasks.id, initiativeId: tasks.initiativeId })
       .from(tasks)
@@ -92,7 +96,194 @@ export class InitiativesService {
       createdAt: row.createdAt,
       taskIds: members.filter((m) => m.initiativeId === row.id).map((m) => m.id),
       leadTaskId: row.leadTaskId,
+      dependencies: dependencies.filter((dependency) => dependency.initiativeId === row.id),
     }));
+  }
+
+  /**
+   * Every live dependency with its initiative. Drops (deletes) the stale ones on the way: those
+   * whose tasks were archived or deleted, or are no longer in the same initiative.
+   */
+  async dependencies(): Promise<(InitiativeDependency & { initiativeId: string })[]> {
+    const rows = await this.db.select().from(taskDependencies);
+    if (rows.length === 0) return [];
+    const ids = [...new Set(rows.flatMap((row) => [row.taskId, row.dependsOnTaskId]))];
+    const taskRows = await this.db
+      .select({ id: tasks.id, initiativeId: tasks.initiativeId })
+      .from(tasks)
+      .where(and(inArray(tasks.id, ids), isNull(tasks.deletedAt), isNull(tasks.archivedAt)));
+    const initiativeOf = new Map(taskRows.map((row) => [row.id, row.initiativeId]));
+    const live: (InitiativeDependency & { initiativeId: string })[] = [];
+    const stale: typeof rows = [];
+    for (const row of rows) {
+      const initiativeId = initiativeOf.get(row.taskId);
+      if (initiativeId && initiativeId === initiativeOf.get(row.dependsOnTaskId)) {
+        live.push({
+          initiativeId,
+          taskId: row.taskId,
+          dependsOnTaskId: row.dependsOnTaskId,
+          doneNotice: row.doneNotice,
+        });
+      } else stale.push(row);
+    }
+    if (stale.length > 0) {
+      for (const row of stale) await this.deleteDependency(row);
+      this.emit({ type: 'initiatives-changed' });
+    }
+    return live;
+  }
+
+  /**
+   * Replaces what a task depends on. The task and its dependencies must be active tasks of one
+   * initiative, and the result must have no cycle.
+   */
+  async setDependencies(taskId: string, dependsOnTaskIds: string[]): Promise<void> {
+    const wanted = [...new Set(dependsOnTaskIds)];
+    const initiative = await this.initiativeOfTask(taskId);
+    if (!initiative) throw new Error('The workspace is not in an initiative.');
+    const active = new Set(
+      (
+        await this.db
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.initiativeId, initiative.id),
+              isNull(tasks.deletedAt),
+              isNull(tasks.archivedAt)
+            )
+          )
+      ).map((row) => row.id)
+    );
+    if (!active.has(taskId)) throw new Error('An archived workspace cannot have dependencies.');
+    const outside = wanted.filter((id) => !active.has(id));
+    if (outside.length > 0) {
+      throw new Error(
+        `Not active workspaces of initiative "${initiative.name}": ${outside.join(', ')}.`
+      );
+    }
+    const cycle = findCycle(initiative.dependencies, taskId, wanted);
+    if (cycle) {
+      const names = await this.taskNames(cycle);
+      throw new Error(
+        `That would create a dependency cycle: ${cycle.map((id) => names.get(id) ?? id).join(' → ')}.`
+      );
+    }
+    const existing = initiative.dependencies.filter((dependency) => dependency.taskId === taskId);
+    for (const dependency of existing) {
+      if (!wanted.includes(dependency.dependsOnTaskId)) await this.deleteDependency(dependency);
+    }
+    const added = wanted.filter((id) => !existing.some((d) => d.dependsOnTaskId === id));
+    if (added.length > 0) {
+      await this.db
+        .insert(taskDependencies)
+        .values(added.map((dependsOnTaskId) => ({ taskId, dependsOnTaskId })));
+    }
+    this.emit({ type: 'initiatives-changed' });
+  }
+
+  /** Drops every dependency on or of the given tasks (when they are archived or deleted). */
+  async removeDependencies(taskIds: string[]): Promise<void> {
+    if (taskIds.length === 0) return;
+    const removed = await this.db
+      .delete(taskDependencies)
+      .where(
+        or(
+          inArray(taskDependencies.taskId, taskIds),
+          inArray(taskDependencies.dependsOnTaskId, taskIds)
+        )
+      )
+      .returning({ taskId: taskDependencies.taskId });
+    if (removed.length > 0) this.emit({ type: 'initiatives-changed' });
+  }
+
+  /** Records (or, with null, clears) that the lead was told the dependency looks done. */
+  async setDependencyDoneNotice(
+    dependency: { taskId: string; dependsOnTaskId: string },
+    doneNotice: string | null
+  ): Promise<void> {
+    await this.db
+      .update(taskDependencies)
+      .set({ doneNotice })
+      .where(
+        and(
+          eq(taskDependencies.taskId, dependency.taskId),
+          eq(taskDependencies.dependsOnTaskId, dependency.dependsOnTaskId)
+        )
+      );
+    this.emit({ type: 'initiatives-changed' });
+  }
+
+  /**
+   * Moves a task's dependencies and dependents onto another task of its initiative (when one
+   * is folded into the other). Edges that would point at itself or form a cycle are skipped
+   * and reported by name.
+   */
+  async moveDependencies(fromTaskId: string, intoTaskId: string): Promise<{ skipped: string[] }> {
+    const all = (await this.dependencies()).filter(
+      (dependency) => dependency.taskId !== fromTaskId && dependency.dependsOnTaskId !== fromTaskId
+    );
+    const moved = (await this.db.select().from(taskDependencies))
+      .filter((row) => row.taskId === fromTaskId || row.dependsOnTaskId === fromTaskId)
+      .map((row) => ({
+        taskId: row.taskId === fromTaskId ? intoTaskId : row.taskId,
+        dependsOnTaskId: row.dependsOnTaskId === fromTaskId ? intoTaskId : row.dependsOnTaskId,
+      }))
+      .filter((edge) => edge.taskId !== edge.dependsOnTaskId);
+    const skipped: { taskId: string; dependsOnTaskId: string }[] = [];
+    const kept = [...all];
+    for (const edge of moved) {
+      if (kept.some((k) => k.taskId === edge.taskId && k.dependsOnTaskId === edge.dependsOnTaskId))
+        continue;
+      const current = kept.filter((k) => k.taskId === edge.taskId).map((k) => k.dependsOnTaskId);
+      if (findCycle(kept, edge.taskId, [...current, edge.dependsOnTaskId])) {
+        skipped.push(edge);
+        continue;
+      }
+      await this.db.insert(taskDependencies).values(edge);
+      kept.push({ ...edge, doneNotice: null, initiativeId: '' });
+    }
+    await this.db
+      .delete(taskDependencies)
+      .where(
+        or(
+          eq(taskDependencies.taskId, fromTaskId),
+          eq(taskDependencies.dependsOnTaskId, fromTaskId)
+        )
+      );
+    this.emit({ type: 'initiatives-changed' });
+    const names = await this.taskNames(skipped.flatMap((e) => [e.taskId, e.dependsOnTaskId]));
+    return {
+      skipped: skipped.map(
+        (e) =>
+          `"${names.get(e.taskId) ?? e.taskId}" on "${names.get(e.dependsOnTaskId) ?? e.dependsOnTaskId}"`
+      ),
+    };
+  }
+
+  async removeDependency(dependency: { taskId: string; dependsOnTaskId: string }): Promise<void> {
+    await this.deleteDependency(dependency);
+    this.emit({ type: 'initiatives-changed' });
+  }
+
+  private async deleteDependency(dependency: { taskId: string; dependsOnTaskId: string }) {
+    await this.db
+      .delete(taskDependencies)
+      .where(
+        and(
+          eq(taskDependencies.taskId, dependency.taskId),
+          eq(taskDependencies.dependsOnTaskId, dependency.dependsOnTaskId)
+        )
+      );
+  }
+
+  private async taskNames(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.db
+      .select({ id: tasks.id, name: tasks.name })
+      .from(tasks)
+      .where(inArray(tasks.id, [...new Set(ids)]));
+    return new Map(rows.map((row) => [row.id, row.name]));
   }
 
   async get(id: string): Promise<Initiative | null> {

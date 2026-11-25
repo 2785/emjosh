@@ -20,13 +20,23 @@ vi.mock('@core/features/conversations/browser/acp/acp-chat-panel', () => ({
 }));
 
 const initiativesState = vi.hoisted(() => ({
-  initiatives: [] as { id: string; name: string; leadTaskId?: string | null }[],
+  initiatives: [] as {
+    id: string;
+    name: string;
+    leadTaskId?: string | null;
+    taskIds?: string[];
+    dependencies?: { taskId: string; dependsOnTaskId: string; doneNotice: null }[];
+  }[],
 }));
 vi.mock('@core/features/initiatives/api/browser/initiatives-store', () => ({
-  getInitiativesStore: () => ({
-    initiatives: initiativesState.initiatives,
-    byId: new Map(initiativesState.initiatives.map((i) => [i.id, i])),
-  }),
+  getInitiativesStore: () => {
+    const initiatives = initiativesState.initiatives.map((i) => ({
+      taskIds: [],
+      dependencies: [],
+      ...i,
+    }));
+    return { initiatives, byId: new Map(initiatives.map((i) => [i.id, i])) };
+  },
 }));
 
 function projectManager(projects: { id: string; createdAt: string }[]): SidebarProjectManager {
@@ -379,6 +389,50 @@ describe('SidebarStore initiative grouping', () => {
       { kind: 'initiative', initiativeId: 'i-accounts', label: 'Accounts v2', count: 2 },
       { kind: 'task', projectId: 'web', taskId: 'web-1' },
       { kind: 'task', projectId: 'api', taskId: 'api-1' },
+    ]);
+  });
+
+  it('orders members by their dependencies after the lead, independent ones last', () => {
+    const edge = (taskId: string, dependsOnTaskId: string) => ({
+      taskId,
+      dependsOnTaskId,
+      doneNotice: null,
+    });
+    initiativesState.initiatives = [
+      {
+        id: 'i-accounts',
+        name: 'Accounts v2',
+        leadTaskId: 'lead',
+        taskIds: ['lead', 'solo', 'ui', 'api', 'docs'],
+        dependencies: [edge('ui', 'api'), edge('docs', 'ui')],
+      },
+    ];
+    const manager = projectManagerWithTasks([
+      {
+        id: 'p',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        taskIds: ['solo', 'docs', 'ui', 'lead', 'api'],
+      },
+    ]);
+    const tasks = (
+      manager.projects.get('p') as unknown as {
+        context: {
+          context: {
+            get: (token: unknown) => { tasks: Map<string, { data: Record<string, unknown> }> };
+          };
+        };
+      }
+    ).context.context.get(taskManagerStoreToken).tasks;
+    for (const entry of tasks.values()) entry.data.initiativeId = 'i-accounts';
+    const store = new SidebarStore(manager);
+    store.setGroupBy('initiative');
+
+    expect(store.sidebarRows.flatMap((row) => (row.kind === 'task' ? [row.taskId] : []))).toEqual([
+      'lead',
+      'api',
+      'ui',
+      'docs',
+      'solo',
     ]);
   });
 

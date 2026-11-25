@@ -1,4 +1,5 @@
 import { computed, makeAutoObservable, observable } from 'mobx';
+import { initiativeDependencyOrder } from '@core/features/initiatives/api/browser/dependency-view';
 import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
 import { type ProjectStore } from '@core/features/projects/api/browser/stores/project';
 import type { ProjectManagerStore } from '@core/features/projects/api/browser/stores/project-manager';
@@ -191,9 +192,17 @@ export class SidebarStore {
     for (const initiative of initiatives) {
       const unordered = grouped.get(initiative.id);
       if (!unordered?.length) continue;
-      // The lead heads its initiative's list.
-      const isLead = (entry: TaskEntry) => entry.task.data.id === initiative.leadTaskId;
-      const members = [...unordered.filter(isLead), ...unordered.filter((e) => !isLead(e))];
+      // The lead heads its initiative's list, then members that are part of a dependency in
+      // landing order (those on or behind a cycle after them), then the independent ones.
+      const { ranks } = initiativeDependencyOrder(initiative);
+      const linked = new Set(initiative.dependencies.flatMap((d) => [d.taskId, d.dependsOnTaskId]));
+      const sortKey = (entry: TaskEntry) => {
+        const id = entry.task.data.id;
+        if (id === initiative.leadTaskId) return 0;
+        if (!linked.has(id)) return Number.MAX_SAFE_INTEGER;
+        return ranks.get(id) ?? Number.MAX_SAFE_INTEGER - 1;
+      };
+      const members = [...unordered].sort((a, b) => sortKey(a) - sortKey(b));
       rows.push(
         {
           kind: 'initiative',

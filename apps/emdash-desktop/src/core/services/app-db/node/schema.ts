@@ -611,6 +611,28 @@ export const initiativeMessages = sqliteTable(
 );
 
 /**
+ * "Task depends on task" within an initiative: the dependency should land first. No FKs (like
+ * tasks.initiative_id); the initiatives service drops rows whose tasks were archived, deleted,
+ * or left the initiative.
+ */
+export const taskDependencies = sqliteTable(
+  'task_dependencies',
+  {
+    taskId: text('task_id').notNull(),
+    dependsOnTaskId: text('depends_on_task_id').notNull(),
+    /** Why the dependency looked done when the initiative was told (e.g. "PR #12 merged"). */
+    doneNotice: text('done_notice'),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.taskId, table.dependsOnTaskId] }),
+    dependsOnIdx: index('idx_task_dependencies_depends_on').on(table.dependsOnTaskId),
+  })
+);
+
+/**
  * What a task listens to in its initiative beyond messages addressed to it: broadcasts
  * ('messages') or app status events ('events'), from one task or, with a null source, any task.
  */

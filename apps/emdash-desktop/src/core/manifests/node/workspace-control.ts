@@ -26,6 +26,7 @@ import {
   type WorkspaceControlDeps,
   WorkspaceControlService,
 } from '@core/features/workspace-control/node/workspace-control-service';
+import { isAncestor, worktreeTip } from '@core/features/workspace-control/node/worktree-branches';
 import { workspaceRegistryTable as workspaces } from '@core/features/workspaces/api/node/registry/workspace-registry';
 import { getProvisionedWorkspaceBranch } from '@core/features/workspaces/api/node/workspace-branch';
 import { desktopWireContract } from '@core/manifests/shared/desktop-wire-contract';
@@ -57,6 +58,9 @@ async function git(cwd: string, args: string[]): Promise<string | null> {
     return null;
   }
 }
+
+/** How often the app re-checks whether workspaces that others depend on look done. */
+const DEPENDENCY_CHECK_INTERVAL_MS = 5 * 60_000;
 
 /** The branch new work starts from: the remote's HEAD branch, else the current branch. */
 async function defaultBaseBranch(repoPath: string, remoteName: string) {
@@ -233,6 +237,36 @@ export async function startWorkspaceControl(
     return row?.location === 'remote' ? null : (row?.path ?? null);
   };
 
+  /**
+   * Where a local worktree workspace's branch is (see worktreeTip), with what it started from.
+   */
+  const workspaceTip = async (taskId: string) => {
+    const [row] = await db
+      .select({
+        projectId: tasks.projectId,
+        createdAt: tasks.createdAt,
+        path: workspaces.path,
+        location: workspaces.location,
+        kind: workspaces.kind,
+        config: workspaces.config,
+      })
+      .from(tasks)
+      .innerJoin(workspaces, eq(workspaces.id, tasks.workspaceId))
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!row?.path || row.location === 'remote' || row.kind !== 'worktree') return null;
+    const startedAt = Date.parse(row.createdAt.replace(' ', 'T') + 'Z') / 1000;
+    const tip = await worktreeTip(row.path, startedAt);
+    if (!tip) return null;
+    const setup = row.config?.git;
+    return {
+      ...tip,
+      projectId: row.projectId,
+      path: row.path,
+      fromBranch: setup?.kind === 'create-branch' ? setup.fromBranch : null,
+    };
+  };
+
   const deps: WorkspaceControlDeps = {
     async addProject({ path, name }) {
       const created = await projectOperations.createProject({ type: 'local', name, path });
@@ -290,6 +324,7 @@ export async function startWorkspaceControl(
           workspaceKind: workspaces.kind,
           workspaceConfig: workspaces.config,
           initiativeId: tasks.initiativeId,
+          status: tasks.status,
         })
         .from(tasks)
         .innerJoin(projects, eq(projects.id, tasks.projectId))
@@ -335,6 +370,7 @@ export async function startWorkspaceControl(
         agentStatus: statusByTask.get(row.id) ?? null,
         lastActivityAt: row.lastInteractedAt,
         initiativeId: row.initiativeId,
+        markedDone: row.status === 'done',
       }));
     },
 
@@ -370,6 +406,84 @@ export async function startWorkspaceControl(
         provider: row.provider ?? 'claude',
         ...(options && { options }),
       };
+    },
+
+    async setWorkspaceDone(taskId, done) {
+      await taskService.updateTaskStatus(taskId, done ? 'done' : 'in_progress', telemetry);
+      checkDependencies();
+    },
+
+    async branchMergedInto(taskId) {
+      const tip = await workspaceTip(taskId);
+      if (!tip?.workedOn || !tip.fromBranch) return null;
+      const base = tip.fromBranch;
+      const candidates = [
+        ...(base.remote ? [`refs/remotes/${base.remote.name}/${base.branch}`] : []),
+        `refs/remotes/origin/${base.branch}`,
+        `refs/heads/${base.branch}`,
+      ];
+      for (const ref of new Set(candidates)) {
+        if (await isAncestor(tip.path, tip.sha, ref)) {
+          return base.branch;
+        }
+      }
+      return null;
+    },
+
+    async workspaceTip(taskId) {
+      const tip = await workspaceTip(taskId);
+      return (
+        tip && {
+          projectId: tip.projectId,
+          path: tip.path,
+          sha: tip.sha,
+          workedOn: tip.workedOn,
+          unsettled: tip.unsettled,
+        }
+      );
+    },
+
+    isAncestor,
+
+    async uncommittedChanges(taskId) {
+      const tip = await workspaceTip(taskId);
+      if (!tip) throw new Error('The workspace has no local worktree.');
+      const status = await execFileAsync('git', ['status', '--porcelain'], { cwd: tip.path });
+      return status.stdout.split('\n').filter((line) => line.trim().length > 0);
+    },
+
+    async commitLog(taskId) {
+      const tip = await workspaceTip(taskId);
+      if (!tip) return [];
+      const base = tip.fromBranch;
+      const bases = base
+        ? [
+            ...(base.remote ? [`refs/remotes/${base.remote.name}/${base.branch}`] : []),
+            `refs/remotes/origin/${base.branch}`,
+            `refs/heads/${base.branch}`,
+          ]
+        : [];
+      // The first base ref that exists; without one, just its latest commits.
+      for (const ref of [...bases, null]) {
+        try {
+          const { stdout } = await execFileAsync(
+            'git',
+            ['log', '-n', '30', '--format=%h %s', tip.sha, ...(ref ? ['--not', ref] : [])],
+            { cwd: tip.path }
+          );
+          return stdout.split('\n').filter((line) => line.trim().length > 0);
+        } catch {
+          // Missing ref: try the next.
+        }
+      }
+      return [];
+    },
+
+    async sendToWorkspaceChat(taskId, text) {
+      const conversationId = await primaryConversation(taskId);
+      if (!conversationId) return false;
+      const sent = await sendAcpConversationPrompt(context, conversationId, text);
+      return sent.success;
     },
 
     archiveWorkspace: (projectId, taskId) => taskService.archiveTask(projectId, taskId, telemetry),
@@ -460,6 +574,26 @@ export async function startWorkspaceControl(
   deps.initiatives = initiatives;
   if (extras.appWire) deps.appApi = new AppApi(appApiCatalog(desktopWireContract), extras.appWire);
   const service = new WorkspaceControlService(deps);
+
+  // Dependencies: dropped with archived or deleted workspaces; ones that look done (merged,
+  // marked done) are announced to the lead on a timer and when a workspace's agent stops.
+  function checkDependencies() {
+    service
+      .checkDependencies()
+      .catch((error: unknown) => log.warn('Workspace dependency check failed', { error }));
+  }
+  const dropDependencies = (taskId: string) => {
+    initiatives
+      .removeDependencies([taskId])
+      .catch((error: unknown) => log.warn('Dropping workspace dependencies failed', { error }));
+  };
+  const stopArchiveHook = taskService.on('task:archived', dropDependencies);
+  const stopDeleteHook = taskService.on('task:deleted', dropDependencies);
+  const stopStatusChecks = extras.onAgentEvent?.((event) => {
+    if (event.type === 'stop') checkDependencies();
+  });
+  const dependencyTimer = setInterval(checkDependencies, DEPENDENCY_CHECK_INTERVAL_MS);
+  dependencyTimer.unref?.();
   const endpoint = await startControlMcpEndpoint({
     service,
     endpointFile: extras.endpointFile,
@@ -472,6 +606,10 @@ export async function startWorkspaceControl(
     async close() {
       stopDelivery();
       stopEvents?.();
+      stopStatusChecks?.();
+      stopArchiveHook();
+      stopDeleteHook();
+      clearInterval(dependencyTimer);
       await endpoint.close();
     },
   };

@@ -248,6 +248,7 @@ describe('WorkspaceControlService', () => {
         createdAt: '2026-11-10T00:00:00Z',
         taskIds: [],
         leadTaskId: null,
+        dependencies: [],
       };
       const initiatives = {
         create: vi.fn(async () => initiative),
