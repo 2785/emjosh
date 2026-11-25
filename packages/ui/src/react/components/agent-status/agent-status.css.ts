@@ -82,6 +82,33 @@ export const dot = Array.from({ length: DOT_COUNT }, (_, index) =>
   })
 );
 
+const slowSpin = keyframes({
+  from: { transform: 'rotate(0deg)' },
+  to: { transform: 'rotate(360deg)' },
+});
+
+/** A dashed ring turning slowly: the turn is over but its background work isn't. */
+export const backgroundShape = style({
+  '@layer': {
+    recipes: {
+      fill: 'none',
+      stroke: vars.foregroundMuted,
+      strokeDasharray: '3 2.9',
+      transformBox: 'fill-box',
+      transformOrigin: 'center',
+      animationName: slowSpin,
+      animationDuration: '6s',
+      animationTimingFunction: 'linear',
+      animationIterationCount: 'infinite',
+      '@media': {
+        '(prefers-reduced-motion: reduce)': {
+          animationName: 'none',
+        },
+      },
+    },
+  },
+});
+
 export const warningShape = style({
   '@layer': {
     recipes: {

@@ -49,9 +49,10 @@ import { getInitiativesService } from './initiatives';
 const execFileAsync = promisify(execFile);
 
 const AGENT_STATUS_RANK: Record<string, number> = {
-  'awaiting-input': 4,
-  working: 3,
-  error: 2,
+  'awaiting-input': 5,
+  working: 4,
+  error: 3,
+  background: 2,
   completed: 1,
   idle: 0,
 };

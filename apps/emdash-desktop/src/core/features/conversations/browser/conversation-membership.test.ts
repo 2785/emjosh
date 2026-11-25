@@ -87,6 +87,25 @@ const deleted = (): Extract<ConversationEvent, { type: 'deleted' }> => ({
 });
 
 describe('conversation membership and task attention', () => {
+  it.each([
+    [['background', 'completed'], 'background'],
+    [['background', 'error'], 'error'],
+    [['background', 'working'], 'working'],
+  ] as const)(
+    'ranks background work among a task’s statuses: %j shows %s',
+    async (statuses, shown) => {
+      client.getConversationsForTask.mockResolvedValue(
+        statuses.map((agentStatus, index) => ({
+          ...conversation(`conversation-${index}`),
+          agentStatus,
+          agentStatusSeen: agentStatus === 'background' || agentStatus === 'working',
+        }))
+      );
+      const manager = await createManager();
+      expect(manager.taskStatus).toBe(shown);
+    }
+  );
+
   it('removes missing conversations and destroys their frontend sessions on reload', async () => {
     const manager = await createManager();
     const session = manager.sessions.get('conversation-1');

@@ -120,6 +120,24 @@ describe('AgentStatusService', () => {
     await Promise.all([first, second]);
   });
 
+  it('records background work as a seen status, unlike finished work', async () => {
+    const service = new AgentStatusService();
+    mocks.updateRows.push(row(), row());
+
+    await service.applySignal(signal('background'));
+    await service.applySignal(signal('stop', { timestamp: 2 }));
+
+    expect(mocks.updateCalls).toEqual([
+      { agentStatus: 'background', agentStatusSeen: 1 },
+      { agentStatus: 'completed', agentStatusSeen: 0 },
+    ]);
+    expect(mocks.emit).toHaveBeenNthCalledWith(
+      1,
+      undefined,
+      expect.objectContaining({ status: 'background', seen: true })
+    );
+  });
+
   describe('task activity', () => {
     const taskActivityUpdates = () =>
       mocks.updateCalls.filter((call) => 'lastInteractedAt' in call);

@@ -43,6 +43,11 @@ export const sessionStateSchema = z.object({
   agentTurnActive: z.boolean(),
   /** Count of running background subagents, used for affordances and busy state. */
   backgroundAgentCount: z.number().int(),
+  /**
+   * Count of running background tasks (shell commands, monitors). Never part of busy state.
+   * Optional because older workspace servers don't report it.
+   */
+  backgroundTaskCount: z.number().int().optional(),
   /** Machine-owned UI affordance: true while foreground or background work is active. */
   isGenerating: z.boolean(),
   /** Machine-owned UI affordance: true when a prompt may be accepted or queued. */
@@ -64,6 +69,10 @@ export const sessionSummarySchema = z.object({
   lastTurnErrored: z.boolean(),
   pendingPermissionCount: z.number().int(),
   backgroundAgentCount: z.number().int(),
+  /** See SessionState.backgroundTaskCount. */
+  backgroundTaskCount: z.number().int().optional(),
+  /** See SessionState.agentTurnActive. Optional because older workspace servers omit it. */
+  agentTurnActive: z.boolean().optional(),
   queuedPromptCount: z.number().int(),
   title: z.string().nullable(),
   updatedAt: z.number(),

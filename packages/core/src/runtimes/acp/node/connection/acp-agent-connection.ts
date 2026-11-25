@@ -114,7 +114,7 @@ export async function createAcpAgentConnection(
 
   try {
     const initialized = await Promise.race([
-      initializeAgent(connection, host),
+      initializeAgent(connection, host, behavior.clientCapabilitiesMeta),
       processClosed.then(failClosedBeforeReady),
     ]);
     const supportsLoadSession = initialized.agentCapabilities?.loadSession === true;
@@ -165,7 +165,11 @@ function onceProcessClosed(handle: AcpProcessHandle, logger: Logger): Promise<Pr
   });
 }
 
-function initializeAgent(agent: AcpAgentApi, host: AcpAgentProcessHost) {
+function initializeAgent(
+  agent: AcpAgentApi,
+  host: AcpAgentProcessHost,
+  meta: Record<string, unknown> | undefined
+) {
   return agent.initialize({
     protocolVersion: 1,
     clientInfo: { name: 'emdash', version: '1' },
@@ -173,6 +177,7 @@ function initializeAgent(agent: AcpAgentApi, host: AcpAgentProcessHost) {
       ...{ session: { configOptions: { boolean: {} } } },
       fs: { readTextFile: true, writeTextFile: true },
       terminal: typeof host.spawnTerminal === 'function',
+      ...(meta ? { _meta: meta } : {}),
     },
   });
 }

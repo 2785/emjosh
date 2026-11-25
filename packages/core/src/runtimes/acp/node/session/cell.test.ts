@@ -4,7 +4,7 @@ import { noopLogger } from '@emdash/shared/logger';
 import { deferred } from '@emdash/shared/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { FakeAcpAgent } from '#runtimes/acp/node/acp-test-support';
-import { promptImageBlocks, SessionCell } from './cell';
+import { BACKGROUND_TASK_TIMEOUT_MS, promptImageBlocks, SessionCell } from './cell';
 import type { SessionCellDeps } from './cell-deps';
 function makePendingCell(agent = new FakeAcpAgent(), deps: Partial<SessionCellDeps> = {}) {
   const cell = new SessionCell({
@@ -342,6 +342,105 @@ describe('SessionCell prompts', () => {
       expect(cell.sessionState.isGenerating).toBe(false);
     } finally {
       vi.useRealTimers();
+    }
+  });
+});
+function backgroundTask(taskId: string, state: 'running' | 'completed' | 'failed' | 'stopped') {
+  return { kind: 'background_task' as const, taskId, state };
+}
+describe('SessionCell background tasks', () => {
+  it('counts a background task that outlives its turn without making the session busy', async () => {
+    const { cell, agent } = makeCell();
+    agent.prompt = vi.fn().mockImplementation(async () => {
+      cell.push(backgroundTask('task-1', 'running'));
+      return { stopReason: 'end_turn' };
+    });
+    try {
+      await cell.prompt({ text: 'run the tests in the background' });
+      expect(cell.sessionState).toMatchObject({
+        lifecycle: 'ready',
+        backgroundTaskCount: 1,
+        isGenerating: false,
+        canCancel: false,
+        canSubmit: true,
+      });
+      expect(cell.history().committed[0].items.map((item) => item.kind)).toEqual(['message']);
+      cell.push(backgroundTask('task-1', 'completed'));
+      expect(cell.sessionState.backgroundTaskCount).toBe(0);
+    } finally {
+      cell.dispose();
+    }
+  });
+  it('counts each task once and ignores ends of tasks it never saw start', () => {
+    const { cell } = makeCell();
+    try {
+      cell.push(backgroundTask('task-1', 'running'));
+      cell.push(backgroundTask('task-1', 'running'));
+      cell.push(backgroundTask('task-2', 'running'));
+      cell.push(backgroundTask('task-3', 'stopped'));
+      expect(cell.sessionState.backgroundTaskCount).toBe(2);
+      cell.push(backgroundTask('task-2', 'failed'));
+      cell.push(backgroundTask('task-2', 'failed'));
+      expect(cell.sessionState.backgroundTaskCount).toBe(1);
+    } finally {
+      cell.dispose();
+    }
+  });
+  it('presumes a task finished when it reports no end within the timeout', () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makeCell();
+      cell.push(backgroundTask('task-1', 'running'));
+      vi.advanceTimersByTime(BACKGROUND_TASK_TIMEOUT_MS - 1);
+      expect(cell.sessionState.backgroundTaskCount).toBe(1);
+      vi.advanceTimersByTime(1);
+      expect(cell.sessionState.backgroundTaskCount).toBe(0);
+      cell.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('drops background tasks when the agent process closes', () => {
+    const { cell } = makeCell();
+    try {
+      cell.push(backgroundTask('task-1', 'running'));
+      cell.processClosed(1);
+      expect(cell.sessionState.backgroundTaskCount).toBe(0);
+    } finally {
+      cell.dispose();
+    }
+  });
+  it('does not count tasks from replayed history', () => {
+    const { cell } = makePendingCell();
+    try {
+      cell.beginReplay();
+      cell.push(backgroundTask('task-1', 'running'));
+      cell.endReplay();
+      expect(cell.sessionState.backgroundTaskCount).toBe(0);
+    } finally {
+      cell.dispose();
+    }
+  });
+  it('still completes a held turn’s background agents while tasks keep running', async () => {
+    const { cell, agent } = makePendingCell(new FakeAcpAgent(), {
+      holdsTurnsForBackgroundAgents: true,
+    });
+    cell.applySessionReady();
+    agent.prompt = vi.fn().mockImplementation(async () => {
+      cell.push(backgroundAgentLaunch('agent-1'));
+      cell.push(backgroundTask('task-1', 'running'));
+      return { stopReason: 'end_turn' };
+    });
+    try {
+      await cell.prompt({ text: 'launch an agent and a shell' });
+      expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'completed' }]);
+      expect(cell.sessionState).toMatchObject({
+        backgroundAgentCount: 0,
+        backgroundTaskCount: 1,
+        isGenerating: false,
+      });
+    } finally {
+      cell.dispose();
     }
   });
 });

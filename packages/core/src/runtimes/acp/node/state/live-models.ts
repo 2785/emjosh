@@ -32,6 +32,7 @@ export const closedSessionState: SessionState = {
   queuedPrompts: [],
   agentTurnActive: false,
   backgroundAgentCount: 0,
+  backgroundTaskCount: 0,
   isGenerating: false,
   canSubmit: false,
   canCancel: false,

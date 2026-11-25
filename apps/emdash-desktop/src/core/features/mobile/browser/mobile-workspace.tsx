@@ -224,6 +224,7 @@ const STATUS_LABELS: Partial<Record<AgentStatusValue, { label: string; className
   error: { label: 'Failed', className: 'bg-background-destructive text-foreground-destructive' },
   completed: { label: 'Done', className: 'bg-background-2 text-foreground' },
   working: { label: 'Working', className: 'bg-background-2 text-foreground-muted' },
+  background: { label: 'Background', className: 'bg-background-2 text-foreground-passive' },
 };
 
 function TaskRow({ entry, now }: { entry: MobileTaskEntry; now: number }) {

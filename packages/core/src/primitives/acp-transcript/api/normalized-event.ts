@@ -33,10 +33,17 @@ export type NormalizedToolLocation = {
   line?: number;
 };
 
+export type BackgroundTaskState = 'running' | 'paused' | 'completed' | 'failed' | 'stopped';
+
 export type NormalizedToolStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
 export type NormalizedEvent =
   | { kind: 'mcp_startup_failure'; server: string; error: string }
+  /**
+   * Lifecycle of agent work that outlives its turn without being a subagent (a backgrounded shell
+   * command, a monitor). Tracked per session; never part of the transcript.
+   */
+  | { kind: 'background_task'; taskId: string; state: BackgroundTaskState }
   | {
       kind: 'notification';
       title: string;

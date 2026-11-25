@@ -1,5 +1,6 @@
 import type { SessionUpdate } from '@agentclientprotocol/sdk';
 import type { NormalizedEvent } from '@emdash/core/runtimes/acp/api';
+import { asyncTaskEvent } from './async-tasks';
 
 /**
  * Claude-specific enrichment of a baseline `NormalizedEvent`.
@@ -15,6 +16,8 @@ import type { NormalizedEvent } from '@emdash/core/runtimes/acp/api';
  * Unrecognized content remains a message for the renderer's literal fallback.
  */
 export function enrichClaudeUpdate(update: NormalizedEvent, raw: SessionUpdate): NormalizedEvent {
+  const backgroundTask = asyncTaskEvent(raw);
+  if (backgroundTask) return backgroundTask;
   if (update.kind === 'usage') {
     return isAutonomousUsage(raw) ? { ...update, endsAgentTurn: true } : update;
   }

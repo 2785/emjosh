@@ -22,7 +22,7 @@ export async function loadActiveAgentStatusConversationIds(
         liveConversations(),
         hostIdentity,
         eq(conversations.type, conversationType),
-        inArray(conversations.agentStatus, ['working', 'awaiting-input'])
+        inArray(conversations.agentStatus, ['working', 'background', 'awaiting-input'])
       )
     );
   return rows.map((row) => row.id);

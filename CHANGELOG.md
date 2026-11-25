@@ -3,6 +3,15 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.23 — 2026-11-25
+
+- A Claude chat whose turn has ended while background shell commands or background agents it
+  started are still running shows a new "Waiting on background work" status (a slowly turning
+  dashed ring) instead of done. It turns into done when the work finishes. Work with no reported
+  end clears after an hour. These chats don't get an automatic "keep going" after a restart.
+- The initiative lead is no longer asked to fold workspaces whose branch is already merged into
+  its base.
+
 ## 0.1.22 — 2026-11-25
 
 - A message to the initiative lead sent without a kind now wakes the lead, so agents whose

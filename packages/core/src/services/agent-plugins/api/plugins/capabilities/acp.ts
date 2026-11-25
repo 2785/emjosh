@@ -112,6 +112,12 @@ export interface IAcpBehavior {
    */
   holdsTurnsForBackgroundAgents?: boolean;
 
+  /**
+   * Provider extension capabilities the client advertises, sent as `clientCapabilities._meta`
+   * at initialize. The provider's `connect` must handle whatever they cause the agent to send.
+   */
+  clientCapabilitiesMeta?: Record<string, unknown>;
+
   /** Recognize provider-specific proof that session/load's requested session is missing. */
   isSessionNotFound?(error: unknown, sessionId: string): boolean;
 

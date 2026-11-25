@@ -776,7 +776,9 @@ export class SessionManager {
         state.isGenerating ||
         state.pendingPermissions.length > 0 ||
         state.queuedPrompts.length > 0 ||
-        state.backgroundAgentCount > 0,
+        state.backgroundAgentCount > 0 ||
+        // Keeps the agent process, which owns the background tasks, from being torn down.
+        (state.backgroundTaskCount ?? 0) > 0,
     };
   }
 

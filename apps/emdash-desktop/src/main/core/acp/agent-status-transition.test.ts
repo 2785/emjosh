@@ -222,3 +222,85 @@ describe('deriveAcpAgentStatusActions', () => {
     ]);
   });
 });
+
+describe('background work status', () => {
+  const working = summary({ lifecycle: 'working', isGenerating: true, agentTurnActive: false });
+  const waiting = summary({ lastStopReason: 'end_turn', backgroundTaskCount: 1 });
+  const types = (actions: ReturnType<typeof deriveAcpAgentStatusActions>) =>
+    actions.map((action) => (action.kind === 'event' ? action.event.type : action.kind));
+
+  it('waits on background work when a turn ends with tasks still running', () => {
+    expect(types(deriveAcpAgentStatusActions(working, waiting))).toEqual(['background']);
+  });
+
+  it('completes once the last background task ends', () => {
+    expect(
+      types(deriveAcpAgentStatusActions(waiting, { ...waiting, backgroundTaskCount: 0 }))
+    ).toEqual(['stop']);
+    expect(
+      types(deriveAcpAgentStatusActions(waiting, { ...waiting, backgroundTaskCount: 2 }))
+    ).toEqual([]);
+  });
+
+  it('treats background agents outside a turn as background work, not working', () => {
+    const agents = summary({
+      isGenerating: true,
+      agentTurnActive: false,
+      backgroundAgentCount: 1,
+      lastStopReason: 'cancelled',
+    });
+    expect(types(deriveAcpAgentStatusActions(working, agents))).toEqual(['background']);
+    expect(
+      types(
+        deriveAcpAgentStatusActions(agents, {
+          ...agents,
+          isGenerating: false,
+          backgroundAgentCount: 0,
+        })
+      )
+    ).toEqual(['reset']);
+  });
+
+  it('shows working again when a turn starts during background work', () => {
+    expect(
+      types(deriveAcpAgentStatusActions(waiting, { ...working, backgroundTaskCount: 1 }))
+    ).toEqual(['start']);
+    expect(
+      types(
+        deriveAcpAgentStatusActions(waiting, {
+          ...waiting,
+          isGenerating: true,
+          agentTurnActive: true,
+        })
+      )
+    ).toEqual(['start']);
+  });
+
+  it('keeps an errored turn’s error while its background work runs and ends', () => {
+    const errored = summary({ lastTurnErrored: true, backgroundTaskCount: 1 });
+    expect(types(deriveAcpAgentStatusActions(working, errored))).toEqual(['error']);
+    expect(
+      types(deriveAcpAgentStatusActions(errored, { ...errored, backgroundTaskCount: 0 }))
+    ).toEqual([]);
+  });
+
+  it('projects background work on first observation and in snapshots', () => {
+    expect(types(deriveAcpAgentStatusActions(undefined, waiting))).toEqual(['background']);
+    expect(projectAcpStatusSnapshot(waiting)).toMatchObject({ event: { type: 'background' } });
+  });
+
+  it('clears background work when the session closes', () => {
+    expect(
+      types(deriveAcpAgentStatusActions(waiting, { ...waiting, lifecycle: 'closed' }))
+    ).toEqual(['reset']);
+  });
+
+  it('reads summaries from workspace servers that report neither new field', () => {
+    expect(projectAcpStatusSnapshot(summary({ isGenerating: true }))).toMatchObject({
+      event: { type: 'start' },
+    });
+    expect(
+      projectAcpStatusSnapshot(summary({ isGenerating: true, backgroundAgentCount: 1 }))
+    ).toMatchObject({ event: { type: 'background' } });
+  });
+});

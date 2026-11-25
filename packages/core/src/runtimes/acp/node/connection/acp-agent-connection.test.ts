@@ -200,6 +200,22 @@ describe('createAcpAgentConnection()', () => {
     }
   });
 
+  it('advertises the provider’s extension capabilities as clientCapabilities._meta', async () => {
+    const meta = { jetbrains: { air: { version: 1, capabilities: ['asyncTasks'] } } };
+    for (const [clientCapabilitiesMeta, expected] of [
+      [meta, meta],
+      [undefined, undefined],
+    ] as const) {
+      const agent = new FakeAcpAgent();
+      const behavior = { ...makeBehavior(agent), clientCapabilitiesMeta };
+      await createAcpAgentConnection(
+        { host: new FakeAcpProcessHost(), behavior },
+        connArgs(createScope({ label: 'capability-meta' }))
+      );
+      expect(agent.initialize.mock.calls[0]?.[0]?.clientCapabilities?._meta).toEqual(expected);
+    }
+  });
+
   it('normalize applies behavior.enrich when present', async () => {
     const agent = new FakeAcpAgent();
     const host = new FakeAcpProcessHost();

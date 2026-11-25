@@ -1,6 +1,13 @@
-export type AgentEventType = 'notification' | 'stop' | 'error' | 'start';
+/** `background`: the turn ended but background work the agent started is still running. */
+export type AgentEventType = 'notification' | 'stop' | 'error' | 'start' | 'background';
 
-export type AgentStatus = 'idle' | 'working' | 'awaiting-input' | 'error' | 'completed';
+export type AgentStatus =
+  | 'idle'
+  | 'working'
+  | 'background'
+  | 'awaiting-input'
+  | 'error'
+  | 'completed';
 
 export type NotificationType =
   | 'permission_prompt'

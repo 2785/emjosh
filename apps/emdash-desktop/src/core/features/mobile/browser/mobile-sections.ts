@@ -47,7 +47,9 @@ export function mobileTaskSections(
     .sort((a, b) => ATTENTION_ORDER[a.status!]! - ATTENTION_ORDER[b.status!]! || byRecency(a, b));
   return {
     attention,
-    working: matching.filter((entry) => entry.status === 'working').sort(byRecency),
+    working: matching
+      .filter((entry) => entry.status === 'working' || entry.status === 'background')
+      .sort(byRecency),
     recent: matching
       .filter((entry) => entry.status === null || entry.status === 'idle')
       .sort(byRecency),

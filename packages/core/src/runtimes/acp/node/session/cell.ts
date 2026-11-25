@@ -63,6 +63,10 @@ export type SessionConfigCatalog =
 const QUIESCE_MS = 250;
 /** The same, for providers that mark the end of those turns. */
 const MARKED_AGENT_TURN_FALLBACK_MS = 120_000;
+/** A background task with no reported end after this long is presumed finished. */
+export const BACKGROUND_TASK_TIMEOUT_MS = 60 * 60 * 1000;
+
+type BackgroundTaskEvent = Extract<NormalizedEvent, { kind: 'background_task' }>;
 
 export class SessionCell {
   readonly machine: SessionMachine;
@@ -77,6 +81,8 @@ export class SessionCell {
   /** The provider reported it will keep working on its own after the current turn. */
   private agentWorkPending = false;
   private lastRunningAgentCount = 0;
+  /** Running background tasks, each with the timer that presumes it finished. */
+  private readonly backgroundTasks = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly effectDriver: MachineEffectDriver<Effect>;
   private preparedPromptEffects: Effect[] | null = null;
   private disposed = false;
@@ -184,6 +190,7 @@ export class SessionCell {
     this.applyEvent({ type: 'ReplayStarted' });
     this.transcript.beginReplay(at);
     this.lastRunningAgentCount = 0;
+    this.clearBackgroundTasks();
   }
 
   prepareActivation(
@@ -249,6 +256,10 @@ export class SessionCell {
     if (event.kind === 'mcp_startup_failure') {
       this.mcpStartupFailures.set(event.server, event.error);
       this.deps.callbacks?.onSessionStateChanged?.();
+      return;
+    }
+    if (event.kind === 'background_task') {
+      this.trackBackgroundTask(event);
       return;
     }
 
@@ -560,12 +571,16 @@ export class SessionCell {
 
   processClosed(exitCode: number | null): void {
     this.clearQuiesce();
+    // Background tasks die with the agent process that ran them.
+    this.clearBackgroundTasks();
     this.applyEvent({ type: 'ProcessClosed', exitCode });
   }
 
   dispose(): void {
     this.disposed = true;
     this.clearQuiesce();
+    for (const timer of this.backgroundTasks.values()) clearTimeout(timer);
+    this.backgroundTasks.clear();
     this.preparedPromptEffects = null;
     this.effectDriver.dispose();
     this.permissions.drain(this.machine.pendingPermissions);
@@ -805,6 +820,47 @@ export class SessionCell {
         status,
       });
     }
+  }
+
+  /**
+   * Counts a background task while it runs. A task whose end is never reported (a lost
+   * notification, an adapter that drops it) is presumed finished after BACKGROUND_TASK_TIMEOUT_MS.
+   * Replayed history belongs to an earlier agent process, so its tasks are not counted.
+   */
+  private trackBackgroundTask(event: BackgroundTaskEvent): void {
+    if (this.machine.phase.kind === 'replaying' || this.machine.phase.kind === 'closed') return;
+    const timer = this.backgroundTasks.get(event.taskId);
+    const running = event.state === 'running' || event.state === 'paused';
+    if (running === (timer !== undefined)) return;
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.backgroundTasks.delete(event.taskId);
+    } else {
+      this.backgroundTasks.set(
+        event.taskId,
+        setTimeout(() => {
+          this.deps.logger.warn('SessionCell: background task never reported an end', {
+            conversationId: this.conversationId,
+            taskId: event.taskId,
+          });
+          this.backgroundTasks.delete(event.taskId);
+          this.dispatchBackgroundTasksChanged();
+        }, BACKGROUND_TASK_TIMEOUT_MS)
+      );
+    }
+    this.dispatchBackgroundTasksChanged();
+  }
+
+  private clearBackgroundTasks(): void {
+    if (this.backgroundTasks.size === 0) return;
+    for (const timer of this.backgroundTasks.values()) clearTimeout(timer);
+    this.backgroundTasks.clear();
+    this.dispatchBackgroundTasksChanged();
+  }
+
+  private dispatchBackgroundTasksChanged(): void {
+    if (this.disposed) return;
+    this.applyEvent({ type: 'BackgroundTasksChanged', runningCount: this.backgroundTasks.size });
   }
 
   /**

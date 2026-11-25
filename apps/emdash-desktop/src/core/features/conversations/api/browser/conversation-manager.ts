@@ -333,16 +333,19 @@ export class ConversationManagerStore implements Disposable {
 
   get taskStatus(): AgentStatus | null {
     let hasWorking = false;
+    let hasBackground = false;
     let hasUnseenError = false;
     let hasUnseenCompleted = false;
     for (const conversation of this.conversations.values()) {
       if (!conversation.seen && conversation.status === 'awaiting-input') return 'awaiting-input';
       if (conversation.status === 'working') hasWorking = true;
+      if (conversation.status === 'background') hasBackground = true;
       if (!conversation.seen && conversation.status === 'error') hasUnseenError = true;
       if (!conversation.seen && conversation.status === 'completed') hasUnseenCompleted = true;
     }
     if (hasWorking) return 'working';
     if (hasUnseenError) return 'error';
+    if (hasBackground) return 'background';
     if (hasUnseenCompleted) return 'completed';
     return null;
   }

@@ -30,6 +30,8 @@ describe('interrupted chat turns', () => {
       seed({ id: 'awaiting', status: 'awaiting-input' });
       seed({ id: 'idle', status: 'idle' });
       seed({ id: 'completed', status: 'completed' });
+      // Its turn had ended; only background work was still running.
+      seed({ id: 'background', status: 'background' });
       seed({ id: 'tui', type: 'pty' });
       seed({ id: 'remote', location: 'remote' });
       seed({ id: 'unlinked', projectId: null, taskId: null });
@@ -59,6 +61,16 @@ describe('interrupted chat turns', () => {
 
       expect(statusOf('working')).toBe('idle');
       expect(await readInterruptedTurns(db)).toEqual(['working']);
+    });
+
+    it('clears a background-work status without recording a keep-going message', async () => {
+      seed({ id: 'background', status: 'background' });
+
+      await recordInterruptedAcpTurns(db, logger);
+      await resetStaleAcpAgentStatuses(db);
+
+      expect(statusOf('background')).toBe('idle');
+      expect(await readInterruptedTurns(db)).toEqual([]);
     });
   });
 

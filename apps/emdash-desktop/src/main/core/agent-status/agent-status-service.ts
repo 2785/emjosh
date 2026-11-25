@@ -45,6 +45,7 @@ function conversationContextSelection() {
 
 function deriveAgentStatus(event: AgentStatusSignal): AgentStatus | null {
   if (event.type === 'start') return 'working';
+  if (event.type === 'background') return 'background';
   if (event.type === 'stop') return 'completed';
   if (event.type === 'error') return 'error';
   if (event.type === 'notification') {
@@ -89,7 +90,8 @@ export class AgentStatusService implements Hookable<AgentStatusServiceHooks> {
     let context: ConversationContext;
 
     if (status) {
-      const derivedSeen = status === 'working' ? 1 : 0;
+      // Only finished work is news; running work, foreground or background, is already seen.
+      const derivedSeen = status === 'working' || status === 'background' ? 1 : 0;
       const [previous] = deliver
         ? await getAppDb()
             .select({ agentStatus: conversations.agentStatus })
@@ -165,7 +167,7 @@ export class AgentStatusService implements Hookable<AgentStatusServiceHooks> {
       .where(
         and(
           eq(conversations.id, conversationId),
-          inArray(conversations.agentStatus, ['working', 'awaiting-input'])
+          inArray(conversations.agentStatus, ['working', 'background', 'awaiting-input'])
         )
       )
       .returning(conversationContextSelection());

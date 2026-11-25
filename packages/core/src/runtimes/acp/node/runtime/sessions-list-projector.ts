@@ -11,6 +11,8 @@ export type SessionSummaryState = {
   lifecycle: SessionState['lifecycle'];
   isGenerating: boolean;
   backgroundAgentCount: number;
+  backgroundTaskCount?: number;
+  agentTurnActive?: boolean;
   pendingPermissions?: SessionState['pendingPermissions'];
   queuedPrompts?: SessionState['queuedPrompts'];
   pendingPermissionCount?: number;
@@ -48,6 +50,8 @@ export class SessionsListProjector {
       lastTurnErrored: cell?.sessionState.lastTurnErrored ?? false,
       pendingPermissionCount: state.pendingPermissionCount ?? state.pendingPermissions?.length ?? 0,
       backgroundAgentCount: state.backgroundAgentCount,
+      backgroundTaskCount: state.backgroundTaskCount ?? 0,
+      agentTurnActive: state.agentTurnActive ?? false,
       queuedPromptCount: state.queuedPromptCount ?? state.queuedPrompts?.length ?? 0,
       title: cell?.transcript.title ?? null,
     };
@@ -145,6 +149,8 @@ function suspendedIntentSummary(entry: SuspendedIntentListEntry): SessionSummary
     lastTurnErrored: false,
     pendingPermissionCount: 0,
     backgroundAgentCount: 0,
+    backgroundTaskCount: 0,
+    agentTurnActive: false,
     queuedPromptCount: 0,
     title: null,
     updatedAt: entry.updatedAt,
@@ -186,6 +192,8 @@ function sessionSummaryEquals(
     current.lastTurnErrored === candidate.lastTurnErrored &&
     current.pendingPermissionCount === candidate.pendingPermissionCount &&
     current.backgroundAgentCount === candidate.backgroundAgentCount &&
+    current.backgroundTaskCount === candidate.backgroundTaskCount &&
+    current.agentTurnActive === candidate.agentTurnActive &&
     current.queuedPromptCount === candidate.queuedPromptCount &&
     current.title === candidate.title &&
     current.lastInputAt === candidate.lastInputAt &&
