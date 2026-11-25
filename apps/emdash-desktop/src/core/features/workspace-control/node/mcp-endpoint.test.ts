@@ -112,6 +112,7 @@ describe('control MCP endpoint', () => {
       'set_initiative_lead',
       'set_message_delivery',
       'set_workspace_dependencies',
+      'set_workspace_label',
       'subscribe',
       'unarchive_workspaces',
       'unsubscribe',

@@ -6,6 +6,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { initiativeMessageKinds } from '@core/features/initiatives/api/contract';
+import { MAX_LABEL_LENGTH } from '@core/features/initiatives/api/labels';
 import type { ControlCaller, WorkspaceControlService } from './workspace-control-service';
 
 /** Header an Emjosh agent session sends to identify the conversation it runs in. */
@@ -28,6 +29,7 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
   - For each part (find projects with list_projects; if a repository isn't a project yet, add it with add_project or clone_project), call create_workspace with the initiativeId and a self-contained prompt: the goal, that part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative you lead (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
   - You receive every message and status event in the initiative, and every member receives your broadcasts. Address one workspace with toWorkspaceId when it concerns only that one; that is always delivered into its chat. Broadcasts are fyi (members see them when they read messages) unless you pass kind decision or blocked for ones members must act on now. Delivery is on by default; if not, call set_message_delivery. Call wait_for_messages only when you can't continue without an answer.
   - The user's chat with you is for the user. Turns that start with an initiative delivery are collapsed in it, except your final message: make that what the user needs to know or decide, or end with just \`[quiet]\` when nothing needs them.
+  - Workspaces you add to the initiative get a short label (A, B, C…; yours has none), shown in the user's sidebar and in messages and events (e.g. \`Workspace F "Codex parity"\`). Refer to workspaces by their label when you write to the user ("F is done; E rebases on it"). Pass label to create_workspace or use set_workspace_label to pick a meaningful one (e.g. "API"); labels are never reused within an initiative.
   - When workspaces must land in an order (an API before its UI, a shared change before others rebase on it), record it with set_workspace_dependencies; list_workspaces then shows the order. Don't add dependencies by default. When one is announced as looking done, check and drop it. When an event says one workspace's branch is contained in another's, fold them with merge_workspaces (after checking with the user if either still has work in flight).
   - Don't do a workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
 - If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish (kind done, with what you checked), get blocked (kind blocked), or need a decision (kind decision); only those wake the lead. Mark anything else kind fyi, which the lead reads when it wants. Don't acknowledge broadcasts, and don't reply unless something changed or you were asked. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
@@ -49,6 +51,8 @@ function json(data: unknown) {
     content: [{ type: 'text' as const, text: JSON.stringify(data, jsonReplacer, 2) ?? 'null' }],
   };
 }
+
+const labelSchema = z.string().min(1).max(MAX_LABEL_LENGTH);
 
 /** MCP tools over the control service, bound to one caller. */
 export function buildControlMcpServer(
@@ -136,8 +140,9 @@ export function buildControlMcpServer(
     {
       description:
         'List Emjosh workspaces (tasks: a branch/worktree with its agent conversations) with ' +
-        'their branch, agent status, last activity, and pull request state. In an initiative ' +
-        'with dependencies, dependencyOrder gives the rank each workspace lands in (1 first; ' +
+        'their branch, agent status, last activity, and pull request state. label is a ' +
+        'workspace\'s short name in its initiative (e.g. "F"). In an initiative with ' +
+        'dependencies, dependencyOrder gives the rank each workspace lands in (1 first; ' +
         'parallel ones share it), what it depends on (looksDone flags ones that seem finished) ' +
         'and what it still waits on. Workspaces in an initiative also show initiativeActivity: ' +
         'their latest status event and latest message, including quiet ones that were not ' +
@@ -227,6 +232,13 @@ export function buildControlMcpServer(
           .optional()
           .describe(
             "Initiative to put it in, e.g. the calling workspace's (see current_workspace)."
+          ),
+        label: labelSchema
+          .nullable()
+          .optional()
+          .describe(
+            'With initiativeId: its short label in the initiative (e.g. "API"). The next free ' +
+              'letter when omitted; null for none.'
           ),
       },
     },
@@ -398,10 +410,35 @@ export function buildControlMcpServer(
   server.registerTool(
     'add_to_initiative',
     {
-      description: 'Move workspaces into an initiative.',
-      inputSchema: { initiativeId: z.string(), workspaceIds: z.array(z.string()).min(1) },
+      description:
+        'Move workspaces into an initiative. Each gets the next free label (A, B, C…) unless ' +
+        'label is given.',
+      inputSchema: {
+        initiativeId: z.string(),
+        workspaceIds: z.array(z.string()).min(1),
+        label: labelSchema
+          .nullable()
+          .optional()
+          .describe('Label for the one workspace being added (e.g. "API"); null for none.'),
+      },
     },
     async (input) => json(await service.addToInitiative(input))
+  );
+
+  server.registerTool(
+    'set_workspace_label',
+    {
+      description:
+        "Initiative leads: set, change or clear a workspace's short label in the initiative " +
+        '(shown in the sidebar and in messages, e.g. `Workspace F "Codex parity"`). Labels are ' +
+        'unique and never reused within an initiative, so a label once given to one workspace ' +
+        "can't go to another.",
+      inputSchema: {
+        workspaceId: z.string(),
+        label: labelSchema.nullable().describe('e.g. "F" or "API"; null clears it.'),
+      },
+    },
+    async (input) => json(await service.setWorkspaceLabel(caller, input))
   );
 
   server.registerTool(

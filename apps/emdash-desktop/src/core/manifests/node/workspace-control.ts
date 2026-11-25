@@ -12,6 +12,7 @@ import {
 } from '@core/features/conversations/node/wire-controller';
 import type { InitiativeMessage } from '@core/features/initiatives/api/contract';
 import { formatInitiativeDelivery } from '@core/features/initiatives/api/delivery';
+import { workspaceRef } from '@core/features/initiatives/api/labels';
 import { describeAgentEvent } from '@core/features/initiatives/node/agent-events';
 import {
   DEFAULT_DELIVERY_WINDOW,
@@ -203,6 +204,7 @@ export async function startWorkspaceControl(
         entries: messages.map((message) => ({
           kind: message.kind,
           sender: message.fromTaskId ? (names.get(message.fromTaskId) ?? 'unknown') : null,
+          senderLabel: message.fromTaskId ? initiative.labels[message.fromTaskId] : undefined,
           fromLead: message.fromTaskId !== null && message.fromTaskId === initiative.leadTaskId,
           direct: message.toTaskId === taskId,
           body: message.body,
@@ -236,12 +238,12 @@ export async function startWorkspaceControl(
     void (async () => {
       const initiative = await initiatives.initiativeOfTask(event.taskId);
       if (!initiative || initiative.archived) return;
-      const name = (await taskNames([event.taskId])).get(event.taskId) ?? 'A workspace';
+      const name = (await taskNames([event.taskId])).get(event.taskId) ?? 'unknown';
       await initiatives.post({
         initiativeId: initiative.id,
         fromTaskId: event.taskId,
         kind: described.kind,
-        body: `Workspace "${name}" ${described.what}.`,
+        body: `${workspaceRef(name, initiative.labels[event.taskId])} ${described.what}.`,
       });
     })().catch((error: unknown) => log.warn('Initiative event failed', { error }));
   });
@@ -343,6 +345,7 @@ export async function startWorkspaceControl(
           workspaceKind: workspaces.kind,
           workspaceConfig: workspaces.config,
           initiativeId: tasks.initiativeId,
+          label: tasks.initiativeLabel,
           status: tasks.status,
         })
         .from(tasks)
@@ -389,6 +392,7 @@ export async function startWorkspaceControl(
         agentStatus: statusByTask.get(row.id) ?? null,
         lastActivityAt: row.lastInteractedAt,
         initiativeId: row.initiativeId,
+        ...(row.initiativeId && row.label && { label: row.label }),
         markedDone: row.status === 'done',
       }));
     },

@@ -13,6 +13,7 @@ export function createInitiativesWireController(service: InitiativesService): Co
     setLead: ({ initiativeId, taskId }) => service.setLead(initiativeId, taskId),
     setTaskInitiative: ({ taskIds, initiativeId }) =>
       service.setTaskInitiative(taskIds, initiativeId),
+    setLabel: ({ taskId, label }) => service.setLabel(taskId, label),
     setDependencies: ({ taskId, dependsOnTaskIds }) =>
       service.setDependencies(taskId, dependsOnTaskIds),
     messages: (input) => service.messages(input),

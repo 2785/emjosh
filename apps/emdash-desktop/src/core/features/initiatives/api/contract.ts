@@ -10,6 +10,8 @@ export type Initiative = {
   archived: boolean;
   createdAt: string;
   taskIds: string[];
+  /** Short labels of its tasks by task id (e.g. "F"); tasks without one are absent. */
+  labels: Record<string, string>;
   /** The task orchestrating the initiative; null when it has none. */
   leadTaskId: string | null;
   /** What its active tasks declared they depend on; usually empty. */
@@ -85,6 +87,11 @@ export const initiativesContract = defineContract({
   }),
   setTaskInitiative: procedure({
     input: z.object({ taskIds: z.array(z.string()), initiativeId: z.string().nullable() }),
+    output: z.void(),
+  }),
+  /** Sets or (with null) clears a task's label in its initiative; rejects taken labels. */
+  setLabel: procedure({
+    input: z.object({ taskId: z.string(), label: z.string().nullable() }),
     output: z.void(),
   }),
   /** Replaces what a task depends on (tasks of its initiative); rejects cycles. */

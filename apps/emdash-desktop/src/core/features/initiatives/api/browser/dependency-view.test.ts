@@ -18,6 +18,7 @@ const initiative = (dependencies: Initiative['dependencies']): Initiative => ({
   archived: false,
   createdAt: '2026-11-25',
   taskIds: ['lead', 'api', 'web', 'solo'],
+  labels: {},
   leadTaskId: 'lead',
   dependencies,
 });

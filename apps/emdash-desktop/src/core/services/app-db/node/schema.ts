@@ -181,6 +181,8 @@ export const tasks = sqliteTable(
     // Optional cross-project grouping. No FK so adding it needs no table rebuild; clearing on
     // initiative deletion is done by the initiatives service.
     initiativeId: text('initiative_id'),
+    /** Short name within its initiative (e.g. "F"); null outside one or when cleared. */
+    initiativeLabel: text('initiative_label'),
   },
   (table) => ({
     projectIdIdx: index('idx_tasks_project_id').on(table.projectId),
@@ -632,6 +634,27 @@ export const taskDependencies = sqliteTable(
   (table) => ({
     pk: primaryKey({ columns: [table.taskId, table.dependsOnTaskId] }),
     dependsOnIdx: index('idx_task_dependencies_depends_on').on(table.dependsOnTaskId),
+  })
+);
+
+/**
+ * Every label issued in an initiative and the task it was issued to. Rows stay after the task
+ * leaves or its label changes, so a label keeps meaning one workspace for the initiative's life.
+ */
+export const initiativeLabels = sqliteTable(
+  'initiative_labels',
+  {
+    initiativeId: text('initiative_id')
+      .notNull()
+      .references(() => initiatives.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    taskId: text('task_id').notNull(),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.initiativeId, table.label] }),
   })
 );
 

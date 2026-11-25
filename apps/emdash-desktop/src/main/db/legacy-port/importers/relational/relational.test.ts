@@ -65,7 +65,8 @@ function createAppDb(): {
       type TEXT NOT NULL DEFAULT 'task',
       automation_run_id TEXT,
       deleted_at TEXT,
-      initiative_id TEXT
+      initiative_id TEXT,
+      initiative_label TEXT
     );
 
     CREATE TABLE workspaces (

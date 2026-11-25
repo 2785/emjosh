@@ -29,6 +29,7 @@ function makeTaskRow(values: Partial<TaskRow>): TaskRow {
     type: values.type ?? 'task',
     automationRunId: values.automationRunId ?? null,
     initiativeId: values.initiativeId ?? null,
+    initiativeLabel: values.initiativeLabel ?? null,
   };
 }
 

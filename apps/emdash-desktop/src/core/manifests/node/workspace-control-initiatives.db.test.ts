@@ -40,12 +40,16 @@ describe('workspace control initiatives and messages', () => {
           archived: false,
           agentStatus: null,
           lastActivityAt: null,
-          initiativeId:
+          ...((row) => ({
+            initiativeId: row?.initiativeId ?? null,
+            ...(row?.initiativeLabel && { label: row.initiativeLabel }),
+          }))(
             fixture.db
               .select()
               .from(tasks)
               .all()
-              .find((task) => task.id === id)?.initiativeId ?? null,
+              .find((task) => task.id === id)
+          ),
         })),
       pullRequestForBranch: async () => null,
       callerContext: async (conversationId) => {
@@ -74,6 +78,9 @@ describe('workspace control initiatives and messages', () => {
     // createWorkspace is stubbed to return the existing 'peer' task, standing in for the lead.
     expect(started).toEqual({ id: 'peer', name: 'peer', created: true });
     expect(initiative.leadTaskId).toBe('peer');
+    // The requesting member gets a label; the lead doesn't.
+    expect(initiative.labels).toEqual({});
+    expect(initiative.taskIds).toEqual(['peer']);
   });
 
   it('lets a lead group workspaces and exchange messages with them', async () => {
@@ -156,8 +163,42 @@ describe('workspace control initiatives and messages', () => {
 
     expect((await initiatives.get(initiative.id))?.taskIds.sort()).toEqual(['lead', 'peer']);
     expect((await service.readMessages(peer, {})).map((m) => [m.kind, m.body])).toEqual([
-      ['event', 'Workspace "peer" was created and given a first task.'],
+      ['event', 'Workspace A "peer" was created and given a first task.'],
     ]);
+  });
+
+  it('labels workspaces created into an initiative, and lets only the lead relabel them', async () => {
+    const { initiative } = await service.createInitiative(lead, {
+      name: 'Accounts v2',
+      leadWorkspaceId: 'lead',
+    });
+    const created = await service.createWorkspace(lead, {
+      projectId: 'web',
+      initiativeId: initiative.id,
+      label: 'web',
+    });
+    expect(created).toMatchObject({ id: 'peer', label: 'WEB' });
+
+    await service.addToInitiative({ initiativeId: initiative.id, workspaceIds: ['other'] });
+    expect((await initiatives.get(initiative.id))?.labels).toEqual({ peer: 'WEB', other: 'A' });
+
+    const other = { conversationId: 'conv-other' };
+    await expect(
+      service.setWorkspaceLabel(other, { workspaceId: 'peer', label: 'B' })
+    ).rejects.toThrow(/Only the lead/);
+    await expect(
+      service.setWorkspaceLabel(lead, { workspaceId: 'peer', label: 'a' })
+    ).rejects.toThrow(/taken by workspace "other"/);
+    expect(await service.setWorkspaceLabel(lead, { workspaceId: 'peer', label: 'api' })).toEqual({
+      workspaceId: 'peer',
+      label: 'API',
+    });
+    expect(await service.setWorkspaceLabel(lead, { workspaceId: 'other', label: null })).toEqual({
+      workspaceId: 'other',
+      label: null,
+    });
+    expect((await initiatives.get(initiative.id))?.labels).toEqual({ peer: 'API' });
+    expect((await service.listWorkspaces({})).find((w) => w.id === 'peer')?.label).toBe('API');
   });
 
   it("shows each member's latest quiet activity in list_workspaces", async () => {

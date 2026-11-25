@@ -7,9 +7,11 @@ import {
   type InitiativeMessage,
 } from '@core/features/initiatives/api/contract';
 import { findCycle } from '@core/features/initiatives/api/dependency-order';
+import { nextLabel, normalizeLabel } from '@core/features/initiatives/api/labels';
 import type { AppDb } from '@core/services/app-db/node/db';
 import { appDbPokes } from '@core/services/app-db/node/pokes';
 import {
+  initiativeLabels,
   initiativeMessages,
   initiatives,
   initiativeSubscriptions,
@@ -109,7 +111,7 @@ export class InitiativesService {
     if (rows.length === 0) return [];
     const dependencies = await this.dependencies();
     const members = await this.db
-      .select({ id: tasks.id, initiativeId: tasks.initiativeId })
+      .select({ id: tasks.id, initiativeId: tasks.initiativeId, label: tasks.initiativeLabel })
       .from(tasks)
       .where(
         and(
@@ -120,16 +122,20 @@ export class InitiativesService {
           isNull(tasks.deletedAt)
         )
       );
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      pushMessages: row.pushMessages === 1,
-      archived: row.archivedAt !== null,
-      createdAt: row.createdAt,
-      taskIds: members.filter((m) => m.initiativeId === row.id).map((m) => m.id),
-      leadTaskId: row.leadTaskId,
-      dependencies: dependencies.filter((dependency) => dependency.initiativeId === row.id),
-    }));
+    return rows.map((row) => {
+      const own = members.filter((m) => m.initiativeId === row.id);
+      return {
+        id: row.id,
+        name: row.name,
+        pushMessages: row.pushMessages === 1,
+        archived: row.archivedAt !== null,
+        createdAt: row.createdAt,
+        taskIds: own.map((m) => m.id),
+        labels: Object.fromEntries(own.flatMap((m) => (m.label ? [[m.id, m.label]] : []))),
+        leadTaskId: row.leadTaskId,
+        dependencies: dependencies.filter((dependency) => dependency.initiativeId === row.id),
+      };
+    });
   }
 
   /**
@@ -331,12 +337,16 @@ export class InitiativesService {
     return (await this.get(id))!;
   }
 
-  /** Makes a task the initiative's lead, moving it into the initiative; null removes the lead. */
+  /**
+   * Makes a task the initiative's lead, moving it into the initiative (without a label; a member
+   * keeps its own); null removes the lead.
+   */
   async setLead(initiativeId: string, taskId: string | null): Promise<void> {
-    if (!(await this.get(initiativeId))) {
-      throw new Error(`Initiative '${initiativeId}' was not found.`);
+    const initiative = await this.get(initiativeId);
+    if (!initiative) throw new Error(`Initiative '${initiativeId}' was not found.`);
+    if (taskId && !initiative.taskIds.includes(taskId)) {
+      await this.setTaskInitiative([taskId], initiativeId, { label: null });
     }
-    if (taskId) await this.setTaskInitiative([taskId], initiativeId);
     await this.db
       .update(initiatives)
       .set({ leadTaskId: taskId, updatedAt: sql`CURRENT_TIMESTAMP` })
@@ -364,18 +374,43 @@ export class InitiativesService {
     this.emit({ type: 'initiatives-changed' });
   }
 
-  /** Moves tasks into an initiative, or out of any with `initiativeId: null`. */
-  async setTaskInitiative(taskIds: string[], initiativeId: string | null): Promise<void> {
+  /**
+   * Moves tasks into an initiative, or out of any with `initiativeId: null`. Tasks that join get
+   * the next free label unless `label` is given (null for none, or one label for one task); a
+   * task that leaves loses its label. Tasks already in the initiative keep theirs unless `label`
+   * is given.
+   */
+  async setTaskInitiative(
+    taskIds: string[],
+    initiativeId: string | null,
+    options: { label?: string | null } = {}
+  ): Promise<void> {
     if (taskIds.length === 0) return;
     if (initiativeId && !(await this.get(initiativeId))) {
       throw new Error(`Initiative '${initiativeId}' was not found.`);
     }
-    const rows = await this.db
-      .update(tasks)
-      .set({ initiativeId })
-      .where(inArray(tasks.id, taskIds))
-      .returning({ id: tasks.id, projectId: tasks.projectId });
+    if (options.label && new Set(taskIds).size > 1) {
+      throw new Error('A label names one workspace; add them one at a time to give labels.');
+    }
+    const label = options.label ? normalizeLabel(options.label) : options.label;
+    if (initiativeId && label) await this.ensureLabelFree(initiativeId, taskIds[0]!, label);
+    const current = await this.db
+      .select({ id: tasks.id, initiativeId: tasks.initiativeId })
+      .from(tasks)
+      .where(inArray(tasks.id, taskIds));
+    const joining = current.filter((row) => row.initiativeId !== initiativeId).map((r) => r.id);
+    const rows = joining.length
+      ? await this.db
+          .update(tasks)
+          .set({ initiativeId, initiativeLabel: null })
+          .where(inArray(tasks.id, joining))
+          .returning({ id: tasks.id, projectId: tasks.projectId })
+      : [];
     for (const row of rows) appDbPokes.tasks.poke({ projectId: row.projectId, taskId: row.id });
+    if (initiativeId) {
+      if (label !== undefined) await this.writeLabel(initiativeId, taskIds[0]!, label);
+      else for (const taskId of joining) await this.assignNextLabel(initiativeId, taskId);
+    }
     // A lead that leaves its initiative stops leading it.
     await this.db
       .update(initiatives)
@@ -387,6 +422,83 @@ export class InitiativesService {
         )
       );
     this.emit({ type: 'initiatives-changed' });
+  }
+
+  /**
+   * Sets or (with null) clears a task's label in its initiative. Rejects a label another task of
+   * the initiative holds or held: labels aren't reused while the initiative exists.
+   */
+  async setLabel(taskId: string, raw: string | null): Promise<void> {
+    const initiative = await this.initiativeOfTask(taskId);
+    if (!initiative) throw new Error('The workspace is not in an initiative.');
+    const label = raw === null || !raw.trim() ? null : normalizeLabel(raw);
+    if (label) await this.ensureLabelFree(initiative.id, taskId, label);
+    await this.writeLabel(initiative.id, taskId, label);
+    this.emit({ type: 'initiatives-changed' });
+  }
+
+  private async ensureLabelFree(initiativeId: string, taskId: string, label: string) {
+    const [holder] = await this.db
+      .select({ name: tasks.name })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.initiativeId, initiativeId),
+          eq(tasks.initiativeLabel, label),
+          ne(tasks.id, taskId),
+          isNull(tasks.deletedAt)
+        )
+      )
+      .limit(1);
+    if (holder) throw new Error(`Label "${label}" is taken by workspace "${holder.name}".`);
+    const [issued] = await this.db
+      .select({ taskId: initiativeLabels.taskId })
+      .from(initiativeLabels)
+      .where(
+        and(eq(initiativeLabels.initiativeId, initiativeId), eq(initiativeLabels.label, label))
+      )
+      .limit(1);
+    if (issued && issued.taskId !== taskId) {
+      const name = (await this.taskNames([issued.taskId])).get(issued.taskId) ?? issued.taskId;
+      throw new Error(
+        `Label "${label}" was given to workspace "${name}" earlier in this initiative; labels ` +
+          "aren't reused, so pick another."
+      );
+    }
+  }
+
+  /** Records the label as issued to the task (once) and sets it, or clears it with null. */
+  private async writeLabel(initiativeId: string, taskId: string, label: string | null) {
+    if (label) {
+      await this.db
+        .insert(initiativeLabels)
+        .values({ initiativeId, label, taskId })
+        .onConflictDoNothing();
+    }
+    await this.db.update(tasks).set({ initiativeLabel: label }).where(eq(tasks.id, taskId));
+  }
+
+  /**
+   * Gives a task that joined an initiative its label from an earlier stay, when no other member
+   * holds it, else the first letter never issued in the initiative.
+   */
+  private async assignNextLabel(initiativeId: string, taskId: string) {
+    const issued = await this.db
+      .select({ label: initiativeLabels.label, taskId: initiativeLabels.taskId })
+      .from(initiativeLabels)
+      .where(eq(initiativeLabels.initiativeId, initiativeId))
+      .orderBy(sql`rowid`);
+    const held = new Set(
+      (
+        await this.db
+          .select({ label: tasks.initiativeLabel })
+          .from(tasks)
+          .where(and(eq(tasks.initiativeId, initiativeId), isNull(tasks.deletedAt)))
+      ).flatMap((row) => (row.label ? [row.label] : []))
+    );
+    const previous = issued.filter((row) => row.taskId === taskId && !held.has(row.label)).pop();
+    const label = previous?.label ?? nextLabel(new Set(issued.map((row) => row.label)));
+    await this.writeLabel(initiativeId, taskId, label);
   }
 
   async initiativeOfTask(taskId: string): Promise<Initiative | null> {
