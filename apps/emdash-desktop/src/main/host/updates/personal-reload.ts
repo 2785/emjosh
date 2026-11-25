@@ -14,15 +14,20 @@ export function personalCacheDir(
   env: NodeJS.ProcessEnv = process.env
 ): string {
   if (platform === 'darwin') return join(homedir(), 'Library', 'Caches', 'emjosh');
+  if (platform === 'win32') {
+    return join(env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'emjosh', 'Cache');
+  }
   return join(env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'emjosh');
 }
 
 /** Where builds wait for Reload; keep in sync with scripts/install-personal.sh. */
 export const PERSONAL_STAGE_DIR = join(personalCacheDir(), 'staged');
 
-/** File name of the staged build: the app bundle on macOS, the AppImage on Linux. */
+/** File name of the staged build: the app bundle on macOS, the AppImage on Linux, the installer on Windows. */
 export function stagedArtifactName(platform: NodeJS.Platform, productName: string): string {
-  return platform === 'darwin' ? `${productName}.app` : `${productName}.AppImage`;
+  if (platform === 'darwin') return `${productName}.app`;
+  if (platform === 'win32') return `${productName}-setup.exe`;
+  return `${productName}.AppImage`;
 }
 const POLL_INTERVAL_MS = 3_000;
 const EXIT_WAIT_SECONDS = 120;
@@ -89,6 +94,38 @@ echo "$(date) reopening"
 # Variables the old AppImage runtime and Electron set would confuse the new process.
 unset APPDIR APPIMAGE ARGV0 OWD ELECTRON_RUN_AS_NODE
 nohup "$target" >/dev/null 2>&1 &
+`;
+
+/**
+ * Windows counterpart of {@link RELOAD_HELPER_SCRIPT}, run by PowerShell with the same arguments,
+ * the target being the installed `Emjosh.exe`. Runs the staged installer silently, which updates
+ * the existing per-user install in place, then reopens the app. The installer was checked against
+ * the release manifest when it was staged.
+ */
+export const WINDOWS_RELOAD_HELPER_SCRIPT = `
+param([int]$AppPid, [string]$Target, [string]$Staged, [int]$WaitSeconds)
+function Log($message) { Write-Output "$(Get-Date -Format o) $message" }
+Log "waiting for pid $AppPid to exit"
+$deadline = (Get-Date).AddSeconds($WaitSeconds)
+while ((Get-Process -Id $AppPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+  Start-Sleep -Milliseconds 500
+}
+if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) { Log "app still running; reload cancelled"; exit 0 }
+Log "app exited"
+Start-Sleep -Seconds 2
+if ($Staged -and (Test-Path -LiteralPath $Staged -PathType Leaf)) {
+  try {
+    $installer = Start-Process -FilePath $Staged -ArgumentList '/S', '--updated' -Wait -PassThru
+    if ($installer.ExitCode -eq 0) { Log "installed staged build" }
+    else { Log "installer exited with $($installer.ExitCode); kept installed app" }
+  } catch {
+    Log "installer failed to start: $_"
+  }
+  Remove-Item -LiteralPath (Split-Path -Parent $Staged) -Recurse -Force -ErrorAction SilentlyContinue
+}
+Log "reopening"
+Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+Start-Process -FilePath $Target
 `;
 
 const xmlEscape = (value: string) =>
@@ -189,7 +226,10 @@ export class PersonalReloadService {
   }
 }
 
-/** The running app: the `.app` bundle on macOS, the AppImage on Linux (null when not one). */
+/**
+ * The running app: the `.app` bundle on macOS, the AppImage on Linux (null when not one), the
+ * installed executable on Windows.
+ */
 export function runningAppPath(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env
@@ -197,6 +237,7 @@ export function runningAppPath(
   // …/Emjosh.app/Contents/MacOS/Emjosh → …/Emjosh.app
   if (platform === 'darwin') return dirname(dirname(dirname(process.execPath)));
   if (platform === 'linux') return env.APPIMAGE || null;
+  if (platform === 'win32') return process.execPath;
   return null;
 }
 
@@ -238,6 +279,44 @@ function spawnLinuxHelper(args: string[]): void {
   }).unref();
 }
 
+/**
+ * The helper's arguments as named PowerShell parameters. Windows PowerShell drops empty arguments
+ * passed to `-File`, so an empty staged path is left out rather than passed positionally.
+ */
+export function windowsHelperArguments([pid, target, staged, waitSeconds]: string[]): string[] {
+  return [
+    '-AppPid',
+    pid!,
+    '-Target',
+    target!,
+    ...(staged ? ['-Staged', staged] : []),
+    '-WaitSeconds',
+    waitSeconds!,
+  ];
+}
+
+function spawnWindowsHelper(args: string[]): void {
+  const jobDir = dirname(PERSONAL_STAGE_DIR);
+  mkdirSync(jobDir, { recursive: true });
+  const scriptPath = join(jobDir, 'reload.ps1');
+  writeFileSync(scriptPath, WINDOWS_RELOAD_HELPER_SCRIPT);
+  const logFd = openSync(join(jobDir, 'reload.log'), 'a');
+  // Detached with its own console, so it outlives the app.
+  spawn(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      scriptPath,
+      ...windowsHelperArguments(args),
+    ],
+    { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd] }
+  ).unref();
+}
+
 export function createPersonalReloadService(electron: {
   isPackaged: boolean;
   quit(): void;
@@ -253,6 +332,7 @@ export function createPersonalReloadService(electron: {
     readText: (path) => readFile(path, 'utf8'),
     spawnDetached: (args) => {
       if (platform === 'darwin') spawnMacHelper(args);
+      else if (platform === 'win32') spawnWindowsHelper(args);
       else spawnLinuxHelper(args);
       log.info('Personal reload helper started', { staged: args[2] !== '' });
     },

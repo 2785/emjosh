@@ -30,11 +30,17 @@ vi.mock('@main/core/app/utils', () => ({ resolveAppVersion: vi.fn() }));
 const macAsset = { file: 'Emjosh-mac-arm64.zip', sha512: 'abc==', size: 123 };
 const linuxAsset = { file: 'Emjosh-linux-x64.AppImage', sha512: 'def==', size: 456 };
 const intelAsset = { file: 'Emjosh-mac-x64.zip', sha512: 'ghi==', size: 789 };
+const windowsAsset = { file: 'Emjosh-win-x64-setup.exe', sha512: 'jkl==', size: 1011 };
 const manifest = {
   version: '0.2.0',
   commit: '0123456789abcdef',
   releasedAt: '2026-11-05T00:00:00Z',
-  assets: { 'mac-arm64': macAsset, 'mac-x64': intelAsset, 'linux-x64': linuxAsset },
+  assets: {
+    'mac-arm64': macAsset,
+    'mac-x64': intelAsset,
+    'linux-x64': linuxAsset,
+    'win-x64': windowsAsset,
+  },
 };
 
 function makeService(overrides: Partial<PersonalUpdateDeps> = {}) {
@@ -79,6 +85,7 @@ describe('parseReleaseManifest', () => {
       { 'mac-arm64': { ...macAsset, file: '../evil.zip' } },
       { 'mac-arm64': { ...macAsset, file: 'Emjosh.dmg' } },
       { 'linux-x64': { ...linuxAsset, file: 'Emjosh.zip' } },
+      { 'win-x64': { ...windowsAsset, file: 'Emjosh.msi' } },
     ]) {
       expect(parseReleaseManifest({ ...manifest, assets })).toBeNull();
     }
@@ -108,7 +115,8 @@ describe('releasePlatform', () => {
     expect(releasePlatform('linux', 'x64')).toBe('linux-x64');
     expect(releasePlatform('darwin', 'x64')).toBe('mac-x64');
     expect(releasePlatform('linux', 'arm64')).toBeNull();
-    expect(releasePlatform('win32', 'x64')).toBeNull();
+    expect(releasePlatform('win32', 'x64')).toBe('win-x64');
+    expect(releasePlatform('win32', 'arm64')).toBeNull();
   });
 });
 
