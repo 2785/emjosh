@@ -33,7 +33,7 @@ import type { ChatContext } from './chat-context';
 import { ChatRoot } from './ChatRoot';
 import type { ComposerPlacement, ComposerPlacementOptions, EngineControls } from './ChatRoot';
 import type { ChatCommands, ScrollToItemOptions } from './commands';
-import type { TranscriptTurn } from './model';
+import type { CollapsedTurn, TranscriptTurn } from './model';
 import type { ChatState, ScrollMode } from './state/chat-state';
 
 export type { ComposerPlacement, ComposerPlacementOptions } from './ChatRoot';
@@ -61,6 +61,8 @@ export type ChatViewOptions = {
   contentOverlay?: boolean;
   stickToBottom?: boolean;
   pinUserMessages?: boolean;
+  /** Folds turns the host considers background activity into one collapsible row each. */
+  collapseTurn?: (turn: TranscriptTurn) => CollapsedTurn | null;
   /** Extra class for the scroll container. */
   class?: string;
   /** Class for the centered content column. */
@@ -256,6 +258,7 @@ export function createChatView(opts: ChatViewOptions): ChatView {
         onActiveUserMessageVisibilityChange={onActiveUserMessageVisibilityChange}
         controls={controls}
         pinUserMessages={opts.pinUserMessages}
+        collapseTurn={opts.collapseTurn}
         composer={opts.composer}
         composerPlacement={opts.composerPlacement}
         contentOverlay={opts.contentOverlay}

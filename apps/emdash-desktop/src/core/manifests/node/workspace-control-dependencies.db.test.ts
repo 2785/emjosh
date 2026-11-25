@@ -1,6 +1,7 @@
 import { openFixture } from '@tooling/utils/db';
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { isInitiativeEvent } from '@core/features/initiatives/api/contract';
 import { InitiativesService } from '@core/features/initiatives/node/initiatives-service';
 import { WorkspaceControlService } from '@core/features/workspace-control/node/workspace-control-service';
 import { projects, taskDependencies, tasks } from '@core/services/app-db/node/schema';
@@ -142,7 +143,9 @@ describe('workspace dependencies', () => {
     );
 
   const leadEvents = async () =>
-    (await service.readMessages(lead, {})).filter((m) => m.kind === 'event').map((m) => m.body);
+    (await service.readMessages(lead, {}))
+      .filter((m) => isInitiativeEvent(m.kind))
+      .map((m) => m.body);
 
   it('shows nothing until a dependency is declared, then ranks the initiative', async () => {
     expect(await orders()).toEqual({
@@ -277,6 +280,12 @@ describe('workspace dependencies', () => {
       'Dropped the dependency of "web" on "api": its branch already contains "api"\'s work.',
       expect.stringContaining('"docs" depends on "api", which looks done (PR #7 merged)'),
     ]);
+    // What the lead has to act on wakes it; the automatic drop is only recorded.
+    expect(
+      (await service.readMessages(lead, {}))
+        .filter((m) => isInitiativeEvent(m.kind))
+        .map((m) => m.kind)
+    ).toEqual(['attention', 'event', 'attention']);
   });
 
   it('lets the lead or the workspace itself mark it done', async () => {

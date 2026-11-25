@@ -11,6 +11,12 @@ import {
   startAcpConversationSession,
 } from '@core/features/conversations/node/wire-controller';
 import type { InitiativeMessage } from '@core/features/initiatives/api/contract';
+import { formatInitiativeDelivery } from '@core/features/initiatives/api/delivery';
+import { describeAgentEvent } from '@core/features/initiatives/node/agent-events';
+import {
+  DEFAULT_DELIVERY_WINDOW,
+  DeliveryCoalescer,
+} from '@core/features/initiatives/node/delivery-coalescer';
 import { createProjectOperations } from '@core/features/projects/node/controller';
 import { createProjectFromRemote } from '@core/features/projects/node/operations/create-project-from-remote';
 import { formatTaskDisplayName, normalizeTaskName } from '@core/features/tasks/api/task-names';
@@ -106,6 +112,8 @@ export async function startWorkspaceControl(
     endpointFile: string;
     version: string;
     logger: Logger;
+    /** Batching of initiative deliveries; DEFAULT_DELIVERY_WINDOW when omitted. */
+    deliveryWindow?: Partial<typeof DEFAULT_DELIVERY_WINDOW>;
     /** Subscribes to live agent status events; returns the unsubscribe function. */
     onAgentEvent?(
       handler: (event: {
@@ -162,38 +170,55 @@ export async function startWorkspaceControl(
     return (chats.find((row) => row.initial) ?? chats[0])?.id ?? null;
   };
 
-  // Push delivery: in an initiative with pushMessages on, each message or status event is fed
-  // into the conversations of the tasks it reaches, labelled as coming from the feed rather than
-  // the user. Events only reach the lead and tasks subscribed to them.
+  // Push delivery: in an initiative with pushMessages on, messages that wake a task
+  // (messageWakesTask) are fed into its chat in batches, labelled as coming from the feed rather
+  // than the user. The rest only count towards the "quiet updates" note of its next delivery.
+  const quietCounts = new Map<string, number>();
+  const isBusy = async (taskId: string) => {
+    const conversationId = await primaryConversation(taskId);
+    if (!conversationId) return false;
+    const [row] = await db
+      .select({ status: conversations.agentStatus })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+      .limit(1);
+    return row?.status === 'working';
+  };
+  const coalescer = new DeliveryCoalescer<InitiativeMessage>({
+    ...DEFAULT_DELIVERY_WINDOW,
+    ...extras.deliveryWindow,
+    isBusy,
+    onError: (error) => log.warn('Initiative message delivery failed', { error }),
+    async flush(taskId, messages) {
+      const initiative = await initiatives.get(messages[0]!.initiativeId);
+      if (!initiative?.pushMessages || initiative.archived) return;
+      const conversationId = await primaryConversation(taskId);
+      if (!conversationId) return;
+      const names = await taskNames(
+        messages.flatMap((message) => (message.fromTaskId ? [message.fromTaskId] : []))
+      );
+      const text = formatInitiativeDelivery({
+        initiativeName: initiative.name,
+        entries: messages.map((message) => ({
+          kind: message.kind,
+          sender: message.fromTaskId ? (names.get(message.fromTaskId) ?? 'unknown') : null,
+          fromLead: message.fromTaskId !== null && message.fromTaskId === initiative.leadTaskId,
+          direct: message.toTaskId === taskId,
+          body: message.body,
+        })),
+        quietCount: quietCounts.get(taskId),
+      });
+      quietCounts.delete(taskId);
+      const sent = await sendAcpConversationPrompt(context, conversationId, text);
+      if (!sent.success) log.warn('Initiative message delivery failed', { taskId });
+    },
+  });
   const deliver = async (message: InitiativeMessage) => {
     const initiative = await initiatives.get(message.initiativeId);
     if (!initiative?.pushMessages || initiative.archived) return;
-    // Direct messages, the user's posts, and what each task subscribed to (messageReachesTask).
-    const targets = await initiatives.recipients(message);
-    const names = await taskNames([
-      ...targets,
-      ...(message.fromTaskId ? [message.fromTaskId] : []),
-    ]);
-    const sender = message.fromTaskId ? `workspace "${names.get(message.fromTaskId)}"` : 'the user';
-    const text = (taskId: string) =>
-      message.kind === 'event'
-        ? `[Initiative "${initiative.name}" event` +
-          (taskId === initiative.leadTaskId
-            ? ', delivered to you as its lead.]'
-            : ', which you subscribed to.]') +
-          `\n\n${message.body}`
-        : `[Initiative "${initiative.name}" message from ${sender}` +
-          (message.fromTaskId && message.fromTaskId === initiative.leadTaskId
-            ? ' (its lead)'
-            : '') +
-          '. It comes from the initiative feed, not directly from the user; weigh it ' +
-          `accordingly.]\n\n${message.body}`;
-    for (const taskId of targets) {
-      const conversationId = await primaryConversation(taskId);
-      if (!conversationId) continue;
-      const sent = await sendAcpConversationPrompt(context, conversationId, text(taskId));
-      if (!sent.success) log.warn('Initiative message delivery failed', { taskId });
-    }
+    const { wake, quiet } = await initiatives.deliveryTargets(message);
+    for (const taskId of quiet) quietCounts.set(taskId, (quietCounts.get(taskId) ?? 0) + 1);
+    for (const taskId of wake) coalescer.add(taskId, message);
   };
   const stopDelivery = initiatives.onChange((change) => {
     if (change.type === 'message-posted') {
@@ -205,15 +230,8 @@ export async function startWorkspaceControl(
 
   // App events: let a task's initiative know when its agent finishes, needs input, or fails.
   const stopEvents = extras.onAgentEvent?.((event) => {
-    const what =
-      event.type === 'stop'
-        ? 'finished its turn'
-        : event.type === 'error'
-          ? 'stopped with an error'
-          : event.type === 'notification' && event.payload?.notificationType === 'permission_prompt'
-            ? 'is waiting for the user to approve something'
-            : null;
-    if (!what) return;
+    const described = describeAgentEvent(event);
+    if (!described) return;
     void (async () => {
       const initiative = await initiatives.initiativeOfTask(event.taskId);
       if (!initiative || initiative.archived) return;
@@ -221,8 +239,8 @@ export async function startWorkspaceControl(
       await initiatives.post({
         initiativeId: initiative.id,
         fromTaskId: event.taskId,
-        kind: 'event',
-        body: `Workspace "${name}" ${what}.`,
+        kind: described.kind,
+        body: `Workspace "${name}" ${described.what}.`,
       });
     })().catch((error: unknown) => log.warn('Initiative event failed', { error }));
   });
@@ -605,6 +623,7 @@ export async function startWorkspaceControl(
     service,
     async close() {
       stopDelivery();
+      coalescer.dispose();
       stopEvents?.();
       stopStatusChecks?.();
       stopArchiveHook();

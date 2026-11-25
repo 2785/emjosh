@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
+import { initiativeMessageKinds } from '@core/features/initiatives/api/contract';
 import type { ControlCaller, WorkspaceControlService } from './workspace-control-service';
 
 /** Header an Emjosh agent session sends to identify the conversation it runs in. */
@@ -23,12 +24,13 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - Split work across repositories into an initiative. When the task also needs changes in other repositories (an API and its UI, a library and its users), or the user asks you to spin up other workspaces or an initiative, don't make those changes from this workspace and don't orchestrate them from here either: messages to you queue behind your own long-running work. An initiative has a dedicated lead workspace that only orchestrates:
   - Call current_workspace. If it has no initiative, call create_initiative with a self-contained goal. It starts a new lead workspace (its id is in the result) and keeps this workspace as a member. Then tell the user, and carry on with this workspace's own part, if any, as a member (see below). Don't create the other workspaces yourself; the lead does.
   - If this workspace is already in an initiative, post_message to its lead (initiative.leadTaskId) asking for the new work, instead of starting workspaces yourself. If the initiative has no lead, ask the user before making one with set_initiative_lead.
-- If you lead an initiative (current_workspace shows isLead), you orchestrate and nothing else. Members' messages and status events are delivered into your chat but wait until your turn ends, so keep turns short; any slow or non-trivial work (code changes, builds, test runs, long investigations) goes to a workspace:
+- If you lead an initiative (current_workspace shows isLead), you orchestrate and nothing else. What needs you is delivered into your chat, bundled, once your current turn ends: members' done, blocked and decision messages, the user's posts, and members waiting for approval or stopped with an error. Status events and fyi messages are not delivered; read them with read_messages, or each workspace's latest in list_workspaces (initiativeActivity). Keep turns short; any slow or non-trivial work (code changes, builds, test runs, long investigations) goes to a workspace:
   - For each part (find projects with list_projects; if a repository isn't a project yet, add it with add_project or clone_project), call create_workspace with the initiativeId and a self-contained prompt: the goal, that part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative you lead (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
-  - You receive every message and status event in the initiative, and every member receives your broadcasts. Address one workspace with toWorkspaceId when it concerns only that one. Delivery is on by default; if not, call set_message_delivery. Call wait_for_messages only when you can't continue without an answer.
+  - You receive every message and status event in the initiative, and every member receives your broadcasts. Address one workspace with toWorkspaceId when it concerns only that one; that is always delivered into its chat. Broadcasts are fyi (members see them when they read messages) unless you pass kind decision or blocked for ones members must act on now. Delivery is on by default; if not, call set_message_delivery. Call wait_for_messages only when you can't continue without an answer.
+  - The user's chat with you is for the user. Turns that start with an initiative delivery are collapsed in it, except your final message: make that what the user needs to know or decide, or end with just \`[quiet]\` when nothing needs them.
   - When workspaces must land in an order (an API before its UI, a shared change before others rebase on it), record it with set_workspace_dependencies; list_workspaces then shows the order. Don't add dependencies by default. When one is announced as looking done, check and drop it. When an event says one workspace's branch is contained in another's, fold them with merge_workspaces (after checking with the user if either still has work in flight).
   - Don't do a workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
-- If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish, get blocked, or need a decision. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
+- If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish (kind done, with what you checked), get blocked (kind blocked), or need a decision (kind decision); only those wake the lead. Anything else is kind fyi, which the lead reads when it wants. Don't acknowledge broadcasts, and don't reply unless something changed or you were asked. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
 - Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
 - Anything else the Emjosh app can do (its settings, automations, MCP servers, skills, prompt library, project settings, conversations, terminals, pull requests, and so on) is reachable through the app API: find operations with app_api_list, read their input with app_api_describe, then app_api_call or app_api_read. Use the dedicated tools above where one fits. Confirm with the user before anything destructive (deleting projects, workspaces, conversations, files or automations) they did not explicitly ask for.
@@ -137,7 +139,9 @@ export function buildControlMcpServer(
         'their branch, agent status, last activity, and pull request state. In an initiative ' +
         'with dependencies, dependencyOrder gives the rank each workspace lands in (1 first; ' +
         'parallel ones share it), what it depends on (looksDone flags ones that seem finished) ' +
-        'and what it still waits on.',
+        'and what it still waits on. Workspaces in an initiative also show initiativeActivity: ' +
+        'their latest status event and latest message, including quiet ones that were not ' +
+        "delivered into the lead's chat.",
       inputSchema: {
         projectId: z.string().optional().describe('Only workspaces of this project.'),
         includeArchived: z.boolean().optional().describe('Include archived workspaces.'),
@@ -468,9 +472,19 @@ export function buildControlMcpServer(
         "Post to your initiative's message feed. Prefer addressing one workspace " +
         '(toWorkspaceId): direct messages always arrive, and the lead sees every message. ' +
         'Messages to everyone reach every member when the lead sends them; otherwise only ' +
-        "workspaces that subscribed to the sender's broadcasts.",
+        "workspaces that subscribed to the sender's broadcasts. kind decides who is woken: " +
+        "done, blocked and decision are delivered into the lead's chat (and broadcasts with " +
+        "them into members' chats); fyi is stored for read_messages, except that a message " +
+        'addressed to a member is always delivered.',
       inputSchema: {
         text: z.string(),
+        kind: z
+          .enum(initiativeMessageKinds)
+          .optional()
+          .describe(
+            'done: your part is finished; blocked: you cannot continue; decision: you need one; ' +
+              'fyi (default): anything else.'
+          ),
         toWorkspaceId: z
           .string()
           .optional()
@@ -486,7 +500,8 @@ export function buildControlMcpServer(
     {
       description:
         'Read messages for you in your initiative (to you or everyone, including app events ' +
-        'such as a workspace finishing its turn). Pass the last id you saw as afterId.',
+        'such as a workspace finishing its turn, and fyi messages that were not delivered into ' +
+        'your chat). Pass the last id you saw as afterId.',
       inputSchema: {
         afterId: z.string().optional(),
         initiativeId: z.string().optional(),

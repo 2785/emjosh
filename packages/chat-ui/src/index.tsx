@@ -76,6 +76,7 @@ export type {
   AcpPermissionRequest,
   PlanState,
   TerminalOutputSnapshot,
+  CollapsedTurn,
 } from './model';
 
 // ── Transcript API ────────────────────────────────────────────────────────────

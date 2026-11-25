@@ -21,6 +21,24 @@ export type InitiativeDependency = DependencyEdge & {
   doneNotice: string | null;
 };
 
+/**
+ * What a workspace's message is about. Only `done`, `blocked` and `decision` addressed to the lead
+ * wake it (see messageWakesTask); `fyi` is stored for read_messages and list_workspaces.
+ */
+export const initiativeMessageKinds = ['done', 'blocked', 'decision', 'fyi'] as const;
+export type InitiativeMessageKind = (typeof initiativeMessageKinds)[number];
+
+/**
+ * App events: `event` for status (a turn finished, a workspace was created), which wakes nobody;
+ * `attention` for ones that stop work until someone acts (an agent waits for the user's approval
+ * or stopped with an error), which wake whoever they reach.
+ */
+export type InitiativeEventKind = 'event' | 'attention';
+
+export function isInitiativeEvent(kind: InitiativeMessage['kind']): kind is InitiativeEventKind {
+  return kind === 'event' || kind === 'attention';
+}
+
 export type InitiativeMessage = {
   id: string;
   initiativeId: string;
@@ -28,7 +46,7 @@ export type InitiativeMessage = {
   fromTaskId: string | null;
   /** Addressed task; null for everyone. */
   toTaskId: string | null;
-  kind: 'message' | 'event';
+  kind: InitiativeMessageKind | InitiativeEventKind;
   body: string;
   createdAt: string;
 };
