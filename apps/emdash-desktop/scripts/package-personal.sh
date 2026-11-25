@@ -44,6 +44,13 @@ if [ "${EMJOSH_TARGET:-mac}" = win ]; then
 fi
 pnpm exec electron-builder --mac --publish never --config electron-builder.personal.config.ts
 
+# The native SQLite binding comes from node_modules (built for Electron by postinstall); a
+# checkout without it packages an app that cannot start.
+if ! find "$APP/Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3" -name better_sqlite3.node | grep -q .; then
+  echo "Packaged app has no better_sqlite3.node; run 'pnpm install' (or 'pnpm run rebuild') in this checkout." >&2
+  exit 1
+fi
+
 # Prefer an Apple Development identity (free with an Apple ID): its Team ID gives keychain items
 # a stable partition, so they stay readable across rebuilds. The self-signed fallback keeps the
 # same code requirement, but macOS ties its keychain partition to each build's hash, so expect
