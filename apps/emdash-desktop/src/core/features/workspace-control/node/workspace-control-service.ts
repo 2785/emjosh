@@ -6,7 +6,12 @@ import {
   type InitiativeMessageKind,
 } from '@core/features/initiatives/api/contract';
 import { dependencyOrder } from '@core/features/initiatives/api/dependency-order';
-import { labelledName, normalizeLabel, workspaceRef } from '@core/features/initiatives/api/labels';
+import {
+  labelledName,
+  normalizeLabel,
+  workspaceChip,
+  workspaceRef,
+} from '@core/features/initiatives/api/labels';
 import { ensureUniqueTaskDisplayName, isRandomTaskName } from '@core/features/tasks/api/task-names';
 import type { AppApi } from './app-api';
 
@@ -37,6 +42,11 @@ export type ControlWorkspace = {
   initiativeId: string | null;
   /** Short name within its initiative (e.g. "F"); absent outside one or without a label. */
   label?: string;
+  /**
+   * Markdown link that opens the workspace (its label, else its name); write it as is when
+   * naming the workspace to the user.
+   */
+  link?: string;
   /** The user or the lead marked the workspace done (its task status). */
   markedDone?: boolean;
   pullRequest: ControlPullRequest | null;
@@ -340,6 +350,7 @@ export class WorkspaceControlService {
         const latest = row.initiativeId ? activity.get(row.initiativeId)?.get(row.id) : undefined;
         return {
           ...row,
+          link: workspaceChip(row.id, row.name, row.label),
           pullRequest: await this.pullRequestOf(row, pullRequests),
           ...(latest && { initiativeActivity: latest }),
         };
@@ -746,8 +757,8 @@ export class WorkspaceControlService {
         )
         .catch(() => false)) ?? false;
     const { skipped } = await initiatives.moveDependencies(from.id, into.id);
-    const fromName = labelledName(from.name, from.label);
-    const intoName = labelledName(into.name, into.label);
+    const fromName = labelledName(from.name, from.label, from.id);
+    const intoName = labelledName(into.name, into.label, into.id);
     await this.deps.archiveWorkspace(from.projectId, from.id);
     await initiatives.post({
       initiativeId,
@@ -989,9 +1000,13 @@ export class WorkspaceControlService {
         initiativeId: input.initiativeId,
         fromTaskId: context?.taskId ?? null,
         kind: 'event',
-        body: `${workspaceRef(created.name, label)} was created${input.prompt ? ' and given a first task' : ''}.`,
+        body: `${workspaceRef(created.name, label, created.id)} was created${input.prompt ? ' and given a first task' : ''}.`,
       });
-      return { ...created, ...(label && { label }) };
+      return {
+        ...created,
+        ...(label && { label }),
+        link: workspaceChip(created.id, created.name, label),
+      };
     }
     return created;
   }
@@ -1305,8 +1320,8 @@ export function containmentNotice(
   from: { id: string; name: string; label?: string },
   into: { id: string; name: string; label?: string }
 ): string {
-  const fromName = labelledName(from.name, from.label);
-  const intoName = labelledName(into.name, into.label);
+  const fromName = labelledName(from.name, from.label, from.id);
+  const intoName = labelledName(into.name, into.label, into.id);
   return (
     `${fromName}'s branch is contained in ${intoName}'s; fold ${fromName} into ${intoName}? ` +
     containmentPairTag(from, into)
@@ -1320,7 +1335,7 @@ function containmentPairTag(from: { id: string }, into: { id: string }): string 
 /** A workspace by id as `F "name"`, or its id when it isn't known. */
 function refOf(byId: Map<string, { name: string; label?: string }>, id: string): string {
   const row = byId.get(id);
-  return row ? labelledName(row.name, row.label) : id;
+  return row ? labelledName(row.name, row.label, id) : id;
 }
 
 /** What the folded workspace's agent is asked for. */

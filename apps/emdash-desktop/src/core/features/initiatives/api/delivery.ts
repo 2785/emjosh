@@ -8,6 +8,8 @@ export type DeliveryEntry = {
   sender: string | null;
   /** Sending workspace's label in the initiative (e.g. "F"), if it has one. */
   senderLabel?: string;
+  /** Sending workspace's id, to link its label. */
+  senderId?: string;
   fromLead: boolean;
   /** Addressed to the recipient rather than to everyone. */
   direct: boolean;
@@ -39,7 +41,7 @@ export function formatInitiativeDelivery(input: {
     const from = isInitiativeEvent(entry.kind)
       ? 'Emjosh event'
       : entry.sender
-        ? `${workspaceRef(entry.sender, entry.senderLabel)}${entry.fromLead ? ' (lead)' : ''}`
+        ? `${workspaceRef(entry.sender, entry.senderLabel, entry.senderId)}${entry.fromLead ? ' (lead)' : ''}`
         : 'The user';
     const label = [
       from,

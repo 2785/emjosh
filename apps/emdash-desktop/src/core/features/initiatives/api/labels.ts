@@ -32,12 +32,39 @@ function spreadsheetLetters(n: number): string {
   return label;
 }
 
-/** How agents' messages name a workspace: `Workspace F "Codex parity"`, or without a label. */
-export function workspaceRef(name: string, label?: string | null): string {
-  return `Workspace ${labelledName(name, label)}`;
+/** Link target that opens a workspace in the app (chat shows `[F](…)` as a button). */
+export function workspaceLinkTarget(id: string): string {
+  return `emjosh://workspace/${id}`;
 }
 
-/** A workspace's quoted name after its label, if any: `F "Codex parity"`. */
-export function labelledName(name: string, label?: string | null): string {
-  return label ? `${label} "${name}"` : `"${name}"`;
+/** A workspace's label as a markdown link that opens it: `[F](emjosh://workspace/<id>)`. */
+export function workspaceLink(id: string, label: string): string {
+  return `[${label}](${workspaceLinkTarget(id)})`;
+}
+
+/**
+ * A ready-made markdown link to a workspace: its label when it has one, else its name. Chat
+ * shows it as a button that opens the workspace.
+ */
+export function workspaceChip(id: string, name: string, label?: string | null): string {
+  return workspaceLink(id, label || name.replace(/[[\]]/g, ''));
+}
+
+/** How agents' messages name a workspace: `Workspace [F](link) "Codex parity"`. */
+export function workspaceRef(name: string, label?: string | null, id?: string): string {
+  return `Workspace ${labelledName(name, label, id)}`;
+}
+
+/**
+ * A workspace's quoted name after its label, if any: `F "Codex parity"`. With an id the label
+ * is a link that opens the workspace.
+ */
+export function labelledName(name: string, label?: string | null, id?: string): string {
+  if (!label) return `"${name}"`;
+  return `${id ? workspaceLink(id, label) : label} "${name}"`;
+}
+
+/** The text of a message with workspace links reduced to their label, for plain-text views. */
+export function stripWorkspaceLinks(text: string): string {
+  return text.replace(/\[([^\]]+)\]\(emjosh:\/\/workspace\/[^)\s]+\)/g, '$1');
 }

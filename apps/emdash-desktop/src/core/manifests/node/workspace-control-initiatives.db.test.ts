@@ -163,7 +163,10 @@ describe('workspace control initiatives and messages', () => {
 
     expect((await initiatives.get(initiative.id))?.taskIds.sort()).toEqual(['lead', 'peer']);
     expect((await service.readMessages(peer, {})).map((m) => [m.kind, m.body])).toEqual([
-      ['event', 'Workspace A "peer" was created and given a first task.'],
+      [
+        'event',
+        'Workspace [A](emjosh://workspace/peer) "peer" was created and given a first task.',
+      ],
     ]);
   });
 
@@ -177,7 +180,11 @@ describe('workspace control initiatives and messages', () => {
       initiativeId: initiative.id,
       label: 'web',
     });
-    expect(created).toMatchObject({ id: 'peer', label: 'WEB' });
+    expect(created).toMatchObject({
+      id: 'peer',
+      label: 'WEB',
+      link: '[WEB](emjosh://workspace/peer)',
+    });
 
     await service.addToInitiative({ initiativeId: initiative.id, workspaceIds: ['other'] });
     expect((await initiatives.get(initiative.id))?.labels).toEqual({ peer: 'WEB', other: 'A' });
@@ -198,7 +205,13 @@ describe('workspace control initiatives and messages', () => {
       label: null,
     });
     expect((await initiatives.get(initiative.id))?.labels).toEqual({ peer: 'API' });
-    expect((await service.listWorkspaces({})).find((w) => w.id === 'peer')?.label).toBe('API');
+    const listed = await service.listWorkspaces({});
+    expect(listed.find((w) => w.id === 'peer')).toMatchObject({
+      label: 'API',
+      link: '[API](emjosh://workspace/peer)',
+    });
+    // Without a label the link carries the name.
+    expect(listed.find((w) => w.id === 'other')?.link).toBe('[other](emjosh://workspace/other)');
   });
 
   it("shows each member's latest quiet activity in list_workspaces", async () => {

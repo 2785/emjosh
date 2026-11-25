@@ -205,6 +205,7 @@ export async function startWorkspaceControl(
           kind: message.kind,
           sender: message.fromTaskId ? (names.get(message.fromTaskId) ?? 'unknown') : null,
           senderLabel: message.fromTaskId ? initiative.labels[message.fromTaskId] : undefined,
+          senderId: message.fromTaskId ?? undefined,
           fromLead: message.fromTaskId !== null && message.fromTaskId === initiative.leadTaskId,
           direct: message.toTaskId === taskId,
           body: message.body,
@@ -243,7 +244,7 @@ export async function startWorkspaceControl(
         initiativeId: initiative.id,
         fromTaskId: event.taskId,
         kind: described.kind,
-        body: `${workspaceRef(name, initiative.labels[event.taskId])} ${described.what}.`,
+        body: `${workspaceRef(name, initiative.labels[event.taskId], event.taskId)} ${described.what}.`,
       });
     })().catch((error: unknown) => log.warn('Initiative event failed', { error }));
   });

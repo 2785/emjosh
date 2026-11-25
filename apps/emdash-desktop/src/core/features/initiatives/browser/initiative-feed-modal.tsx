@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getInitiativesClient } from '@core/features/initiatives/api/browser/client';
 import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
 import { isInitiativeEvent, type InitiativeMessage } from '@core/features/initiatives/api/contract';
+import { stripWorkspaceLinks } from '@core/features/initiatives/api/labels';
 import { InitiativeLabel } from '@core/features/initiatives/contributions/browser/initiative-label';
 import { useModalController } from '@core/manifests/browser/modal-api';
 import { defineModal } from '@core/primitives/modals/react';
@@ -114,7 +115,7 @@ export const InitiativeFeedModal = observer(function InitiativeFeedModal({
                   isInitiativeEvent(message.kind) && 'text-foreground-muted italic'
                 )}
               >
-                {message.body}
+                {stripWorkspaceLinks(message.body)}
               </p>
             </div>
           ))}

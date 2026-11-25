@@ -36,6 +36,7 @@ describe('initiative deliveries', () => {
           kind: 'done',
           sender: 'Codex parity',
           senderLabel: 'F',
+          senderId: 'ws-f',
           fromLead: false,
           direct: true,
           body: 'Done.',
@@ -43,7 +44,9 @@ describe('initiative deliveries', () => {
         { kind: 'fyi', sender: 'Lead', fromLead: true, direct: false, body: 'Heads up.' },
       ],
     });
-    expect(text).toContain('— Workspace F "Codex parity" · done · to you\nDone.');
+    expect(text).toContain(
+      '— Workspace [F](emjosh://workspace/ws-f) "Codex parity" · done · to you\nDone.'
+    );
     expect(text).toContain('— Workspace "Lead" (lead) · fyi\nHeads up.');
   });
 

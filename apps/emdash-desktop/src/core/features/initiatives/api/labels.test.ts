@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { labelledName, nextLabel, normalizeLabel, workspaceRef } from './labels';
+import {
+  labelledName,
+  nextLabel,
+  normalizeLabel,
+  stripWorkspaceLinks,
+  workspaceChip,
+  workspaceRef,
+} from './labels';
 
 describe('initiative labels', () => {
   it('hands out letters in order, skipping issued ones, then two letters', () => {
@@ -22,5 +29,19 @@ describe('initiative labels', () => {
     expect(workspaceRef('Codex parity', 'F')).toBe('Workspace F "Codex parity"');
     expect(workspaceRef('Codex parity')).toBe('Workspace "Codex parity"');
     expect(labelledName('API', 'A')).toBe('A "API"');
+  });
+
+  it('links labels to their workspace, falling back to the name', () => {
+    expect(workspaceRef('Codex parity', 'F', 'w1')).toBe(
+      'Workspace [F](emjosh://workspace/w1) "Codex parity"'
+    );
+    expect(workspaceChip('w1', 'Codex [parity]', 'F')).toBe('[F](emjosh://workspace/w1)');
+    expect(workspaceChip('w1', 'Codex [parity]')).toBe('[Codex parity](emjosh://workspace/w1)');
+  });
+
+  it('reduces workspace links to their label for plain text', () => {
+    expect(
+      stripWorkspaceLinks('Workspace [F](emjosh://workspace/w1) "x" and [docs](https://a.b)')
+    ).toBe('Workspace F "x" and [docs](https://a.b)');
   });
 });
