@@ -118,13 +118,24 @@ function ProseFragment(props: {
           source: 'prose-link',
         });
       }
+      if (result?.kind === 'workspace') {
+        e.preventDefault();
+        commands().onOpenWorkspace?.({
+          workspaceId: result.workspaceId,
+          label: props.frag.text,
+          itemId: props.blockId,
+        });
+      }
       // else: browser follows the <a> normally (new tab via target="_blank")
     };
+
+    const isWorkspace = () => classification()?.kind === 'workspace';
 
     // Links are not word-animated (href spans are not appended incrementally).
     return (
       <a
-        class={cls}
+        class={isWorkspace() ? `${cls} ${mentionChip}` : cls}
+        data-workspace-link={isWorkspace() ? '' : undefined}
         style={{ left: `${props.frag.x}px` }}
         href={href}
         target="_blank"

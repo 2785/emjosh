@@ -1,5 +1,6 @@
 import type { ChatCommands } from '@core/features/conversations/api/browser/chat/chat-transcript';
 // TODO(conversations-extraction): Inject task editor/file-opening behavior into ACP chat.
+import { parseWorkspaceLink } from '@core/features/workspace-control/api/workspace-search';
 import { openFileInAdjacentPane } from '@core/features/editor/api/browser/open-file-in-file-editor';
 
 const EXPLICIT_SCHEME_RE = /^[A-Za-z][A-Za-z\d+.-]*:/u;
@@ -37,6 +38,8 @@ export type TranscriptFileCommands = {
  */
 export function classifyTranscriptLink(href: string): TranscriptLinkClassification {
   const target = href.trim();
+  const workspaceId = parseWorkspaceLink(target);
+  if (workspaceId) return { kind: 'workspace', workspaceId };
   if (!target || target.startsWith('#') || target.startsWith('?') || target.startsWith('//')) {
     return { kind: 'external' };
   }

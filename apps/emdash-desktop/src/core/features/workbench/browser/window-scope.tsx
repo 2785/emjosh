@@ -115,6 +115,11 @@ export function WindowScope({ children }: { readonly children: ReactNode }) {
     'workbench.toggleLeftSidebar': () => ({
       execute: () => toggleLeftSidebar(),
     }),
+    'workspace.find': () => ({
+      execute: () => {
+        void openModal('findWorkspaceModal', {});
+      },
+    }),
     'devPerf.processPanel': () => ({
       execute: () => {
         void openModal('devProcessPanelModal');
