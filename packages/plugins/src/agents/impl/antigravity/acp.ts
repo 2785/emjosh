@@ -1,6 +1,8 @@
 import type { Client, SessionNotification } from '@agentclientprotocol/sdk';
 import type { AcpAgentApi, IAcpBehavior } from '@emdash/core/services/agent-plugins/api/plugins';
 import { connectStdioAcp } from '../../helpers/acp-stdio';
+import { override } from './override';
+import { withPermissionModes } from './permissions';
 
 /** `_meta` key on a `usage_update` that closed a turn; read by `enrichAntigravityUpdate`. */
 export const TURN_END_META_KEY = 'emdash/antigravityTurnEnd';
@@ -26,7 +28,9 @@ export function createAntigravityAcpBehavior(): Pick<IAcpBehavior, 'buildSpawn' 
     },
     connect: (io, toClient) =>
       withSessionSetup(
-        connectStdioAcp(io, (agent) => withTurnEndMarkers(toClient(agent))),
+        withPermissionModes((wrapClient) =>
+          connectStdioAcp(io, (agent) => wrapClient(withTurnEndMarkers(toClient(agent))))
+        ),
         () => instructions
       ),
   };
@@ -135,20 +139,4 @@ export function isAntigravitySessionNotFound(error: unknown, sessionId: string):
   if (!error || typeof error !== 'object') return false;
   const { code, message } = error as { code?: unknown; message?: unknown };
   return code === -32002 && message === `Session not found: ${sessionId}`;
-}
-
-/** Replaces some methods while keeping the rest bound to the original (which may be a class). */
-function override<T extends object>(target: T, replacements: Partial<T>): T {
-  return new Proxy(target, {
-    get(object, property, receiver) {
-      if (Object.hasOwn(replacements, property)) {
-        return replacements[property as keyof T];
-      }
-      const value: unknown = Reflect.get(object, property, receiver);
-      return typeof value === 'function' ? value.bind(object) : value;
-    },
-    has(object, property) {
-      return Object.hasOwn(replacements, property) || Reflect.has(object, property);
-    },
-  });
 }
