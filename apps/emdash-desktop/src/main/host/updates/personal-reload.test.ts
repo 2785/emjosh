@@ -21,6 +21,8 @@ import {
   RELOAD_HELPER_SCRIPT,
   runningAppPath,
   stagedArtifactName,
+  windowsHelperArguments,
+  WINDOWS_RELOAD_HELPER_SCRIPT,
 } from './personal-reload';
 
 vi.mock('@main/lib/logger', () => ({
@@ -259,7 +261,35 @@ describe('platform paths', () => {
       '/home/me/Emjosh.AppImage'
     );
     expect(runningAppPath('linux', {})).toBeNull();
-    expect(runningAppPath('win32', {})).toBeNull();
+  });
+
+  it('reloads on Windows from the installed executable, staging the installer', () => {
+    expect(runningAppPath('win32', {})).toBe(process.execPath);
+    expect(stagedArtifactName('win32', 'Emjosh')).toBe('Emjosh-setup.exe');
+    expect(personalCacheDir('win32', { LOCALAPPDATA: 'C:/Users/me/AppData/Local' })).toBe(
+      'C:/Users/me/AppData/Local/emjosh/Cache'
+    );
+  });
+
+  it('passes the Windows helper named arguments, leaving out an empty staged path', () => {
+    expect(windowsHelperArguments(['42', 'C:/Emjosh/Emjosh.exe', '', '120'])).toEqual([
+      '-AppPid',
+      '42',
+      '-Target',
+      'C:/Emjosh/Emjosh.exe',
+      '-WaitSeconds',
+      '120',
+    ]);
+    expect(
+      windowsHelperArguments(['42', 'C:/Emjosh/Emjosh.exe', 'C:/s/Emjosh-setup.exe', '120'])
+    ).toContain('C:/s/Emjosh-setup.exe');
+  });
+
+  it('declares the Windows helper parameters it is given', () => {
+    for (const name of ['AppPid', 'Target', 'Staged', 'WaitSeconds']) {
+      expect(WINDOWS_RELOAD_HELPER_SCRIPT).toContain(`$${name}`);
+    }
+    expect(WINDOWS_RELOAD_HELPER_SCRIPT).toContain("'/S'");
   });
 });
 

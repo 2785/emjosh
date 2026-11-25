@@ -21,11 +21,16 @@ const STARTUP_DELAY_MS = 5_000;
 const CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Platforms Emjosh is released for, as keys of a manifest's `assets`. */
-export type ReleasePlatform = 'mac-arm64' | 'mac-x64' | 'linux-x64';
+export type ReleasePlatform = 'mac-arm64' | 'mac-x64' | 'linux-x64' | 'win-x64';
 
 const isMac = (platform: ReleasePlatform) => platform.startsWith('mac-');
 
-/** What a release ships for one platform: a zip of the signed `.app`, or an AppImage. */
+function nodePlatform(platform: ReleasePlatform): NodeJS.Platform {
+  if (isMac(platform)) return 'darwin';
+  return platform === 'win-x64' ? 'win32' : 'linux';
+}
+
+/** What a release ships for one platform: a zip of the signed `.app`, an AppImage, or the Windows installer. */
 export type PersonalReleaseAsset = {
   file: string;
   /** Base64 SHA-512 of the file. */
@@ -45,6 +50,7 @@ const ASSET_FILE: Record<ReleasePlatform, RegExp> = {
   'mac-arm64': /^[\w.-]+\.zip$/,
   'mac-x64': /^[\w.-]+\.zip$/,
   'linux-x64': /^[\w.-]+\.AppImage$/,
+  'win-x64': /^[\w.-]+\.exe$/,
 };
 
 function parseAsset(raw: unknown, platform: ReleasePlatform): PersonalReleaseAsset | null {
@@ -92,6 +98,7 @@ export function releasePlatform(
   if (platform === 'darwin' && arch === 'arm64') return 'mac-arm64';
   if (platform === 'darwin' && arch === 'x64') return 'mac-x64';
   if (platform === 'linux' && arch === 'x64') return 'linux-x64';
+  if (platform === 'win32' && arch === 'x64') return 'win-x64';
   return null;
 }
 
@@ -234,7 +241,7 @@ async function prepareMacApp(zip: string, work: string, bundlePath: string, prod
 
 /**
  * Downloads this platform's build, checks it against the manifest (and on macOS against the
- * running app's signing identity; Linux has no equivalent), and moves it to `stageDir` with a
+ * running app's signing identity; Linux and Windows have no equivalent), and moves it to `stageDir` with a
  * `build.json` for the Reload button.
  */
 export async function stageRelease(
@@ -265,10 +272,7 @@ export async function stageRelease(
     // build.json goes last: the Reload button treats its presence as a complete stage.
     await rm(stageDir, { recursive: true, force: true });
     await mkdir(stageDir, { recursive: true });
-    await rename(
-      prepared,
-      join(stageDir, stagedArtifactName(isMac(platform) ? 'darwin' : 'linux', productName))
-    );
+    await rename(prepared, join(stageDir, stagedArtifactName(nodePlatform(platform), productName)));
     await writeFile(
       join(stageDir, 'build.json'),
       JSON.stringify({

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds Emjosh (macOS arm64 and Intel, Linux x64 in a container, Windows x64) from merged main
-# and publishes it as a GitHub release of 2785/emjosh, where installed macOS and Linux copies pick
-# it up (src/main/host/updates/personal-update.ts). Windows copies don't update themselves yet.
+# and publishes it as a GitHub release of 2785/emjosh, where installed copies pick it up
+# (src/main/host/updates/personal-update.ts).
 #
 #   pnpm run release            # next patch version (the first release is 0.1.0)
 #   pnpm run release minor      # or: major, or an explicit version such as 1.0.0
@@ -98,6 +98,7 @@ asset_json() {
     "$version" "$commit" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   printf '    "mac-arm64": %s' "$(asset_json "$OUT/$ZIP_NAME")"
   printf ',\n    "mac-x64": %s' "$(asset_json "$OUT/$INTEL_ZIP_NAME")"
+  printf ',\n    "win-x64": %s' "$(asset_json "$OUT/$(basename "$WINDOWS_INSTALLER")")"
   if [ -z "${EMJOSH_SKIP_LINUX:-}" ]; then
     printf ',\n    "linux-x64": %s' "$(asset_json "$OUT/$(basename "$APPIMAGE")")"
   fi
