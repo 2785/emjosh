@@ -596,7 +596,10 @@ export const initiativeMessages = sqliteTable(
     fromTaskId: text('from_task_id'),
     /** Addressed task; null for everyone in the initiative. */
     toTaskId: text('to_task_id'),
-    kind: text('kind').notNull().$type<'message' | 'event'>(),
+    /** 'message' is the untyped kind of older rows; readers treat it as 'fyi'. */
+    kind: text('kind')
+      .notNull()
+      .$type<'message' | 'done' | 'blocked' | 'decision' | 'fyi' | 'event' | 'attention'>(),
     body: text('body').notNull(),
     createdAt: text('created_at')
       .notNull()

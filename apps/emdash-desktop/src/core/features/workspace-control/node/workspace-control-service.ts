@@ -1,7 +1,9 @@
-import type {
-  Initiative,
-  InitiativeDependency,
-  InitiativeMessage,
+import {
+  isInitiativeEvent,
+  type Initiative,
+  type InitiativeDependency,
+  type InitiativeMessage,
+  type InitiativeMessageKind,
 } from '@core/features/initiatives/api/contract';
 import { dependencyOrder } from '@core/features/initiatives/api/dependency-order';
 import { ensureUniqueTaskDisplayName, isRandomTaskName } from '@core/features/tasks/api/task-names';
@@ -41,6 +43,16 @@ export type ControlWorkspace = {
    * on it).
    */
   dependencyOrder?: WorkspaceDependencyOrder;
+  /**
+   * In an initiative: its latest status event and latest message, including the quiet ones
+   * (status events, `fyi`) that aren't pushed into the lead's chat.
+   */
+  initiativeActivity?: ControlInitiativeActivity;
+};
+
+export type ControlInitiativeActivity = {
+  lastEvent: Pick<InitiativeMessage, 'kind' | 'body' | 'createdAt'> | null;
+  lastMessage: Pick<InitiativeMessage, 'kind' | 'toTaskId' | 'body' | 'createdAt'> | null;
 };
 
 export type WorkspaceDependencyOrder = {
@@ -119,9 +131,11 @@ export type ControlInitiatives = {
     initiativeId: string;
     fromTaskId: string | null;
     toTaskId?: string | null;
-    kind?: 'message' | 'event';
+    kind?: InitiativeMessage['kind'];
     body: string;
   }): Promise<InitiativeMessage>;
+  /** Each sending task's latest status event and message (see InitiativesService.activity). */
+  activity?(initiativeId: string): Promise<Map<string, ControlInitiativeActivity>>;
   messages(input: {
     initiativeId: string;
     forTaskId?: string;
@@ -310,11 +324,16 @@ export class WorkspaceControlService {
       includeArchived: filter.includeArchived ?? false,
     });
     const pullRequests = new Map<string, Promise<ControlPullRequest | null>>();
+    const activity = await this.initiativeActivity(rows);
     const workspaces = await Promise.all(
-      rows.map(async (row) => ({
-        ...row,
-        pullRequest: await this.pullRequestOf(row, pullRequests),
-      }))
+      rows.map(async (row) => {
+        const latest = row.initiativeId ? activity.get(row.initiativeId)?.get(row.id) : undefined;
+        return {
+          ...row,
+          pullRequest: await this.pullRequestOf(row, pullRequests),
+          ...(latest && { initiativeActivity: latest }),
+        };
+      })
     );
     const orders = await this.dependencyOrders(pullRequests).catch(() => new Map());
     return workspaces.map((workspace) => {
@@ -526,7 +545,7 @@ export class WorkspaceControlService {
           initiativeId,
           fromTaskId: null,
           toTaskId: initiative?.leadTaskId ?? null,
-          kind: 'event',
+          kind: 'attention',
           body,
         });
       }
@@ -572,7 +591,7 @@ export class WorkspaceControlService {
           initiativeId,
           fromTaskId: null,
           toTaskId: (await initiatives.get(initiativeId))?.leadTaskId ?? null,
-          kind: 'event',
+          kind: 'attention',
           body: `Folding "${from.name}" into "${into.name}" stopped: ${errorMessage(error)}`,
         });
       })
@@ -729,7 +748,7 @@ export class WorkspaceControlService {
   ): Promise<string> {
     const commits = (await this.deps.commitLog?.(from.id).catch(() => [])) ?? [];
     const posts = (await this.requireInitiatives().messages({ initiativeId, limit: 100_000 }))
-      .filter((message) => message.fromTaskId === from.id && message.kind === 'message')
+      .filter((message) => message.fromTaskId === from.id && !isInitiativeEvent(message.kind))
       .slice(-5);
     return [
       `Commits on "${from.name}" (newest first):`,
@@ -760,7 +779,7 @@ export class WorkspaceControlService {
         initiativeId,
         fromTaskId: null,
         toTaskId: leadTaskId,
-        kind: 'event',
+        kind: 'attention',
         body:
           `Workspace "${name(edge.taskId)}" depends on "${name(edge.dependsOnTaskId)}", which ` +
           `looks done (${reason}). If so, drop the dependency with set_workspace_dependencies.`,
@@ -813,6 +832,15 @@ export class WorkspaceControlService {
     );
     if (!workspace) throw new Error(`Workspace '${workspaceId}' was not found.`);
     return workspace;
+  }
+
+  private async initiativeActivity(
+    rows: { initiativeId: string | null }[]
+  ): Promise<Map<string, Map<string, ControlInitiativeActivity>>> {
+    const activity = this.deps.initiatives?.activity?.bind(this.deps.initiatives);
+    const ids = [...new Set(rows.flatMap((row) => (row.initiativeId ? [row.initiativeId] : [])))];
+    if (!activity || ids.length === 0) return new Map();
+    return new Map(await Promise.all(ids.map(async (id) => [id, await activity(id)] as const)));
   }
 
   async currentWorkspace(
@@ -1046,16 +1074,25 @@ export class WorkspaceControlService {
     return { removed: input.workspaceIds };
   }
 
-  /** Posts to the caller's initiative (or the given one), to everyone or one workspace. */
+  /**
+   * Posts to the caller's initiative (or the given one), to everyone or one workspace. `kind`
+   * (default `fyi`) decides whether it wakes the recipients (see messageWakesTask).
+   */
   async postMessage(
     caller: ControlCaller,
-    input: { text: string; toWorkspaceId?: string; initiativeId?: string }
+    input: {
+      text: string;
+      toWorkspaceId?: string;
+      initiativeId?: string;
+      kind?: InitiativeMessageKind;
+    }
   ): Promise<InitiativeMessage> {
     const { initiativeId, taskId } = await this.messagingScope(caller, input.initiativeId);
     return this.requireInitiatives().post({
       initiativeId,
       fromTaskId: taskId,
       toTaskId: input.toWorkspaceId ?? null,
+      kind: input.kind ?? 'fyi',
       body: input.text,
     });
   }

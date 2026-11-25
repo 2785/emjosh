@@ -160,6 +160,38 @@ describe('workspace control initiatives and messages', () => {
     ]);
   });
 
+  it("shows each member's latest quiet activity in list_workspaces", async () => {
+    const { initiative } = await service.createInitiative(lead, {
+      name: 'Accounts v2',
+      leadWorkspaceId: 'lead',
+      workspaceIds: ['peer'],
+    });
+    await service.postMessage(peer, { text: 'halfway', toWorkspaceId: 'lead' });
+    await initiatives.post({
+      initiativeId: initiative.id,
+      fromTaskId: 'peer',
+      kind: 'event',
+      body: 'Workspace "peer" finished its turn.',
+    });
+
+    const listed = await service.listWorkspaces({});
+    expect(listed.find((w) => w.id === 'peer')?.initiativeActivity).toEqual({
+      lastEvent: expect.objectContaining({
+        kind: 'event',
+        body: 'Workspace "peer" finished its turn.',
+      }),
+      lastMessage: expect.objectContaining({ kind: 'fyi', toTaskId: 'lead', body: 'halfway' }),
+    });
+    expect(listed.find((w) => w.id === 'other')?.initiativeActivity).toBeUndefined();
+
+    const done = await service.postMessage(peer, {
+      text: 'PR is up',
+      toWorkspaceId: 'lead',
+      kind: 'done',
+    });
+    expect(done.kind).toBe('done');
+  });
+
   it('asks workspaces outside an initiative to join one before messaging', async () => {
     await expect(service.postMessage(peer, { text: 'hello' })).rejects.toThrow(
       /not in an initiative/

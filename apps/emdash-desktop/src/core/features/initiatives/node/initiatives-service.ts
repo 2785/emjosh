@@ -1,9 +1,10 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
-import type {
-  Initiative,
-  InitiativeChange,
-  InitiativeDependency,
-  InitiativeMessage,
+import {
+  isInitiativeEvent,
+  type Initiative,
+  type InitiativeChange,
+  type InitiativeDependency,
+  type InitiativeMessage,
 } from '@core/features/initiatives/api/contract';
 import { findCycle } from '@core/features/initiatives/api/dependency-order';
 import type { AppDb } from '@core/services/app-db/node/db';
@@ -41,17 +42,47 @@ export function messageReachesTask(
   if (message.fromTaskId === taskId) return false;
   if (taskId === leadTaskId) return true;
   if (message.toTaskId) return message.toTaskId === taskId;
-  if (message.kind === 'message' && message.fromTaskId === null) return true;
-  if (message.kind === 'message' && leadTaskId !== null && message.fromTaskId === leadTaskId) {
-    return true;
-  }
-  const topic: SubscriptionTopic = message.kind === 'event' ? 'events' : 'messages';
+  const event = isInitiativeEvent(message.kind);
+  if (!event && message.fromTaskId === null) return true;
+  if (!event && leadTaskId !== null && message.fromTaskId === leadTaskId) return true;
+  const topic: SubscriptionTopic = event ? 'events' : 'messages';
   return subscriptions.some(
     (subscription) =>
       subscription.topic === topic &&
       (subscription.sourceTaskId === null || subscription.sourceTaskId === message.fromTaskId)
   );
 }
+
+/**
+ * Whether a message that reaches a task (messageReachesTask) is pushed into its chat, rather than
+ * only stored for read_messages:
+ *
+ * - `attention` events wake whoever they reach; other events wake nobody.
+ * - The user's posts wake everyone they reach.
+ * - The lead wakes for `done`, `blocked` and `decision` addressed to it (or to everyone), not for
+ *   `fyi` or for messages between other workspaces.
+ * - Other tasks wake for anything addressed to them, and for broadcasts that aren't `fyi`.
+ */
+export function messageWakesTask(
+  message: Pick<InitiativeMessage, 'kind' | 'fromTaskId' | 'toTaskId'>,
+  taskId: string,
+  leadTaskId: string | null
+): boolean {
+  if (message.kind === 'attention') return true;
+  if (message.kind === 'event') return false;
+  if (message.fromTaskId === null) return true;
+  if (taskId === leadTaskId) {
+    return message.kind !== 'fyi' && (message.toTaskId === null || message.toTaskId === taskId);
+  }
+  if (message.toTaskId === taskId) return true;
+  return message.kind !== 'fyi';
+}
+
+/** A workspace's latest status event and latest message, as shown in list_workspaces. */
+export type InitiativeTaskActivity = {
+  lastEvent: Pick<InitiativeMessage, 'kind' | 'body' | 'createdAt'> | null;
+  lastMessage: Pick<InitiativeMessage, 'kind' | 'toTaskId' | 'body' | 'createdAt'> | null;
+};
 
 /**
  * Initiatives: optional groups of tasks across projects, each with a message feed that its
@@ -370,7 +401,7 @@ export class InitiativesService {
     initiativeId: string;
     fromTaskId: string | null;
     toTaskId?: string | null;
-    kind?: 'message' | 'event';
+    kind?: InitiativeMessage['kind'];
     body: string;
   }): Promise<InitiativeMessage> {
     const body = input.body.trim();
@@ -382,7 +413,7 @@ export class InitiativesService {
         initiativeId: input.initiativeId,
         fromTaskId: input.fromTaskId,
         toTaskId: input.toTaskId ?? null,
-        kind: input.kind ?? 'message',
+        kind: input.kind ?? 'fyi',
         body,
       })
       .returning();
@@ -445,6 +476,36 @@ export class InitiativesService {
       )
     );
     return reached.filter((taskId): taskId is string => taskId !== null);
+  }
+
+  /** The tasks a message reaches, split by whether it wakes them (messageWakesTask). */
+  async deliveryTargets(message: InitiativeMessage): Promise<{ wake: string[]; quiet: string[] }> {
+    const leadTaskId = (await this.get(message.initiativeId))?.leadTaskId ?? null;
+    const wake: string[] = [];
+    const quiet: string[] = [];
+    for (const taskId of await this.recipients(message)) {
+      (messageWakesTask(message, taskId, leadTaskId) ? wake : quiet).push(taskId);
+    }
+    return { wake, quiet };
+  }
+
+  /** Each sending task's latest status event and latest message in the initiative. */
+  async activity(initiativeId: string): Promise<Map<string, InitiativeTaskActivity>> {
+    const rows = await this.db
+      .select()
+      .from(initiativeMessages)
+      .where(eq(initiativeMessages.initiativeId, initiativeId))
+      .orderBy(sql`rowid`);
+    const byTask = new Map<string, InitiativeTaskActivity>();
+    for (const message of rows.map(toMessage)) {
+      if (!message.fromTaskId) continue;
+      const entry = byTask.get(message.fromTaskId) ?? { lastEvent: null, lastMessage: null };
+      const { kind, body, createdAt } = message;
+      if (isInitiativeEvent(kind)) entry.lastEvent = { kind, body, createdAt };
+      else entry.lastMessage = { kind, toTaskId: message.toTaskId, body, createdAt };
+      byTask.set(message.fromTaskId, entry);
+    }
+    return byTask;
   }
 
   async subscriptions(initiativeId: string, taskId: string): Promise<InitiativeSubscription[]> {
@@ -558,7 +619,7 @@ function toMessage(row: typeof initiativeMessages.$inferSelect): InitiativeMessa
     initiativeId: row.initiativeId,
     fromTaskId: row.fromTaskId,
     toTaskId: row.toTaskId,
-    kind: row.kind,
+    kind: row.kind === 'message' ? 'fyi' : row.kind,
     body: row.body,
     createdAt: row.createdAt,
   };

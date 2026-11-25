@@ -1,6 +1,6 @@
 import { openFixture } from '@tooling/utils/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { projects, tasks } from '@core/services/app-db/node/schema';
+import { initiativeMessages, projects, tasks } from '@core/services/app-db/node/schema';
 import { InitiativesService } from './initiatives-service';
 
 describe('InitiativesService', () => {
@@ -149,6 +149,50 @@ describe('InitiativesService', () => {
     expect(await service.recipients(between)).toEqual(['t1', 't3']);
     expect(await service.recipients(broadcast)).toEqual(['t1']);
     expect(await service.recipients(event)).toEqual(['t1']);
+  });
+
+  it('wakes the lead only for what needs it, and keeps the rest as activity', async () => {
+    const { id } = await service.create('Accounts v2');
+    await service.setTaskInitiative(['t2', 't3'], id);
+    await service.setLead(id, 't1');
+    const post = (input: Omit<Parameters<typeof service.post>[0], 'initiativeId'>) =>
+      service.post({ initiativeId: id, ...input });
+
+    const done = await post({ fromTaskId: 't2', toTaskId: 't1', kind: 'done', body: 'done' });
+    const fyi = await post({ fromTaskId: 't2', toTaskId: 't1', body: 'still on it' });
+    const finished = await post({ fromTaskId: 't3', kind: 'event', body: 't3 finished' });
+    const approval = await post({ fromTaskId: 't3', kind: 'attention', body: 't3 waits' });
+    const broadcast = await post({ fromTaskId: 't1', body: 'plan' });
+    const actNow = await post({ fromTaskId: 't1', kind: 'decision', body: 'pick one' });
+    const direct = await post({ fromTaskId: 't1', toTaskId: 't3', body: 'rebase' });
+
+    expect(fyi.kind).toBe('fyi');
+    expect(await service.deliveryTargets(done)).toEqual({ wake: ['t1'], quiet: [] });
+    expect(await service.deliveryTargets(fyi)).toEqual({ wake: [], quiet: ['t1'] });
+    expect(await service.deliveryTargets(finished)).toEqual({ wake: [], quiet: ['t1'] });
+    expect(await service.deliveryTargets(approval)).toEqual({ wake: ['t1'], quiet: [] });
+    expect(await service.deliveryTargets(broadcast)).toEqual({ wake: [], quiet: ['t2', 't3'] });
+    expect(await service.deliveryTargets(actNow)).toEqual({ wake: ['t2', 't3'], quiet: [] });
+    expect(await service.deliveryTargets(direct)).toEqual({ wake: ['t3'], quiet: [] });
+
+    const activity = await service.activity(id);
+    expect(activity.get('t2')).toEqual({
+      lastEvent: null,
+      lastMessage: expect.objectContaining({ kind: 'fyi', toTaskId: 't1', body: 'still on it' }),
+    });
+    expect(activity.get('t3')).toEqual({
+      lastEvent: expect.objectContaining({ kind: 'attention', body: 't3 waits' }),
+      lastMessage: null,
+    });
+  });
+
+  it('reads untyped messages from before kinds as fyi', async () => {
+    const { id } = await service.create('Accounts v2');
+    fixture.db
+      .insert(initiativeMessages)
+      .values({ id: 'm1', initiativeId: id, fromTaskId: 't1', kind: 'message', body: 'old' })
+      .run();
+    expect((await service.messages({ initiativeId: id })).map((m) => m.kind)).toEqual(['fyi']);
   });
 
   it('drops the lead when it leaves the initiative', async () => {
