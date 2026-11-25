@@ -1,0 +1,45 @@
+diff --git a/dist/index.js b/dist/index.js
+index 87213c3614d88e42ee858cc72bda040e2b81b0fe..14cadf5d3c4aed91c472947a378efdd6ee880bb4 100755
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -34140,6 +34140,16 @@ var CodexAcpClient = class {
+       serviceTier
+     }, onTurnStarted);
+   }
++  // Emjosh patch: turns Codex starts itself (goal continuations) use the thread's settings,
++  // not the per-turn ones, so the session mode is applied to the thread as well.
++  async applyThreadPermissions(sessionId, agentMode) {
++    await this.codexClient.threadSettingsUpdate({
++      threadId: sessionId,
++      approvalPolicy: agentMode.approvalPolicy,
++      approvalsReviewer: agentMode.approvalsReviewer,
++      sandboxPolicy: agentMode.sandboxPolicy
++    });
++  }
+   async setCollaborationMode(sessionId, mode, currentModelId) {
+     await this.codexClient.threadSettingsUpdate({
+       threadId: sessionId,
+@@ -38058,6 +38068,7 @@ Check ${configPath} and project .codex directories, especially their config.toml
+       () => sessionState.sessionTitleSource
+     );
+     this.installSessionState(sessionState);
++    await this.codexAcpClient.applyThreadPermissions(sessionState.sessionId, sessionState.agentMode);
+     resumeSubscribed = false;
+     const canPublishSessionUpdates = operation !== "fork";
+     if (canPublishSessionUpdates && requestedMcpServers.length > 0 && mcpServerStartupVersion !== null) {
+@@ -38610,6 +38621,7 @@ Check ${configPath} and project .codex directories, especially their config.toml
+         break;
+       case MODE_CONFIG_ID:
+         this.applyModeChange(sessionState, this.stringConfigValue(params));
++        await this.codexAcpClient.applyThreadPermissions(sessionState.sessionId, sessionState.agentMode);
+         break;
+       case COLLABORATION_MODE_CONFIG_ID:
+         await this.applyCollaborationModeChange(sessionState, this.stringConfigValue(params));
+@@ -39120,6 +39132,7 @@ Check ${configPath} and project .codex directories, especially their config.toml
+       () => sessionState.sessionTitleSource
+     );
+     this.installSessionState(sessionState);
++    await this.codexAcpClient.applyThreadPermissions(sessionState.sessionId, sessionState.agentMode);
+     subscribed = false;
+     if (requestedMcpServers.length > 0 && mcpServerStartupVersion !== null) {
+       this.pendingMcpStartupSessions.set(sessionId, {

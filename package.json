@@ -48,6 +48,7 @@
       "ssh2"
     ],
     "patchedDependencies": {
+      "@agentclientprotocol/codex-acp@1.13.1": "patches/@agentclientprotocol__codex-acp@1.13.1.patch",
       "ssh2@1.17.0": "patches/ssh2@1.17.0.patch"
     },
     "ignoredOptionalDependencies": [

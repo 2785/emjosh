@@ -130,6 +130,11 @@ you select an OrcaRouter model from the OpenCode model picker.
   straight into an agent turn, so the chat stays working until the goal stops. Codex does not hold a turn for its
   subagents: their results reach the parent only on its next turn, so
   `holdsTurnsForBackgroundAgents` stays off.
+- codex-acp applies the ACP permission mode only to turns it starts (`turn/start`); turns Codex
+  starts itself (goal continuations) use the thread's settings. A pnpm patch
+  (`patches/@agentclientprotocol__codex-acp@*.patch`, pinned by `codex/adapter-patch.test.ts`)
+  also applies the mode to the thread with `thread/settings/update` on session create/load and on
+  every mode change. Re-check it when upgrading codex-acp.
 - Codex doesn't pass MCP server instructions to the model. The host app writes its control
   instructions into the control endpoint file; the ACP runtime passes them to `buildSpawn` as
   `controlInstructions`, and the Codex plugin sends them as `developer_instructions` through
