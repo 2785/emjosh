@@ -852,6 +852,43 @@ describe('SessionCell idle turns and queue commands', () => {
       vi.useRealTimers();
     }
   });
+  it('ends an agent turn on an agent_turn_end marker', () => {
+    vi.useFakeTimers();
+    try {
+      const { cell } = makePendingCell(new FakeAcpAgent(), { reportsAgentTurnEnd: true });
+      cell.applySessionReady();
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Goal step 2' });
+      vi.advanceTimersByTime(30_000);
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+
+      cell.push({ kind: 'agent_turn_end' });
+
+      expect(cell.sessionState.agentTurnActive).toBe(false);
+      expect(cell.history().active).toBeNull();
+      expect(cell.history().committed.at(-1)?.initiator).toBe('agent');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('ignores an agent_turn_end marker during a prompted turn', () => {
+    const agent = new FakeAcpAgent();
+    agent.prompt = vi.fn().mockReturnValue(new Promise(() => {}));
+    const { cell } = makePendingCell(agent, { reportsAgentTurnEnd: true });
+    try {
+      cell.applySessionReady();
+      void cell.prompt({ text: 'do it' });
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Working' });
+
+      cell.push({ kind: 'agent_turn_end' });
+
+      expect(cell.sessionState.isGenerating).toBe(true);
+      expect(cell.history().active?.initiator).not.toBe('agent');
+      expect(cell.history().active).not.toBeNull();
+    } finally {
+      cell.dispose();
+    }
+  });
   it('falls back to a long silence when the end marker never comes', async () => {
     vi.useFakeTimers();
     try {

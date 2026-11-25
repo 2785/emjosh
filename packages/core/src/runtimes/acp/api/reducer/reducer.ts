@@ -403,6 +403,7 @@ function reduceInput(s: ParserState, input: ReducerInput, deps: ReducerDeps): Pa
     case 'title':
       return { ...s, title: event.title };
     case 'mcp_startup_failure':
+    case 'agent_turn_end':
     case 'ignored':
       return s;
     case 'subagent_update': {

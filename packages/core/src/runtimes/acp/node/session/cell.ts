@@ -235,6 +235,10 @@ export class SessionCell {
 
   push(event: NormalizedEvent): void {
     if (event.kind === 'ignored') return;
+    if (event.kind === 'agent_turn_end') {
+      this.endAgentTurn();
+      return;
+    }
     if (event.kind === 'mcp_startup_failure') {
       this.mcpStartupFailures.set(event.server, event.error);
       this.deps.callbacks?.onSessionStateChanged?.();

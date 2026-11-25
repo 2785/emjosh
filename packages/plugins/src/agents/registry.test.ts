@@ -35,8 +35,8 @@ describe('agent plugin registry', () => {
     ['claude', '--model', 'claude-fable-5-1[1m]'],
     ['claude', '--model', 'sonnet'],
     ['claude', '--model', 'haiku'],
-    ['codex', '-m', 'gpt-6-sol'],
-    ['codex', '-m', 'gpt-6-luna'],
+    ['codex', '-m', 'gpt-5.6-sol'],
+    ['codex', '-m', 'gpt-5.6-luna'],
   ])('offers %s model %s %s and preserves its ID in terminal argv', (providerId, flag, model) => {
     const provider = pluginRegistry.get(providerId)!;
     const models = provider.capabilities.models;

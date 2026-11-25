@@ -34,3 +34,25 @@ describe('Codex MCP startup diagnostics', () => {
     expect(enrichCodexUpdate(decoded, raw)).toBe(decoded);
   });
 });
+
+describe('Codex turn markers', () => {
+  const threadStatus = (status: Record<string, unknown>): SessionUpdate =>
+    ({
+      sessionUpdate: 'session_info_update',
+      _meta: { codex: { threadStatus: status } },
+    }) as SessionUpdate;
+
+  it('marks the end of a turn when the thread goes idle', () => {
+    const raw = threadStatus({ type: 'idle' });
+    expect(enrichCodexUpdate(decodeSessionUpdate(raw), raw)).toEqual({ kind: 'agent_turn_end' });
+  });
+
+  it.each([
+    threadStatus({ type: 'active', activeFlags: [] }),
+    threadStatus({ type: 'active', activeFlags: ['waitingOnApproval'] }),
+    { sessionUpdate: 'session_info_update', title: 'Renamed' } as SessionUpdate,
+  ])('passes other session info through: %j', (raw) => {
+    const decoded = decodeSessionUpdate(raw);
+    expect(enrichCodexUpdate(decoded, raw)).toBe(decoded);
+  });
+});

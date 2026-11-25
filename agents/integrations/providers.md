@@ -121,6 +121,18 @@ you select an OrcaRouter model from the OpenCode model picker.
   provider-owned `collaboration_mode` config category to the chat composer's Default/Plan selector
   and persists that selection with the conversation; filesystem and approval controls remain in
   the existing permission-mode selector.
+- Codex ACP brackets every turn with `session_info_update` `_meta.codex.threadStatus`
+  (`active`/`idle`), including turns Codex starts itself (`/goal` continuations). The Codex
+  enrich hook maps `idle` to the generic `agent_turn_end` event, so those turns end on the marker
+  instead of after a short silence (`reportsAgentTurnEnd`). Codex does not hold a turn for its
+  subagents: their results reach the parent only on its next turn, so
+  `holdsTurnsForBackgroundAgents` stays off.
+- Codex doesn't pass MCP server instructions to the model. The host app writes its control
+  instructions into the control endpoint file; the ACP runtime passes them to `buildSpawn` as
+  `controlInstructions`, and the Codex plugin sends them as `developer_instructions` through
+  codex-acp's `CODEX_CONFIG`, after any `developer_instructions` in `$CODEX_HOME/config.toml`.
+  A `CODEX_CONFIG` set in the provider's custom env replaces this, and project-level
+  `.codex/config.toml` developer instructions are not merged.
 - Agents that cannot receive an automated initial prompt via argv or stdin declare `pty-only`
   prompt delivery. Their TUI opens without an initial prompt, and automation flows exclude them
   unless they also support ACP.
