@@ -26,8 +26,8 @@ import {
   buildRemoteTerminalExecArgs,
 } from '@main/host/remoteOpenIn';
 import { getMainWindow } from '@main/host/window';
-import { buildExternalToolEnv } from '@main/lib/childProcessEnv';
 import { log } from '@main/lib/logger';
+import { buildLaunchedToolEnv } from '@main/lib/userEnv';
 import { lookupAppPath } from './app-path-lookup';
 import { createInstalledAppDetector } from './installed-apps';
 import {
@@ -535,7 +535,7 @@ class AppService implements Disposable {
       const found = await lookupAppPath(
         platformConfig,
         process.platform as PlatformKey,
-        buildExternalToolEnv(),
+        buildLaunchedToolEnv(),
         this.appLookupLifetime.signal
       );
       this.appLookupLifetime.signal.throwIfAborted();
@@ -579,7 +579,7 @@ class AppService implements Disposable {
     if (!command) throw new Error('Unsupported platform or app');
 
     await new Promise<void>((resolve, reject) => {
-      exec(command, { cwd: target, env: buildExternalToolEnv() }, (err) => {
+      exec(command, { cwd: target, env: buildLaunchedToolEnv() }, (err) => {
         if (err) return reject(err);
         resolve();
       });

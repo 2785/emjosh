@@ -11,6 +11,7 @@ vi.mock('node:child_process', () => ({
 
 const {
   ensureUserBinDirsInPath,
+  buildLaunchedToolEnv,
   ensureWindowsNpmGlobalBinInPath,
   getUserShellEnv,
   refreshUserEnv,
@@ -97,6 +98,41 @@ describe('refreshUserEnv (runtime env boundary)', () => {
       if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
       else process.env.NODE_ENV = previousNodeEnv;
     }
+  });
+});
+
+describe('buildLaunchedToolEnv', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('gives launched tools the shell env without variables the app set on itself', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('ELECTRON_RUN_AS_NODE', '1');
+    vi.stubEnv('VITE_POSTHOG_KEY', 'app-key');
+    spawnSyncMock.mockReset();
+    mockShellCapture('PATH=/usr/local/bin:/usr/bin\nUSER_VALUE=kept\n');
+
+    await refreshUserEnv();
+    const env = buildLaunchedToolEnv();
+
+    expect(env.USER_VALUE).toBe('kept');
+    expect(env.PATH?.split(path.delimiter)).toContain('/usr/local/bin');
+    expect(env.NODE_ENV).toBeUndefined();
+    expect(env.ELECTRON_RUN_AS_NODE).toBeUndefined();
+    expect(env.VITE_POSTHOG_KEY).toBeUndefined();
+    expect(process.env.NODE_ENV).toBe('production');
+  });
+
+  it("keeps the user's own NODE_ENV when their shell exports one", async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    spawnSyncMock.mockReset();
+    mockShellCapture('PATH=/usr/bin\nNODE_ENV=development\n');
+
+    await refreshUserEnv();
+
+    expect(buildLaunchedToolEnv().NODE_ENV).toBe('development');
+    expect(process.env.NODE_ENV).toBe('production');
   });
 });
 

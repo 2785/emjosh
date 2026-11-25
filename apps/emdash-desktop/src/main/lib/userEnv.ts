@@ -59,6 +59,15 @@ export function ensureWindowsNpmGlobalBinInPath(
   return ensureCoreWindowsNpmGlobalBinInPath(env);
 }
 
+/**
+ * Env for editors, terminals and other tools launched for the user: the login-shell env that
+ * in-app terminals also start from. Variables the app or its toolchain set on the app's own
+ * process (NODE_ENV, ELECTRON_*, VITE_*, ...) are left out unless the user's shell exports them.
+ */
+export function buildLaunchedToolEnv(): NodeJS.ProcessEnv {
+  return buildExternalToolEnv(userShellEnvManager.getUserShellEnv());
+}
+
 /** Returns a synchronous copy for compatibility consumers that cannot spawn. */
 export function getUserShellEnv(): Record<string, string> {
   return userShellEnvManager.getUserShellEnv();

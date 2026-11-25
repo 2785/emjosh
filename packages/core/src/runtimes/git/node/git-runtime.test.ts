@@ -141,6 +141,40 @@ describe('GitRuntime', () => {
     expect(calls[0]).toBe(`-C ${repo} rev-parse --is-inside-work-tree`);
   });
 
+  it("runs git, and the hooks it starts, in the env source rather than the worker's own env", async () => {
+    const repo = await makeRepo();
+    const dir = await mkdtemp(path.join(tmpdir(), 'emdash-shared-runtime-git-env-'));
+    const executable = path.join(dir, 'git-wrapper.sh');
+    const logPath = path.join(dir, 'env.log');
+    await writeFile(
+      executable,
+      [
+        '#!/bin/sh',
+        `printf 'NODE_ENV=%s USER_VALUE=%s\\n' "$NODE_ENV" "$USER_VALUE" >> ${JSON.stringify(logPath)}`,
+        'exec git "$@"',
+        '',
+      ].join('\n'),
+      'utf8'
+    );
+    await chmod(executable, 0o755);
+    vi.stubEnv('NODE_ENV', 'production');
+    const runtime = new GitRuntime({
+      executable,
+      env: async () => ({ PATH: process.env.PATH, HOME: process.env.HOME, USER_VALUE: 'kept' }),
+    });
+
+    try {
+      await runtime.provisioning.inspectPath(hostPath(repo));
+    } finally {
+      await runtime.dispose();
+      vi.unstubAllEnvs();
+    }
+
+    const lines = (await readFile(logPath, 'utf8')).trim().split('\n');
+    expect(lines.length).toBeGreaterThan(0);
+    expect(new Set(lines)).toEqual(new Set(['NODE_ENV= USER_VALUE=kept']));
+  });
+
   it('does not classify git inspection failures as non-repositories', async () => {
     const targetPath = '/Volumes/Data/dev/myapp';
     const error = new ExecError(

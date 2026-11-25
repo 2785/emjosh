@@ -38,6 +38,9 @@ const adapterConfigs: UserConfig[] = adapterAssets.map((asset) => ({
   dts: false,
   sourcemap: true,
   clean: false,
+  // Adapters run as Node inside the Electron binary via ELECTRON_RUN_AS_NODE=1. Drop the flag
+  // once running so the agent CLI and the commands it runs for the user don't inherit it.
+  banner: 'delete process.env.ELECTRON_RUN_AS_NODE;',
   deps: {
     alwaysBundle: [/.*/],
     neverBundle: [...(asset.external ?? [])],
