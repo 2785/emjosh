@@ -151,6 +151,7 @@ export function createDesktopWireOptions(
             ],
           }
         : { available: false },
+    agentClis: services.agentClis,
     usage: services.usage,
     workspaceIdentity: database.workspaceIdentity,
     workspacePlacement: services.workspacePlacement,

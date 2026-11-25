@@ -1,3 +1,4 @@
+import { agentClisSettingsPage } from '@core/features/agent-clis/contributions/settings-page';
 import { promptsSettingsPage } from '@core/features/library/contributions/settings-page';
 import {
   conversationsSettingsPage,
@@ -31,6 +32,7 @@ export const settingsPageContributions = [
   localWorkspacesSettingsPage,
   conversationsSettingsPage,
   agentsSettingsPage,
+  agentClisSettingsPage,
   mcpSettingsPage,
   skillsSettingsPage,
   machinesConnectionsPage,

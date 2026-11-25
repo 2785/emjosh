@@ -1,3 +1,4 @@
+import { agentCliUpdatesSettingsContribution } from '@core/features/agent-clis/contributions/settings';
 import { defaultAgentSettingsContribution } from '@core/features/agents/contributions/settings';
 import {
   browserPreviewSettingsContribution,
@@ -41,6 +42,7 @@ export const appSettingsSchemaContributions = {
   tasks: taskSettingsContribution,
   files: filesSettingsContribution,
   defaultAgent: defaultAgentSettingsContribution,
+  agentCliUpdates: agentCliUpdatesSettingsContribution,
   preferredConversationType: preferredConversationTypeSettingsContribution,
   followUpMode: followUpModeSettingsContribution,
   resumeInterruptedTurns: resumeInterruptedTurnsSettingsContribution,

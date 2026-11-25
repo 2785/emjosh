@@ -188,3 +188,28 @@ you select an OrcaRouter model from the OpenCode model picker.
    supports explicit events; `tui-agents` installs and hosts those hooks at runtime
 4. validate PATH dependency behavior through the `HostDependencies` component and resolver contract
 5. add or update tests for any non-standard behavior
+
+## Agent CLI Updater
+
+`src/core/features/agent-clis/` (Settings > Agent CLIs) shows each installed Claude Code, OpenCode,
+Codex and Antigravity CLI with path, version, install method and update availability, and runs
+updates through the `agentClis` Wire domain (`list`, `refreshLatest`, `update`, `setAutoUpdate`;
+also reachable by agents via `app_api_call`).
+
+- The binary is the first match on the launched-tool env's PATH (`buildLaunchedToolEnv()`), plus a
+  few installer directories. Updates run as an argv array, never a shell string; output is shown
+  verbatim. Running chats keep the old binary until restarted.
+- Update commands: `claude update`, `opencode upgrade`, `agy update`; Codex uses `codex update`
+  except on Volta installs (`volta install @openai/codex@latest`), because `codex update` runs
+  `npm install -g`, which updates a different copy. After an update the version is re-read and a
+  success that left the version below the newest release is reported as an error.
+- Auto-update owner: Claude (`autoUpdates` in `~/.claude.json`) and OpenCode (`update` in
+  `opencode.json`) own it themselves; Emjosh only edits that one key (atomic temp file + rename,
+  re-verified; files that are not plain JSON are left alone). Codex and Antigravity have no such
+  setting, so Emjosh drives it (`agentCliUpdates` app setting): about daily, only for CLIs whose
+  toggle is on, and never while a conversation of that provider is working, in the background or
+  awaiting input.
+- Latest versions come from the npm registry (`@openai/codex`, `@anthropic-ai/claude-code`);
+  OpenCode and Antigravity have no lookup, so "update available" is unknown for them. Lookup
+  failures leave versions unknown and never break the page.
+

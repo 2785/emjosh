@@ -1,4 +1,5 @@
 import { accountContract, accountDomain } from '@core/features/account/api';
+import { agentClisContract, agentClisDomain } from '@core/features/agent-clis/api';
 import { agentsContract, agentsDomain } from '@core/features/agents/api';
 import { automationsContract, automationsDomain } from '@core/features/automations/api';
 import { browserContract, browserDomain } from '@core/features/browser/api';
@@ -58,6 +59,7 @@ import { sshContract, sshDomain } from '@core/services/ssh/api';
 export const desktopDomainContracts = {
   [usageDomain]: usageContract,
   [accountDomain]: accountContract,
+  [agentClisDomain]: agentClisContract,
   [agentsDomain]: agentsContract,
   [appSettingsDomain]: appSettingsContract,
   [devPerfDomain]: devPerfContract,

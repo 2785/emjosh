@@ -226,6 +226,23 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
 
   {
+    id: 'agent-clis',
+    label: 'Agent CLIs',
+    tab: 'agent-clis',
+    description: 'Versions of installed agent CLIs, updates and auto-update.',
+    keywords: [
+      'update',
+      'upgrade',
+      'version',
+      'claude',
+      'codex',
+      'opencode',
+      'antigravity',
+      'volta',
+    ],
+  },
+
+  {
     id: 'usage',
     label: 'Usage',
     tab: 'usage',

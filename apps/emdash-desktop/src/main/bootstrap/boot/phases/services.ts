@@ -1,3 +1,4 @@
+import os from 'node:os';
 import {
   hostRef,
   isLocalHostRef,
@@ -15,6 +16,9 @@ import type { AccountKVSchema } from '@core/features/account/node/services/accou
 import { AccountCredentialStore } from '@core/features/account/node/services/credential-store';
 import { createEmdashAccountService } from '@core/features/account/node/services/emdash-account-service';
 import { ProviderTokenDispatcher } from '@core/features/account/node/services/provider-token-dispatcher';
+import { createHasActiveTurns } from '@core/features/agent-clis/node/active-turns';
+import { fetchNpmLatestVersion, runCommand } from '@core/features/agent-clis/node/runtime';
+import { createAgentCliService } from '@core/features/agent-clis/node/service';
 import { getPluginMetadata } from '@core/features/agents/api/node/plugin-registry';
 import { AutomationsService } from '@core/features/automations/api/node/automations-service';
 import { buildAutomationDeployment } from '@core/features/automations/node/deployment-builder';
@@ -165,6 +169,7 @@ import { installUpdateNotifications } from '@main/host/updates/update-notificati
 import { applyNativeTheme, isAppFocused } from '@main/host/window';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
+import { buildLaunchedToolEnv } from '@main/lib/userEnv';
 import { appScope } from '../../core/app-scope';
 import { step } from '../../core/phase';
 import { setCoreServiceInstances } from '../../core/service-instances';
@@ -197,6 +202,7 @@ export type ServicesBundle = {
   readonly sessionLaunchContexts: TaskSessionLaunchContextResolver;
   readonly taskService: TaskService;
   readonly taskSessions: TaskSessionManager;
+  readonly agentClis: ReturnType<typeof createAgentCliService>;
   readonly usage: ReturnType<typeof createUsageOverview>;
   readonly workspacePlacement: WorkspacePlacementResolver;
   readonly conversationSync: ConversationSyncService;
@@ -210,6 +216,18 @@ export async function bootServices(
 ): Promise<ServicesBundle> {
   const { appSettings: appSettingsService, db, sqlite, workspaceIdentity } = database;
   const { clients, broker: runtimes } = desktopRuntimes;
+  const agentClis = createAgentCliService({
+    buildEnv: buildLaunchedToolEnv,
+    run: runCommand,
+    fetchLatestVersion: fetchNpmLatestVersion,
+    settings: {
+      get: () => appSettingsService.get('agentCliUpdates'),
+      set: (value) => appSettingsService.update('agentCliUpdates', value),
+    },
+    hasActiveTurns: createHasActiveTurns(db),
+    homeDir: os.homedir(),
+  });
+  agentClis.startAutoUpdates(appScope);
   const usage = createUsageOverview({
     scope: appScope,
     runtimes,
@@ -879,6 +897,7 @@ export async function bootServices(
     sessionLaunchContexts,
     taskService,
     taskSessions: taskSessionManager,
+    agentClis,
     usage,
     workspacePlacement,
     conversationSync,

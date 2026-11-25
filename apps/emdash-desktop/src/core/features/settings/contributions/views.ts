@@ -14,6 +14,7 @@ export const settingsPageTabSchema = z.enum([
   'workspaces-local',
   'conversations',
   'clis-models',
+  'agent-clis',
   'mcp',
   'skills',
   'connections',
