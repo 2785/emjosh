@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { recordInterruptedAcpTurns } from '@core/features/conversations/node/interrupted-turns';
 import { resetStaleAcpAgentStatuses } from '@core/features/conversations/node/reset-stale-acp-agent-statuses';
 import { resetStaleTuiAgentStatuses } from '@core/features/conversations/node/reset-stale-tui-agent-statuses';
 import {
@@ -76,6 +77,8 @@ export async function bootDatabase(config: AppConfig): Promise<DatabaseBundle> {
 }
 
 async function runStartupRepairs(db: AppDb, editorBuffer: EditorBufferService): Promise<void> {
+  // Reads the statuses the reset below clears.
+  await recordInterruptedAcpTurns(db, log);
   await resetStaleAcpAgentStatuses(db);
   await resetStaleTuiAgentStatuses(db);
 

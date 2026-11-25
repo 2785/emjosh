@@ -6,6 +6,7 @@ import {
 import {
   followUpModeSettingsContribution,
   preferredConversationTypeSettingsContribution,
+  resumeInterruptedTurnsSettingsContribution,
 } from '@core/features/conversations/contributions/settings';
 import { filesSettingsContribution } from '@core/features/editor/contributions/settings';
 import {
@@ -42,6 +43,7 @@ export const appSettingsSchemaContributions = {
   defaultAgent: defaultAgentSettingsContribution,
   preferredConversationType: preferredConversationTypeSettingsContribution,
   followUpMode: followUpModeSettingsContribution,
+  resumeInterruptedTurns: resumeInterruptedTurnsSettingsContribution,
   keyboard: keyboardSettingsContribution,
   notifications: notificationSettingsContribution,
   theme: themeSettingsContribution,

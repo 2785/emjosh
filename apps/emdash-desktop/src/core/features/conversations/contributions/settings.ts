@@ -18,3 +18,13 @@ export const followUpModeSettingsContribution = defineSettingsContribution({
   schema: z.enum(['queue', 'interrupt']),
   defaults: 'interrupt' as const,
 });
+
+/**
+ * Whether chat conversations whose agent was mid-turn when the app quit, restarted, or crashed
+ * get an automatic "keep going" message once the app is back.
+ */
+export const resumeInterruptedTurnsSettingsContribution = defineSettingsContribution({
+  key: 'resumeInterruptedTurns',
+  schema: z.boolean(),
+  defaults: true,
+});

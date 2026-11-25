@@ -5,6 +5,7 @@ import { AccountTab } from '../components/AccountTab';
 import { AgentConnectionRow } from '../components/AgentConnectionRow';
 import { FollowUpModeRow } from '../components/FollowUpModeRow';
 import NotificationSettingsCard from '../components/NotificationSettingsCard';
+import { ResumeInterruptedTurnsRow } from '../components/ResumeInterruptedTurnsRow';
 import {
   AutoGenerateTaskNamesRow,
   AutoTrustWorktreesRow,
@@ -61,6 +62,7 @@ export function GeneralSettingsPage() {
         <IncludeIssueContextByDefaultRow />
         <EnableTmuxRow />
         <FollowUpModeRow />
+        <ResumeInterruptedTurnsRow />
         <AgentConnectionRow />
       </SettingsSection>
     </div>
