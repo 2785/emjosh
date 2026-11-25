@@ -433,7 +433,13 @@ export async function startWorkspaceControl(
     async workspaceTip(taskId) {
       const tip = await workspaceTip(taskId);
       return (
-        tip && { projectId: tip.projectId, path: tip.path, sha: tip.sha, workedOn: tip.workedOn }
+        tip && {
+          projectId: tip.projectId,
+          path: tip.path,
+          sha: tip.sha,
+          workedOn: tip.workedOn,
+          unsettled: tip.unsettled,
+        }
       );
     },
 

@@ -44,9 +44,17 @@ describe('worktree branches', () => {
   it('counts a branch as worked on only with commits after the workspace started', async () => {
     const base = commit('base', T + 1_000);
 
-    expect(await worktreeTip(repo, T + 2_000)).toEqual({ sha: base, workedOn: false });
+    expect(await worktreeTip(repo, T + 2_000)).toEqual({
+      sha: base,
+      workedOn: false,
+      unsettled: null,
+    });
     const work = commit('work', T + 3_000);
-    expect(await worktreeTip(repo, T + 2_000)).toEqual({ sha: work, workedOn: true });
+    expect(await worktreeTip(repo, T + 2_000)).toEqual({
+      sha: work,
+      workedOn: true,
+      unsettled: null,
+    });
     expect(await worktreeTip(join(repo, 'missing'), 0)).toBeNull();
   });
 
@@ -61,5 +69,27 @@ describe('worktree branches', () => {
     git(['merge', '-q', '--no-edit', 'codex'], T + 4_000);
     expect(await isAncestor(repo, codex, 'antigravity')).toBe(true);
     expect(await isAncestor(repo, 'antigravity', 'codex')).toBe(false);
+  });
+
+  it('reports a worktree mid-rebase or on a detached HEAD as unsettled', async () => {
+    commit('base', T + 1_000);
+    git(['checkout', '-qb', 'feature']);
+    writeFileSync(join(repo, 'shared.txt'), 'feature');
+    git(['add', '.']);
+    git(['commit', '-qm', 'feature'], T + 2_000);
+    git(['checkout', '-q', 'main']);
+    writeFileSync(join(repo, 'shared.txt'), 'main');
+    git(['add', '.']);
+    git(['commit', '-qm', 'main'], T + 3_000);
+    git(['checkout', '-q', 'feature']);
+
+    // Conflicting rebase: stops mid-way with HEAD detached on main's commit.
+    expect(() => git(['rebase', 'main'])).toThrow();
+    expect((await worktreeTip(repo, T))?.unsettled).toBe('mid-rebase');
+    git(['rebase', '--abort']);
+    expect((await worktreeTip(repo, T))?.unsettled).toBeNull();
+
+    git(['checkout', '-q', '--detach', 'main']);
+    expect((await worktreeTip(repo, T))?.unsettled).toBe('detached HEAD');
   });
 });

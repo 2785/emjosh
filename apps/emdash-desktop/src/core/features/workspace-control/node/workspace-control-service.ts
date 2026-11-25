@@ -75,6 +75,11 @@ export type WorkspaceTip = {
   sha: string;
   /** Commits were made on it after the workspace started (a fresh branch is its base commit). */
   workedOn: boolean;
+  /**
+   * Why HEAD isn't the branch's real tip right now (e.g. "mid-rebase", "detached HEAD"); such
+   * a workspace isn't compared with others. Null when its branch is checked out normally.
+   */
+  unsettled?: string | null;
 };
 
 /** What a task listens to beyond messages addressed to it (see InitiativesService). */
@@ -473,6 +478,8 @@ export class WorkspaceControlService {
     return async (holderId, heldId) => {
       const [holder, held] = await Promise.all([tipOf(holderId), tipOf(heldId)]);
       if (!holder || !held?.workedOn || holder.projectId !== held.projectId) return false;
+      // Mid-rebase (or detached) HEAD is wherever git happens to be, not the branch's tip.
+      if (holder.unsettled || held.unsettled) return false;
       return isAncestor(holder.path, held.sha, holder.sha).catch(() => false);
     };
   }
@@ -632,6 +639,16 @@ export class WorkspaceControlService {
     const [fromTip, intoTip] = await Promise.all([workspaceTip(from.id), workspaceTip(into.id)]);
     if (!fromTip || !intoTip) {
       throw new Error('Both workspaces need a local worktree to compare their branches.');
+    }
+    for (const [workspace, tip] of [
+      [from, fromTip],
+      [into, intoTip],
+    ] as const) {
+      if (tip.unsettled) {
+        throw new Error(
+          `"${workspace.name}" is ${tip.unsettled}; wait until its branch is checked out normally.`
+        );
+      }
     }
     const changes = await uncommittedChanges(from.id);
     if (changes.length > 0) {

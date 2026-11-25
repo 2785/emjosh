@@ -21,6 +21,8 @@ describe('workspace dependencies', () => {
   const chats = new Map<string, string[]>();
   /** Workspaces whose agent answers a handoff request (by calling handoff_summary). */
   const answering = new Set<string>();
+  /** Workspaces whose worktree is mid-rebase. */
+  const rebasing = new Set<string>();
   const lead = { conversationId: 'conv-lead' };
   const api = { conversationId: 'conv-api' };
 
@@ -31,6 +33,7 @@ describe('workspace dependencies', () => {
     dirty.clear();
     chats.clear();
     answering.clear();
+    rebasing.clear();
     fixture = await openFixture('empty');
     fixture.db.insert(projects).values({ id: 'p', name: 'p' }).run();
     for (const id of IDS) {
@@ -70,6 +73,7 @@ describe('workspace dependencies', () => {
         path: '/repo',
         sha: taskId,
         workedOn: taskId !== 'lead',
+        unsettled: rebasing.has(taskId) ? 'mid-rebase' : null,
       }),
       isAncestor: async (_cwd, ancestor, descendant) =>
         ancestor === descendant || contains.has(`${descendant}>${ancestor}`),
@@ -309,6 +313,23 @@ describe('workspace dependencies', () => {
         '"docs"\'s branch is contained in "web"\'s; fold "docs" into "web"? (merge_workspaces ' +
           'from docs into web)',
       ]);
+    });
+
+    it('ignores and refuses to fold a workspace that is mid-rebase', async () => {
+      // Mid-rebase onto web, api's HEAD sits on web's commits: it looks contained but isn't.
+      contains.add('web>api').add('api>web');
+      rebasing.add('api');
+      await service.setWorkspaceDependencies(lead, { workspaceId: 'api', dependsOn: ['web'] });
+      await service.checkDependencies();
+
+      expect(await leadEvents()).toEqual([]);
+      expect(fixture.db.select().from(taskDependencies).all()).toHaveLength(1);
+      await expect(service.mergeWorkspaces(lead, { from: 'api', into: 'web' })).rejects.toThrow(
+        '"api" is mid-rebase'
+      );
+      await expect(service.mergeWorkspaces(lead, { from: 'web', into: 'api' })).rejects.toThrow(
+        '"api" is mid-rebase'
+      );
     });
 
     it('refuses uncommitted changes, work missing from the target, and non-leads', async () => {
