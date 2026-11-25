@@ -11,9 +11,9 @@
 
 codex, claude, grok, devin, qwen, qoder, droid, antigravity, cursor, copilot, amp, commandcode, opencode, hermes, charm, auggie, goose, kimi, kilocode, kiro, rovo, cline, codebuddy, continue, codebuff, freebuff, mistral, muse, jules, junie, oh-my-pi, pi, prime-agent, autohand, letta, mimocode, zero
 
-## Current ACP-Capable Providers (23)
+## Current ACP-Capable Providers (24)
 
-codex, claude, opencode, grok, devin, qwen, qoder, droid, cursor, copilot, hermes, auggie, goose, kimi, kilocode, kiro, cline, mistral, junie, mimocode, oh-my-pi, prime-agent, codebuddy
+codex, claude, opencode, grok, devin, qwen, qoder, droid, antigravity, cursor, copilot, hermes, auggie, goose, kimi, kilocode, kiro, cline, mistral, junie, mimocode, oh-my-pi, prime-agent, codebuddy
 
 ## Provider Metadata Includes
 
@@ -151,6 +151,16 @@ you select an OrcaRouter model from the OpenCode model picker.
 - Qwen Code hooks use the documented Qwen settings schema in `$QWEN_HOME/settings.json` (falling back to `~/.qwen/settings.json`). Emdash installs command hooks for permission requests and session end/stop events while preserving unrelated user hooks.
 - Antigravity CLI installs lifecycle hooks in `~/.gemini/config/plugins/emdash/` to report
   working and completion status while preserving existing user hooks.
+- Antigravity chats run `agy acp`. Its session config options (model, thinking level, and the
+  `default`/`accept-edits`/`auto`/`plan` modes) drive the composer selectors directly. agy accepts
+  HTTP MCP servers without advertising `mcpCapabilities.http`, so the plugin's connection adds it
+  (otherwise the `emjosh` server would be dropped). A prompted turn stays open while non-daemon
+  background work and one-shot timers run; daemon tasks let it end and wake the agent later with
+  no end marker. Every agy model call ends with a `usage_update`, and a tool call follows at once
+  when there is one, so the connection forwards a `usage_update` that nothing follows within
+  1.5 s marked as a turn end and enrich turns it into `endsAgentTurn`. Missing sessions fail with
+  `-32002 Session not found: <id>` and no `data.uri`, recognized by `isSessionNotFound`. Sign-in
+  is `agy acp --login` (Keychain), `AGY_ADC_AUTH=true` (gcloud ADC), or `GEMINI_API_KEY`.
 - Muse Code installs managed hooks through `managed_hooks_path` in `settings.json`.
   `SessionStart`, `UserPromptSubmit`, and `Stop` report session, working, and completion events.
   `managed_hooks_env_vars` forwards the Emdash hook routing variables.

@@ -3,6 +3,10 @@ import {
   registerPluginBehavior,
 } from '@emdash/core/services/agent-plugins/api/plugins';
 import { buildStandardCommand } from '@emdash/core/services/agent-plugins/api/plugins/helpers';
+import { createNativeAcpBehavior } from '../../helpers/acp-stdio';
+import { connectAntigravityAcp, isAntigravitySessionNotFound } from './acp';
+import { enrichAntigravityUpdate } from './acp-enrich';
+import { antigravityAuthStatus } from './auth';
 import { buildAntigravityHookConfig } from './hooks';
 import { icon } from './icon';
 
@@ -11,10 +15,32 @@ export const plugin = definePlugin(
     id: 'antigravity',
     name: 'Antigravity',
     description:
-      'Google Antigravity CLI for terminal-first agent sessions with shared Antigravity settings and conversation history.',
+      'Google Antigravity CLI (agy) with Gemini and Claude models, shared Antigravity settings, and conversation history.',
     websiteUrl: 'https://antigravity.google/docs/cli-overview',
   },
   {
+    acp: {
+      kind: 'supported',
+    },
+    auth: {
+      kind: 'supported',
+      methods: [
+        {
+          kind: 'cli-login',
+          id: 'antigravity-login',
+          name: 'Sign in with Google',
+          args: ['acp', '--login'],
+          description: 'Open the Antigravity CLI Google sign-in flow in a terminal.',
+        },
+        {
+          kind: 'api-key',
+          id: 'gemini-api-key',
+          name: 'Use a Gemini API key',
+          envVars: [{ name: 'GEMINI_API_KEY', label: 'Gemini API key' }],
+          helpUrl: 'https://aistudio.google.com/apikey',
+        },
+      ],
+    },
     autoApprove: {
       kind: 'supported',
     },
@@ -26,37 +52,37 @@ export const plugin = definePlugin(
     models: {
       kind: 'selectable',
       modelOptions: {
-        'Gemini 3.5 Flash (Medium)': {
-          name: 'Gemini 3.5 Flash (Medium)',
+        'gemini-4-carbon': {
+          name: 'Gemini 4 Carbon',
+          modelFeatures: { intelligence: 4, speed: 3 },
+        },
+        'gemini-4-neon': {
+          name: 'Gemini 4 Neon',
+          modelFeatures: { intelligence: 5, speed: 2 },
+        },
+        'gemini-4-hydrogen': {
+          name: 'Gemini 4 Hydrogen',
+          modelFeatures: { intelligence: 5, speed: 2 },
+        },
+        'gemini-4-argon': {
+          name: 'Gemini 4 Argon',
           modelFeatures: { intelligence: 3, speed: 4 },
         },
-        'Gemini 3.5 Flash (High)': {
-          name: 'Gemini 3.5 Flash (High)',
+        'gemini-3.8-flash': {
+          name: 'Gemini 3.8 Flash',
+          modelFeatures: { intelligence: 3, speed: 5 },
+        },
+        'gemini-3.1-pro': {
+          name: 'Gemini 3.1 Pro',
           modelFeatures: { intelligence: 4, speed: 3 },
         },
-        'Gemini 3.5 Flash (Low)': {
-          name: 'Gemini 3.5 Flash (Low)',
-          modelFeatures: { intelligence: 2, speed: 5 },
-        },
-        'Gemini 3.1 Pro (Low)': {
-          name: 'Gemini 3.1 Pro (Low)',
-          modelFeatures: { intelligence: 4, speed: 3 },
-        },
-        'Gemini 3.1 Pro (High)': {
-          name: 'Gemini 3.1 Pro (High)',
+        'claude-opus-5-5': {
+          name: 'Claude Opus 5.5',
           modelFeatures: { intelligence: 5, speed: 2 },
         },
-        'Claude Sonnet 4.6 (Thinking)': {
-          name: 'Claude Sonnet 4.6 (Thinking)',
-          modelFeatures: { intelligence: 4, speed: 3 },
-        },
-        'Claude Opus 4.6 (Thinking)': {
-          name: 'Claude Opus 4.6 (Thinking)',
-          modelFeatures: { intelligence: 5, speed: 2 },
-        },
-        'GPT-OSS 120B (Medium)': {
-          name: 'GPT-OSS 120B (Medium)',
-          modelFeatures: { intelligence: 3, speed: 3 },
+        'claude-sonnet-5-5': {
+          name: 'Claude Sonnet 5.5',
+          modelFeatures: { intelligence: 4, speed: 4 },
         },
       },
     },
@@ -99,6 +125,16 @@ export const plugin = definePlugin(
 );
 
 export const provider = registerPluginBehavior(plugin, {
+  acp: {
+    ...createNativeAcpBehavior(() => ({ args: ['acp'] })),
+    connect: connectAntigravityAcp,
+    enrich: enrichAntigravityUpdate,
+    reportsAgentTurnEnd: true,
+    isSessionNotFound: isAntigravitySessionNotFound,
+  },
+  auth: {
+    checkStatus: antigravityAuthStatus,
+  },
   hooks: buildAntigravityHookConfig(),
   prompt: {
     buildCommand: (ctx) =>
