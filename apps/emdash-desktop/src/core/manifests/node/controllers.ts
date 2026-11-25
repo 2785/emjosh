@@ -11,6 +11,8 @@ import {
 } from '@emdash/wire/rpc';
 import type { EmdashAccountService } from '@core/features/account/node/services/emdash-account-service';
 import { createAccountWireController } from '@core/features/account/node/wire-controller';
+import type { AgentCliService } from '@core/features/agent-clis/node/service';
+import { createAgentClisWireController } from '@core/features/agent-clis/node/wire-controller';
 import { createAgentOperations } from '@core/features/agents/node/controller';
 import { createAgentsWireController } from '@core/features/agents/node/wire-controller';
 import type { AutomationsService } from '@core/features/automations/api/node/automations-service';
@@ -126,6 +128,7 @@ import { getInitiativesService } from './initiatives';
 
 export type DesktopControllerContext = {
   readonly accountService: EmdashAccountService;
+  readonly agentClis: AgentCliService;
   readonly agentDependencies: Omit<
     Parameters<typeof createAgentOperations>[0],
     'providerOverrideSettings'
@@ -199,6 +202,9 @@ export const desktopNodeControllers = {
   account: {
     create: ({ accountService, logger, telemetry }) =>
       createAccountWireController(accountService, { logger, telemetry }),
+  },
+  agentClis: {
+    create: ({ agentClis }) => createAgentClisWireController(agentClis),
   },
   agents: {
     create: ({ agentDependencies, providerSettings, runtimes }) =>
