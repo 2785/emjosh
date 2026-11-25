@@ -109,6 +109,25 @@ describe('AcpAgentStatusBridge', () => {
     expect(fixture.client).toHaveBeenLastCalledWith(LOCAL_HOST_REF);
     await fixture.dispose();
   });
+
+  // The next boot reads the persisted `working` status to resume turns the quit interrupted.
+  it('leaves persisted statuses alone when disposed at quit, even as the worker stops', async () => {
+    const localRuntime = createRuntime({ local: summary('local', 'working') });
+    const fixture = createBridge(new Map([[formatHostRef(LOCAL_HOST_REF), localRuntime]]));
+    mocks.loadActiveIds.mockResolvedValue(['local']);
+    await fixture.bridge.attachHost(LOCAL_HOST_REF);
+    mocks.resetToIdle.mockClear();
+    mocks.applySignal.mockClear();
+
+    fixture.bridge.dispose();
+    fixture.emitWorkerState({ kind: 'disposed' });
+    localRuntime.host.model.states.list.set({});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(mocks.resetToIdle).not.toHaveBeenCalled();
+    expect(mocks.applySignal).not.toHaveBeenCalled();
+    await fixture.dispose();
+  });
 });
 
 function createBridge(runtimes: Map<string, ReturnType<typeof createRuntime>>) {

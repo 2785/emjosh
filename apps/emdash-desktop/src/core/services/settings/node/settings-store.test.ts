@@ -96,6 +96,16 @@ describe('SettingsStore contributions', () => {
     expect(await new SettingsStore(db, appSettingsContributions).get('followUpMode')).toBe('queue');
   });
 
+  it('resumes interrupted chat turns by default and persists turning it off', async () => {
+    rows.clear();
+    const settings = new SettingsStore(db, appSettingsContributions);
+    expect(await settings.get('resumeInterruptedTurns')).toBe(true);
+    await settings.update('resumeInterruptedTurns', false);
+    expect(
+      await new SettingsStore(db, appSettingsContributions).get('resumeInterruptedTurns')
+    ).toBe(false);
+  });
+
   it('applies tray visibility immediately through Wire updates and resets', async () => {
     rows.clear();
     const service = new AppSettingsService(new SettingsStore(db, appSettingsContributions));
