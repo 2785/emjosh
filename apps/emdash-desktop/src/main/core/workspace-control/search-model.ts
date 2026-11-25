@@ -50,7 +50,7 @@ export type SearchModelOptions = {
 export function createClaudeSearchModel(options: SearchModelOptions) {
   const spawn = options.spawn ?? nodeSpawn;
   const timeoutMs = options.timeoutMs ?? 120_000;
-  return (input: { system: string; prompt: string }): Promise<string> =>
+  return (input: { system: string; prompt: string; signal?: AbortSignal }): Promise<string> =>
     new Promise((resolve, reject) => {
       // The prompt goes through stdin: it is long and holds user text.
       const child = spawn(options.command ?? 'claude', claudeSearchArgs(input.system), {
@@ -64,6 +64,13 @@ export function createClaudeSearchModel(options: SearchModelOptions) {
         child.kill();
         reject(new Error('The search agent took too long.'));
       }, timeoutMs);
+      const abort = () => {
+        clearTimeout(timer);
+        child.kill();
+        reject(new Error('Cancelled.'));
+      };
+      if (input.signal?.aborted) abort();
+      else input.signal?.addEventListener('abort', abort, { once: true });
       child.stdout?.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
       child.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
       child.on('error', (error: NodeJS.ErrnoException) => {
@@ -76,6 +83,7 @@ export function createClaudeSearchModel(options: SearchModelOptions) {
       });
       child.on('close', (code) => {
         clearTimeout(timer);
+        input.signal?.removeEventListener('abort', abort);
         try {
           if (code !== 0 && !stdout.trim()) {
             throw new Error(`claude exited with ${code}: ${stderr.trim().slice(0, 200)}`);

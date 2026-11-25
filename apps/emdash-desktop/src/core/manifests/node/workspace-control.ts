@@ -151,7 +151,11 @@ export async function startWorkspaceControl(
     /** Transcripts the workspace search looks through; without them it skips chats. */
     transcripts?: TranscriptDirs;
     /** One tool-less run of a cheap model, for workspace search questions. */
-    runSearchModel?(input: { system: string; prompt: string }): Promise<string>;
+    runSearchModel?(input: {
+      system: string;
+      prompt: string;
+      signal?: AbortSignal;
+    }): Promise<string>;
     /** Batching of initiative deliveries; DEFAULT_DELIVERY_WINDOW when omitted. */
     deliveryWindow?: Partial<typeof DEFAULT_DELIVERY_WINDOW>;
     /** Subscribes to live agent status events; returns the unsubscribe function. */

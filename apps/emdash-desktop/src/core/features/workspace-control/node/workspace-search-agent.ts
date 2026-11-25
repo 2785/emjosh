@@ -85,9 +85,10 @@ export const ASK_SYSTEM_PROMPT = `You help the user find a workspace in Emjosh, 
 
 Answer only from the data you are given: the workspace list, and passages from initiative feeds and chat transcripts that mention the query. A workspace that opened or owns a PR is a better answer than one that merely mentions it (initiative leads and reviewers mention PRs they didn't open). If nothing fits, say so.
 
+Return every workspace that plausibly matches, not just one, ranked best first, at most 5, each with a one-line reason. Prefer recent and active workspaces (recent last activity, agent working or awaiting input, not archived). Include an archived workspace only when no active one fits or the query clearly points at it.
+
 Reply with JSON only, no prose around it:
-{"answer": "<one or two sentences>", "workspaces": [{"id": "<workspace id from the list>", "why": "<short reason>"}]}
-List the best match first and at most 5 workspaces.`;
+{"answer": "<one or two sentences>", "workspaces": [{"id": "<workspace id from the list>", "why": "<one-line reason>"}]}`;
 
 function describe(workspace: WorkspaceRef & { actualBranch?: string | null }): string {
   const pr = workspace.pullRequest;
@@ -101,6 +102,9 @@ function describe(workspace: WorkspaceRef & { actualBranch?: string | null }): s
       : null,
     workspace.initiativeName ? `initiative "${workspace.initiativeName}"` : null,
     pr ? `PR ${pr.url} "${pr.title}" (${pr.state})` : null,
+    workspace.agentStatus === 'working' || workspace.agentStatus === 'awaiting-input'
+      ? `agent ${workspace.agentStatus}`
+      : null,
     workspace.archived ? 'archived' : null,
     workspace.markedDone ? 'done' : null,
     workspace.lastActivityAt ? `last active ${workspace.lastActivityAt.slice(0, 10)}` : null,

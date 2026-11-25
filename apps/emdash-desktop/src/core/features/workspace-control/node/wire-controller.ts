@@ -15,6 +15,8 @@ export function createWorkspaceControlWireController(
   return createController(workspaceControlContract, {
     connection: async () => connection(),
     searchWorkspaces: async ({ query }) => requireSearch().search(query),
-    askAboutWorkspaces: async ({ query }) => requireSearch().ask(query),
+    startWorkspaceAsk: async ({ query }) => ({ runId: requireSearch().startAsk(query) }),
+    workspaceAskStatus: async ({ runId }) => requireSearch().askStatus(runId),
+    cancelWorkspaceAsk: async ({ runId }) => requireSearch().cancelAsk(runId),
   });
 }

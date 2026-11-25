@@ -230,6 +230,25 @@ export function scoreWorkspace(
 
 export const CONCLUSIVE_SCORE = 80;
 
+const STATUS_RANK: Record<string, number> = {
+  'awaiting-input': 3,
+  working: 3,
+  background: 2,
+  error: 1,
+};
+
+/** Tie-break rank: higher is more likely what the user means (active, then recently used). */
+export function compareByActivity(
+  a: Pick<WorkspaceRef, 'archived' | 'agentStatus' | 'lastActivityAt'>,
+  b: Pick<WorkspaceRef, 'archived' | 'agentStatus' | 'lastActivityAt'>
+): number {
+  return (
+    Number(a.archived) - Number(b.archived) ||
+    (STATUS_RANK[b.agentStatus ?? ''] ?? 0) - (STATUS_RANK[a.agentStatus ?? ''] ?? 0) ||
+    (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '')
+  );
+}
+
 /** Ranks workspaces for a query; ties go to active, then recently used workspaces. */
 export function searchWorkspaces(
   raw: string,
@@ -244,12 +263,7 @@ export function searchWorkspaces(
     const { actualBranch: _actual, ...ref } = workspace;
     hits.push({ workspace: ref, score, reasons });
   }
-  hits.sort(
-    (a, b) =>
-      b.score - a.score ||
-      Number(a.workspace.archived) - Number(b.workspace.archived) ||
-      (b.workspace.lastActivityAt ?? '').localeCompare(a.workspace.lastActivityAt ?? '')
-  );
+  hits.sort((a, b) => b.score - a.score || compareByActivity(a.workspace, b.workspace));
   const limited = hits.slice(0, options.limit ?? 20);
   return { query: raw, hits: limited, conclusive: isConclusive(limited) };
 }

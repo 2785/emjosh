@@ -161,4 +161,19 @@ describe('searchWorkspaces', () => {
     ];
     expect(searchWorkspaces('recon', tied).hits.map((h) => h.workspace.id)).toEqual(['x2', 'x1']);
   });
+
+  it('breaks ties toward working workspaces, then recent ones, then archived last', () => {
+    const tied = [
+      ws({ id: 'old', name: 'recon', lastActivityAt: '2026-01-01' }),
+      ws({ id: 'arch', name: 'recon', archived: true, lastActivityAt: '2026-11-20' }),
+      ws({ id: 'new', name: 'recon', lastActivityAt: '2026-11-01' }),
+      ws({ id: 'busy', name: 'recon', agentStatus: 'working', lastActivityAt: '2026-02-01' }),
+    ];
+    expect(searchWorkspaces('recon', tied).hits.map((h) => h.workspace.id)).toEqual([
+      'busy',
+      'new',
+      'old',
+      'arch',
+    ]);
+  });
 });

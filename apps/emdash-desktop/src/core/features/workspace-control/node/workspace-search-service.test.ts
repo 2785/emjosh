@@ -69,4 +69,82 @@ describe('WorkspaceSearchService', () => {
   it('refuses to ask without a model', async () => {
     await expect(new WorkspaceSearchService(deps()).ask('x')).rejects.toThrow(/Claude Code/);
   });
+
+  it('reports real steps while a run goes and returns several ranked workspaces', async () => {
+    let release: (reply: string) => void = () => {};
+    const runModel = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          release = resolve;
+        })
+    );
+    const service = new WorkspaceSearchService(deps({ runModel }));
+    const runId = service.startAsk(MR);
+    await vi.waitFor(() => expect(service.askStatus(runId).step).toBe('Asking the model…'));
+    const running = service.askStatus(runId);
+    expect(running.state).toBe('running');
+    expect(running.completed).toEqual([
+      'Collecting candidate workspaces…',
+      expect.stringContaining('Searching initiative feeds'),
+      expect.stringContaining('Searching chat transcripts'),
+    ]);
+    release(
+      JSON.stringify({
+        answer: 'Two candidates',
+        workspaces: [
+          { id: 'w1', why: 'owns the MR' },
+          { id: 'w2', why: 'reviewed it' },
+        ],
+      })
+    );
+    await vi.waitFor(() => expect(service.askStatus(runId).state).toBe('done'));
+    expect(service.askStatus(runId).result?.workspaces.map((w) => w.id)).toEqual(['w1', 'w2']);
+  });
+
+  it('cancels a run and aborts the model call', async () => {
+    let signal: AbortSignal | undefined;
+    const runModel = vi.fn(
+      (input: { signal?: AbortSignal }) =>
+        new Promise<string>((_resolve, reject) => {
+          signal = input.signal;
+          input.signal?.addEventListener('abort', () => reject(new Error('Cancelled.')));
+        })
+    );
+    const service = new WorkspaceSearchService(deps({ runModel }));
+    const runId = service.startAsk(MR);
+    await vi.waitFor(() => expect(runModel).toHaveBeenCalled());
+    service.cancelAsk(runId);
+    expect(signal?.aborted).toBe(true);
+    expect(service.askStatus(runId).state).toBe('cancelled');
+  });
+
+  it('feeds active workspaces to the model before archived ones', async () => {
+    const row = (id: string, archived: boolean, lastActivityAt: string) => ({
+      id,
+      name: `Name ${id}`,
+      projectId: 'p',
+      projectName: 'proj',
+      branch: null,
+      archived,
+      agentStatus: null,
+      lastActivityAt,
+      initiativeId: null,
+    });
+    const runModel = vi.fn(async () => '{"answer":"x","workspaces":[]}');
+    await new WorkspaceSearchService(
+      deps({
+        runModel,
+        pullRequestForBranch: async () => null,
+        listWorkspaces: async () => [
+          row('arch', true, '2026-11-24'),
+          row('old', false, '2026-01-01'),
+          row('new', false, '2026-11-01'),
+        ],
+      })
+    ).ask('something unrelated here');
+    const [{ prompt }] = runModel.mock.calls[0] as unknown as [{ prompt: string }];
+    expect(prompt.indexOf('new |')).toBeGreaterThan(-1);
+    expect(prompt.indexOf('Name new')).toBeLessThan(prompt.indexOf('Name old'));
+    expect(prompt.indexOf('Name old')).toBeLessThan(prompt.indexOf('Name arch'));
+  });
 });

@@ -1,7 +1,16 @@
 import { readFile } from 'node:fs/promises';
-import type { WorkspaceAskResult, WorkspaceSearchResult } from '../api/workspace-search';
+import type {
+  WorkspaceAskResult,
+  WorkspaceAskStatus,
+  WorkspaceSearchResult,
+} from '../api/workspace-search';
 import type { ControlPullRequest, ControlWorkspace } from './workspace-control-service';
-import { parseSearchQuery, type SearchableWorkspace, searchWorkspaces } from './workspace-search';
+import {
+  compareByActivity,
+  parseSearchQuery,
+  type SearchableWorkspace,
+  searchWorkspaces,
+} from './workspace-search';
 import {
   ASK_SYSTEM_PROMPT,
   buildAskPrompt,
@@ -27,10 +36,10 @@ export type WorkspaceSearchDeps = {
   transcriptFiles?(workspaceIds: string[]): Promise<TranscriptFile[]>;
   readTranscript?(path: string): Promise<Buffer | null>;
   /**
-   * Runs a cheap model once, with no tools, and returns its reply text. Absent when no agent CLI
-   * is available.
+   * Runs a cheap model once, with no tools, and returns its reply text; aborting `signal` stops
+   * it. Absent when no agent CLI is available.
    */
-  runModel?(input: { system: string; prompt: string }): Promise<string>;
+  runModel?(input: { system: string; prompt: string; signal?: AbortSignal }): Promise<string>;
 };
 
 /** Workspaces the agent sees, most recent first; enough for the prompt to stay small. */
@@ -38,6 +47,9 @@ const ASK_WORKSPACE_LIMIT = 300;
 const ASK_TRANSCRIPTS = 12;
 const ASK_FEED_SNIPPETS = 30;
 const READ_CONCURRENCY = 4;
+const MAX_RUNS = 20;
+
+type AskRun = WorkspaceAskStatus & { controller: AbortController };
 
 async function readTranscriptFile(path: string): Promise<Buffer | null> {
   try {
@@ -79,29 +91,107 @@ export class WorkspaceSearchService {
     return !!this.deps.runModel;
   }
 
-  async ask(query: string): Promise<WorkspaceAskResult> {
+  private readonly runs = new Map<string, AskRun>();
+
+  /** Starts an agent run in the background; follow it with askStatus. */
+  startAsk(query: string): string {
+    if (!this.deps.runModel) {
+      throw new Error('Asking an agent needs the Claude Code CLI (claude) installed.');
+    }
+    const run: AskRun = {
+      runId: crypto.randomUUID(),
+      query,
+      startedAt: Date.now(),
+      state: 'running',
+      step: 'Starting…',
+      completed: [],
+      controller: new AbortController(),
+    };
+    this.runs.set(run.runId, run);
+    // Finished runs are kept briefly for the last poll; the oldest go first.
+    for (const [id, old] of this.runs) {
+      if (this.runs.size <= MAX_RUNS) break;
+      if (old.state !== 'running') this.runs.delete(id);
+    }
+    void this.ask(query, {
+      signal: run.controller.signal,
+      onStep: (step) => {
+        if (run.state !== 'running') return;
+        if (run.step !== 'Starting…') run.completed.push(run.step);
+        run.step = step;
+      },
+    }).then(
+      (result) => {
+        if (run.state !== 'running') return;
+        run.completed.push(run.step);
+        run.step = 'Done';
+        run.state = 'done';
+        run.result = result;
+      },
+      (error: unknown) => {
+        if (run.state !== 'running') return;
+        run.state = run.controller.signal.aborted ? 'cancelled' : 'failed';
+        run.error = error instanceof Error ? error.message : String(error);
+      }
+    );
+    return run.runId;
+  }
+
+  askStatus(runId: string): WorkspaceAskStatus {
+    const run = this.runs.get(runId);
+    if (!run) throw new Error('That search is no longer running.');
+    const { controller: _controller, ...status } = run;
+    return { ...status, completed: [...run.completed] };
+  }
+
+  cancelAsk(runId: string): void {
+    const run = this.runs.get(runId);
+    if (!run || run.state !== 'running') return;
+    run.state = 'cancelled';
+    run.step = 'Cancelled';
+    run.controller.abort();
+  }
+
+  async ask(
+    query: string,
+    options: { signal?: AbortSignal; onStep?: (step: string) => void } = {}
+  ): Promise<WorkspaceAskResult> {
     const runModel = this.deps.runModel;
     if (!runModel) throw new Error('Asking an agent needs the Claude Code CLI (claude) installed.');
+    const { signal } = options;
+    const step = (text: string) => {
+      signal?.throwIfAborted();
+      options.onStep?.(text);
+    };
+    step('Collecting candidate workspaces…');
     const workspaces = await this.searchable();
     const quick = searchWorkspaces(query, workspaces, {
       mentions: await this.mentions(query, workspaces),
       limit: 10,
     });
     const quickIds = new Set(quick.hits.map((hit) => hit.workspace.id));
+    // Active, recently used workspaces first; archived ones last, so they only fill what's left.
     const shown = [
       ...workspaces.filter((workspace) => quickIds.has(workspace.id)),
-      ...workspaces.filter((workspace) => !quickIds.has(workspace.id)),
+      ...workspaces.filter((workspace) => !quickIds.has(workspace.id)).sort(compareByActivity),
     ].slice(0, ASK_WORKSPACE_LIMIT);
     const terms = snippetTerms(query);
-    const snippets = [
-      ...(await this.feedSnippets(terms)),
-      ...(await this.transcriptSnippets(
-        terms,
-        shown.map((workspace) => workspace.id)
-      )),
-    ];
+    const label =
+      terms.length > 0
+        ? ` for ${terms
+            .slice(0, 2)
+            .map((t) => `'${t}'`)
+            .join(', ')}`
+        : '';
+    step(`Searching initiative feeds${label}…`);
+    const feed = await this.feedSnippets(terms);
+    step(`Searching chat transcripts${label}…`);
+    const chats = await this.transcriptSnippets(
+      terms,
+      shown.map((workspace) => workspace.id)
+    );
     const prompt = [
-      buildAskPrompt({ query, workspaces: shown, snippets }),
+      buildAskPrompt({ query, workspaces: shown, snippets: [...feed, ...chats] }),
       ...(quick.hits.length > 0
         ? [
             '',
@@ -110,7 +200,9 @@ export class WorkspaceSearchService {
           ]
         : []),
     ].join('\n');
-    const reply = await runModel({ system: ASK_SYSTEM_PROMPT, prompt });
+    step('Asking the model…');
+    const reply = await runModel({ system: ASK_SYSTEM_PROMPT, prompt, signal });
+    step('Reading the answer…');
     const byId = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
     const parsed = parseAskResponse(reply, new Set(byId.keys()));
     return {

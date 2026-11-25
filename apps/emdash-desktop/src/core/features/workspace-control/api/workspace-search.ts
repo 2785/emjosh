@@ -58,3 +58,31 @@ export type WorkspaceAskResult = {
   answer: string;
   workspaces: (WorkspaceRef & { why: string | null })[];
 };
+
+/** One run of the agent search: its real steps so far, and its result once done. */
+export type WorkspaceAskStatus = {
+  runId: string;
+  query: string;
+  /** Epoch ms the run started; the UI shows elapsed time from it. */
+  startedAt: number;
+  state: 'running' | 'done' | 'failed' | 'cancelled';
+  /** What it is doing right now, in plain words. */
+  step: string;
+  /** Steps already finished, oldest first. */
+  completed: string[];
+  result?: WorkspaceAskResult;
+  error?: string;
+};
+
+/**
+ * Whether palette text reads like a description of work (a URL, PR number, ticket id, or three
+ * or more words) rather than a command or name being typed; such text offers the agent search
+ * as the top result.
+ */
+export function isFreeTextQuery(query: string): boolean {
+  const text = query.trim();
+  if (/https?:\/\//i.test(text)) return true;
+  if (/^(?:(?:pr|mr)\s*)?[#!]\d+$/i.test(text)) return true;
+  if (/\b[a-z][a-z0-9]{1,9}-\d+\b/i.test(text)) return true;
+  return text.split(/\s+/).filter(Boolean).length >= 3;
+}

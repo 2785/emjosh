@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ASK_SYSTEM_PROMPT,
   buildAskPrompt,
   findSnippets,
   parseAskResponse,
@@ -87,5 +88,10 @@ describe('snippets', () => {
     });
     expect(prompt).toContain('w1 | "Recon fix" | project pre | branch b | archived');
     expect(prompt).toContain('[chat of w1 "Recon fix"] talked about recon');
+  });
+
+  it('asks for several ranked matches, biased to active workspaces', () => {
+    expect(ASK_SYSTEM_PROMPT).toContain('at most 5');
+    expect(ASK_SYSTEM_PROMPT).toContain('Prefer recent and active');
   });
 });

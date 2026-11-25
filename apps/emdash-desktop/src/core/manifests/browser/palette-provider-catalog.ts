@@ -3,6 +3,7 @@ import { projectPaletteProviderDefs } from '@core/features/projects/contribution
 import { taskPaletteProviderDefs } from '@core/features/tasks/contributions/browser/task-palette-provider';
 import { workbenchCommandsPaletteProviderDefs } from '@core/features/workbench/contributions/browser/commands-palette-provider';
 import { workbenchFilePaletteProviderDefs } from '@core/features/workbench/contributions/browser/file-palette-provider';
+import { workspacePaletteProviderDefs } from '@core/features/workspace-control/contributions/browser/workspace-palette-provider';
 import { definePaletteProviderCatalog } from '@core/primitives/palette/api';
 
 export const PALETTE_PROVIDER_CATALOG = definePaletteProviderCatalog([
@@ -11,4 +12,5 @@ export const PALETTE_PROVIDER_CATALOG = definePaletteProviderCatalog([
   ...conversationsPaletteProviderDefs,
   ...workbenchFilePaletteProviderDefs,
   ...projectPaletteProviderDefs,
+  ...workspacePaletteProviderDefs,
 ] as const);
