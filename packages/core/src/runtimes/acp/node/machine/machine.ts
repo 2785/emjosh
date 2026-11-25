@@ -92,7 +92,11 @@ export type DomainEvent =
   | { type: 'QueuedPromptRemoved'; id: string }
   | { type: 'QueueReordered'; ids: readonly string[] }
   | { type: 'QueueReplaced'; prompts: readonly QueuedPrompt[] }
-  | { type: 'TurnEnded'; outcome: TurnOutcome }
+  /**
+   * `continues`: the provider keeps working on its own after this turn, so the session goes
+   * straight into an agent-initiated turn. Ignored for errors and cancellations.
+   */
+  | { type: 'TurnEnded'; outcome: TurnOutcome; continues?: boolean }
   | { type: 'AgentActivity'; active: boolean }
   | { type: 'AgentsChanged'; runningCount: number }
   | { type: 'CancellationRequested' }
@@ -283,7 +287,12 @@ export function evolve(
       const active = activeTurnFromPhase(s.phase);
       if (!active) return warn(s, `TurnEnded with no active turn (phase: '${s.phase.kind}')`);
       const stopReason = ev.outcome.kind === 'stopped' ? ev.outcome.stopReason : null;
-      const { queuedPrompts, effects: queueEffects } = dequeuePromptEffects(s.queuedPrompts);
+      const continues =
+        ev.continues === true && ev.outcome.kind === 'stopped' && stopReason !== 'cancelled';
+      // Queued prompts wait for the agent's own turn to end.
+      const { queuedPrompts, effects: queueEffects } = continues
+        ? { queuedPrompts: s.queuedPrompts, effects: [] as Effect[] }
+        : dequeuePromptEffects(s.queuedPrompts);
       return {
         state: {
           ...s,
@@ -291,11 +300,15 @@ export function evolve(
           lastStopReason: stopReason,
           lastTurnErrored: ev.outcome.kind === 'errored',
           queuedPrompts,
-          agentTurnActive: false,
+          agentTurnActive: continues,
         },
         effects: [
           { type: 'state' },
-          { type: 'agentEvent', phase: ev.outcome.kind === 'errored' ? 'error' : 'stop' },
+          ...(continues
+            ? []
+            : ([
+                { type: 'agentEvent', phase: ev.outcome.kind === 'errored' ? 'error' : 'stop' },
+              ] as Effect[])),
           { type: 'settleAgents', scope: 'turn', status: 'completed' },
           ...(ev.outcome.kind === 'errored' || stopReason === 'cancelled'
             ? ([{ type: 'settleAgents', scope: 'all', status: 'failed' }] as Effect[])

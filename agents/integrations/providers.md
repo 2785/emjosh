@@ -124,7 +124,10 @@ you select an OrcaRouter model from the OpenCode model picker.
 - Codex ACP brackets every turn with `session_info_update` `_meta.codex.threadStatus`
   (`active`/`idle`), including turns Codex starts itself (`/goal` continuations). The Codex
   enrich hook maps `idle` to the generic `agent_turn_end` event, so those turns end on the marker
-  instead of after a short silence (`reportsAgentTurnEnd`). Codex does not hold a turn for its
+  instead of after a short silence (`reportsAgentTurnEnd`). An active goal runs as a series of
+  Codex-started turns, so enrich maps `_meta.goal` to `agent_work_pending` (pending while the goal
+  is `active`): while pending, turn ends don't settle the session, and a prompted turn ending goes
+  straight into an agent turn, so the chat stays working until the goal stops. Codex does not hold a turn for its
   subagents: their results reach the parent only on its next turn, so
   `holdsTurnsForBackgroundAgents` stays off.
 - Codex doesn't pass MCP server instructions to the model. The host app writes its control

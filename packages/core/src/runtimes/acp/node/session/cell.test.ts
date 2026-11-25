@@ -889,6 +889,115 @@ describe('SessionCell idle turns and queue commands', () => {
       cell.dispose();
     }
   });
+  it('keeps working through the agent’s own follow-up turns while it reports work pending', async () => {
+    vi.useFakeTimers();
+    const onAgentEvent = vi.fn();
+    const agent = new FakeAcpAgent();
+    const { cell } = makePendingCell(agent, {
+      reportsAgentTurnEnd: true,
+      callbacks: { onAgentEvent },
+    });
+    try {
+      cell.applySessionReady();
+      agent.prompt = vi.fn().mockImplementation(async () => {
+        cell.push({ kind: 'agent_work_pending', pending: true });
+        cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Step 1' });
+        cell.push({ kind: 'agent_turn_end' });
+        return { stopReason: 'end_turn' };
+      });
+      await cell.prompt({ text: '/goal three steps' });
+
+      // The prompted turn ended, but the session went straight into the agent's own turn.
+      expect(cell.sessionState.isGenerating).toBe(true);
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+      expect(onAgentEvent).not.toHaveBeenCalledWith('stop');
+
+      // Turn ends between the agent's own turns don't settle the session.
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Step 2' });
+      cell.push({ kind: 'agent_turn_end' });
+      expect(cell.sessionState.isGenerating).toBe(true);
+
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Step 3' });
+      cell.push({ kind: 'agent_work_pending', pending: false });
+      expect(cell.sessionState.isGenerating).toBe(true);
+      cell.push({ kind: 'agent_turn_end' });
+
+      expect(cell.sessionState.isGenerating).toBe(false);
+      expect(cell.history().active).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      cell.dispose();
+      vi.useRealTimers();
+    }
+  });
+  it('ends a pending agent turn after the long silence if the agent never continues', async () => {
+    vi.useFakeTimers();
+    const agent = new FakeAcpAgent();
+    const { cell } = makePendingCell(agent, { reportsAgentTurnEnd: true });
+    try {
+      cell.applySessionReady();
+      agent.prompt = vi.fn().mockImplementation(async () => {
+        cell.push({ kind: 'agent_work_pending', pending: true });
+        return { stopReason: 'end_turn' };
+      });
+      await cell.prompt({ text: '/goal' });
+      expect(cell.sessionState.isGenerating).toBe(true);
+      vi.advanceTimersByTime(121_000);
+      expect(cell.sessionState.isGenerating).toBe(false);
+    } finally {
+      cell.dispose();
+      vi.useRealTimers();
+    }
+  });
+  it('does not continue a cancelled turn even while work is pending', async () => {
+    const agent = new FakeAcpAgent();
+    const { cell } = makePendingCell(agent, { reportsAgentTurnEnd: true });
+    try {
+      cell.applySessionReady();
+      agent.prompt = vi.fn().mockImplementation(async () => {
+        cell.push({ kind: 'agent_work_pending', pending: true });
+        return { stopReason: 'cancelled' };
+      });
+      await cell.prompt({ text: '/goal' });
+      expect(cell.sessionState.isGenerating).toBe(false);
+    } finally {
+      cell.dispose();
+    }
+  });
+  it('settles Claude-style turns as before: stop event, held agents completed, usage marker', async () => {
+    vi.useFakeTimers();
+    const onAgentEvent = vi.fn();
+    const agent = new FakeAcpAgent();
+    const { cell } = makePendingCell(agent, {
+      reportsAgentTurnEnd: true,
+      holdsTurnsForBackgroundAgents: true,
+      callbacks: { onAgentEvent },
+    });
+    try {
+      cell.applySessionReady();
+      agent.prompt = vi.fn().mockImplementation(async () => {
+        cell.push(backgroundAgentLaunch('agent-1'));
+        return { stopReason: 'end_turn' };
+      });
+      await cell.prompt({ text: 'launch an agent' });
+      expect(onAgentEvent).toHaveBeenCalledWith('stop');
+      expect(cell.sessionState.isGenerating).toBe(false);
+      expect(cell.transcript.agents).toMatchObject([{ agentId: 'agent-1', status: 'completed' }]);
+
+      cell.push({ kind: 'message', role: 'assistant', messageId: null, text: 'Agent done' });
+      expect(cell.sessionState.agentTurnActive).toBe(true);
+      cell.push({
+        kind: 'usage',
+        usage: { contextUsed: 1, contextSize: 2, cost: null },
+        endsAgentTurn: true,
+      });
+      expect(cell.sessionState.agentTurnActive).toBe(false);
+      expect(cell.sessionState.isGenerating).toBe(false);
+    } finally {
+      cell.dispose();
+      vi.useRealTimers();
+    }
+  });
   it('falls back to a long silence when the end marker never comes', async () => {
     vi.useFakeTimers();
     try {

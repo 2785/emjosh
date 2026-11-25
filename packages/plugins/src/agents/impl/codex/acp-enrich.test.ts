@@ -47,6 +47,30 @@ describe('Codex turn markers', () => {
     expect(enrichCodexUpdate(decodeSessionUpdate(raw), raw)).toEqual({ kind: 'agent_turn_end' });
   });
 
+  const goal = (value: Record<string, unknown> | null): SessionUpdate =>
+    ({ sessionUpdate: 'session_info_update', _meta: { goal: value } }) as SessionUpdate;
+
+  it('reports more work pending while a goal is active', () => {
+    const raw = goal({ objective: 'Create three files', status: 'active' });
+    expect(enrichCodexUpdate(decodeSessionUpdate(raw), raw)).toEqual({
+      kind: 'agent_work_pending',
+      pending: true,
+    });
+  });
+
+  it.each([
+    goal({ objective: 'x', status: 'complete' }),
+    goal({ objective: 'x', status: 'paused' }),
+    goal({ objective: 'x', status: 'blocked' }),
+    goal({ objective: 'x', status: 'limited' }),
+    goal(null),
+  ])('reports no work pending once the goal stops: %j', (raw) => {
+    expect(enrichCodexUpdate(decodeSessionUpdate(raw), raw)).toEqual({
+      kind: 'agent_work_pending',
+      pending: false,
+    });
+  });
+
   it.each([
     threadStatus({ type: 'active', activeFlags: [] }),
     threadStatus({ type: 'active', activeFlags: ['waitingOnApproval'] }),

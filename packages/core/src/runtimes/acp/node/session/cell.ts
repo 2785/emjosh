@@ -74,6 +74,8 @@ export class SessionCell {
   private _acpSessionId: string;
   private configCatalogState: SessionConfigCatalog['kind'] = 'pending';
   private quiesceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The provider reported it will keep working on its own after the current turn. */
+  private agentWorkPending = false;
   private lastRunningAgentCount = 0;
   private readonly effectDriver: MachineEffectDriver<Effect>;
   private preparedPromptEffects: Effect[] | null = null;
@@ -235,8 +237,13 @@ export class SessionCell {
 
   push(event: NormalizedEvent): void {
     if (event.kind === 'ignored') return;
+    if (event.kind === 'agent_work_pending') {
+      this.agentWorkPending = event.pending;
+      return;
+    }
     if (event.kind === 'agent_turn_end') {
-      this.endAgentTurn();
+      // More turns of its own are coming; they continue the current agent turn.
+      if (!this.agentWorkPending) this.endAgentTurn();
       return;
     }
     if (event.kind === 'mcp_startup_failure') {
@@ -546,7 +553,9 @@ export class SessionCell {
     this.settleEarlierBackgroundAgents(ownAgentsFinished ? null : endingTurnId);
     this.dispatchAgentsChangedIfNeeded(previousRunningAgentCount);
     this.emitTranscriptChanged();
-    this.applyEvent({ type: 'TurnEnded', outcome: machineOutcome(outcome) });
+    const continues = this.agentWorkPending && outcome.kind === 'done';
+    this.applyEvent({ type: 'TurnEnded', outcome: machineOutcome(outcome), continues });
+    if (continues) this.scheduleQuiesce();
   }
 
   processClosed(exitCode: number | null): void {
