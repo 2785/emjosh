@@ -31,6 +31,7 @@ import { registeredTaskData } from '@core/primitives/task-state/browser/task-sta
 import { selectCurrentPr } from '@root/src/core/services/pull-requests/api';
 import { PrBadge } from '@root/src/core/services/pull-requests/browser/components/pr-badge';
 import { SidebarMenuAction, SidebarMenuRow } from './sidebar-primitives';
+import { SidebarTaskAgentLogos } from './task-agent-logos';
 
 interface SidebarTaskItemProps {
   taskId: string;
@@ -171,6 +172,7 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
               className="size-3.5 shrink-0 text-foreground-tertiary-passive"
             />
           )}
+          <SidebarTaskAgentLogos task={task} />
           <span
             className={cn(
               'min-w-0 flex-1 truncate text-left transition-colors',
