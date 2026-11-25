@@ -95,6 +95,7 @@ describe('control MCP endpoint', () => {
       'list_projects',
       'list_subscriptions',
       'list_workspaces',
+      'mark_workspace_done',
       'post_message',
       'read_messages',
       'remove_from_initiative',
@@ -103,6 +104,7 @@ describe('control MCP endpoint', () => {
       'rename_workspace',
       'set_initiative_lead',
       'set_message_delivery',
+      'set_workspace_dependencies',
       'subscribe',
       'unarchive_workspaces',
       'unsubscribe',
@@ -118,6 +120,15 @@ describe('control MCP endpoint', () => {
     expect(client.getInstructions()).toContain('not a branch-style slug');
     expect(client.getInstructions()).toContain("the lead's broadcasts");
     expect(client.getInstructions()).toContain("Don't do a workspace's work on its branch");
+    expect(client.getInstructions()).toContain("Don't add dependencies by default");
+    const dependencies = await client.callTool({
+      name: 'set_workspace_dependencies',
+      arguments: { workspaceId: 't1', dependsOn: [] },
+    });
+    expect(dependencies.isError).toBe(true);
+    expect((dependencies.content as { text: string }[])[0]!.text).toContain(
+      'Initiatives are not available'
+    );
     const current = await client.callTool({ name: 'current_workspace', arguments: {} });
     expect(JSON.parse((current.content as { text: string }[])[0]!.text)).toMatchObject({
       id: 't1',

@@ -58,6 +58,18 @@ async function git(cwd: string, args: string[]): Promise<string | null> {
   }
 }
 
+async function gitSucceeds(cwd: string, args: string[]): Promise<boolean> {
+  try {
+    await execFileAsync('git', args, { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** How often the app re-checks whether workspaces that others depend on look done. */
+const DEPENDENCY_CHECK_INTERVAL_MS = 5 * 60_000;
+
 /** The branch new work starts from: the remote's HEAD branch, else the current branch. */
 async function defaultBaseBranch(repoPath: string, remoteName: string) {
   const remoteHead = await git(repoPath, ['symbolic-ref', `refs/remotes/${remoteName}/HEAD`]);
@@ -290,6 +302,7 @@ export async function startWorkspaceControl(
           workspaceKind: workspaces.kind,
           workspaceConfig: workspaces.config,
           initiativeId: tasks.initiativeId,
+          status: tasks.status,
         })
         .from(tasks)
         .innerJoin(projects, eq(projects.id, tasks.projectId))
@@ -335,6 +348,7 @@ export async function startWorkspaceControl(
         agentStatus: statusByTask.get(row.id) ?? null,
         lastActivityAt: row.lastInteractedAt,
         initiativeId: row.initiativeId,
+        markedDone: row.status === 'done',
       }));
     },
 
@@ -370,6 +384,51 @@ export async function startWorkspaceControl(
         provider: row.provider ?? 'claude',
         ...(options && { options }),
       };
+    },
+
+    async setWorkspaceDone(taskId, done) {
+      await taskService.updateTaskStatus(taskId, done ? 'done' : 'in_progress', telemetry);
+      checkDependencies();
+    },
+
+    async branchMergedInto(taskId) {
+      const [row] = await db
+        .select({
+          projectId: tasks.projectId,
+          createdAt: tasks.createdAt,
+          workspaceConfig: workspaces.config,
+        })
+        .from(tasks)
+        .innerJoin(workspaces, eq(workspaces.id, tasks.workspaceId))
+        .where(eq(tasks.id, taskId))
+        .limit(1);
+      const setup = row?.workspaceConfig?.git;
+      if (!row || setup?.kind !== 'create-branch') return null;
+      const repoPath = await repositoryPath(row.projectId);
+      if (!repoPath) return null;
+      const base = setup.fromBranch;
+      const candidates = [
+        ...(base.remote ? [`refs/remotes/${base.remote.name}/${base.branch}`] : []),
+        `refs/remotes/origin/${base.branch}`,
+        `refs/heads/${base.branch}`,
+      ];
+      // A fresh branch is trivially "merged" (it is the base commit), so its tip must also be
+      // a commit made after the workspace started.
+      const tipTime = Number(
+        await git(repoPath, ['log', '-1', '--format=%ct', `refs/heads/${setup.branchName}`])
+      );
+      const createdAt = Date.parse(row.createdAt.replace(' ', 'T') + 'Z') / 1000;
+      if (!Number.isFinite(tipTime) || !(tipTime > createdAt)) return null;
+      for (const ref of new Set(candidates)) {
+        const merged = await gitSucceeds(repoPath, [
+          'merge-base',
+          '--is-ancestor',
+          `refs/heads/${setup.branchName}`,
+          ref,
+        ]);
+        if (merged) return base.branch;
+      }
+      return null;
     },
 
     archiveWorkspace: (projectId, taskId) => taskService.archiveTask(projectId, taskId, telemetry),
@@ -461,6 +520,26 @@ export async function startWorkspaceControl(
   if (extras.appWire)
     deps.appApi = new AppApi(appApiCatalog(desktopDomainContracts), extras.appWire);
   const service = new WorkspaceControlService(deps);
+
+  // Dependencies: dropped with archived or deleted workspaces; ones that look done (merged,
+  // marked done) are announced to the lead on a timer and when a workspace's agent stops.
+  function checkDependencies() {
+    service
+      .checkDependencies()
+      .catch((error: unknown) => log.warn('Workspace dependency check failed', { error }));
+  }
+  const dropDependencies = (taskId: string) => {
+    initiatives
+      .removeDependencies([taskId])
+      .catch((error: unknown) => log.warn('Dropping workspace dependencies failed', { error }));
+  };
+  const stopArchiveHook = taskService.on('task:archived', dropDependencies);
+  const stopDeleteHook = taskService.on('task:deleted', dropDependencies);
+  const stopStatusChecks = extras.onAgentEvent?.((event) => {
+    if (event.type === 'stop') checkDependencies();
+  });
+  const dependencyTimer = setInterval(checkDependencies, DEPENDENCY_CHECK_INTERVAL_MS);
+  dependencyTimer.unref?.();
   const endpoint = await startControlMcpEndpoint({
     service,
     endpointFile: extras.endpointFile,
@@ -473,6 +552,10 @@ export async function startWorkspaceControl(
     async close() {
       stopDelivery();
       stopEvents?.();
+      stopStatusChecks?.();
+      stopArchiveHook();
+      stopDeleteHook();
+      clearInterval(dependencyTimer);
       await endpoint.close();
     },
   };

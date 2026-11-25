@@ -351,6 +351,13 @@
       "when": 1794332676072,
       "tag": "0049_smart_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1795630692763,
+      "tag": "0050_ambiguous_harrier",
+      "breakpoints": true
     }
   ]
 }

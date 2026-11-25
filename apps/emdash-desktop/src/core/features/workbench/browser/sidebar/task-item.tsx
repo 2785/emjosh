@@ -1,7 +1,11 @@
-import { ContextMenu } from '@emdash/ui/react/primitives';
-import { Crown, Layers } from 'lucide-react';
+import { ContextMenu, Tooltip } from '@emdash/ui/react/primitives';
+import { CircleCheck, Crown, Layers, Unlink } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import { getInitiativesClient } from '@core/features/initiatives/api/browser/client';
+import {
+  type TaskDependencyView,
+  taskDependencyView,
+} from '@core/features/initiatives/api/browser/dependency-view';
 import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
 import { getProjectStore } from '@core/features/projects/api/browser/stores/project-selectors';
 import { projectViewDef } from '@core/features/projects/contributions/views';
@@ -97,6 +101,8 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
   const initiativeId = registeredTaskData(task)?.initiativeId ?? null;
   const initiative = initiativeId ? getInitiativesStore().byId.get(initiativeId) : undefined;
   const isLead = initiative?.leadTaskId === taskId;
+  const dependencies = initiative && !isLead ? taskDependencyView(initiative, taskId) : undefined;
+  const isMarkedDone = registeredTaskData(task)?.status === 'done';
 
   const workspaceStore = getTaskWorkspace(projectId, taskId);
   const git = getTaskGitCheckoutStore(projectId, taskId);
@@ -132,6 +138,26 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
             >
               <Crown className="size-4" />
               Make initiative lead
+            </ContextMenu.Item>
+          )}
+          {initiative && (
+            <ContextMenu.Item
+              onClick={() => void task.updateStatus(isMarkedDone ? 'in_progress' : 'done')}
+            >
+              <CircleCheck className="size-4" />
+              {isMarkedDone ? 'Mark not done' : 'Mark done'}
+            </ContextMenu.Item>
+          )}
+          {dependencies && dependencies.dependsOn.length > 0 && (
+            <ContextMenu.Item
+              onClick={() =>
+                void getInitiativesClient().then((client) =>
+                  client.setDependencies({ taskId, dependsOnTaskIds: [] })
+                )
+              }
+            >
+              <Unlink className="size-4" />
+              Remove dependencies
             </ContextMenu.Item>
           )}
           <ContextMenu.Item
@@ -171,6 +197,9 @@ export const SidebarTaskItem = observer(function SidebarTaskItem({
               className="size-3.5 shrink-0 text-foreground-tertiary-passive"
             />
           )}
+          {dependencies && rowVariant === 'underInitiative' && (
+            <DependencyRank view={dependencies} />
+          )}
           <span
             className={cn(
               'min-w-0 flex-1 truncate text-left transition-colors',
@@ -204,3 +233,49 @@ const RenderPrBadge = observer(function RenderPrBadge({ task }: { task: TaskStor
     </span>
   ) : null;
 });
+
+/** The task's place in its initiative's landing order, with what it waits on on hover. */
+function DependencyRank({ view }: { view: TaskDependencyView }) {
+  const waiting = view.dependsOn.filter((dependency) => !dependency.looksDone);
+  const done = view.dependsOn.filter((dependency) => dependency.looksDone);
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger
+        render={
+          <span
+            aria-label={view.rank ? `Lands ${view.rank}` : 'In a dependency cycle'}
+            className={cn(
+              'flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[10px] tabular-nums',
+              view.rank
+                ? waiting.length > 0
+                  ? 'bg-background-2 text-foreground-tertiary-passive'
+                  : 'bg-background-2 text-foreground-secondary'
+                : 'bg-background-2 text-foreground-destructive'
+            )}
+          >
+            {view.rank ?? '!'}
+          </span>
+        }
+      />
+      <Tooltip.Content>
+        <div className="flex flex-col gap-0.5 text-xs">
+          <span>
+            {view.inCycle
+              ? 'In a dependency cycle'
+              : view.rank
+                ? `Lands in step ${view.rank}`
+                : 'Waits on a dependency cycle'}
+          </span>
+          {waiting.length > 0 && (
+            <span>Waiting on {waiting.map((dependency) => dependency.name).join(', ')}</span>
+          )}
+          {done.map((dependency) => (
+            <span key={dependency.taskId}>
+              {dependency.name} looks done ({dependency.looksDone})
+            </span>
+          ))}
+        </div>
+      </Tooltip.Content>
+    </Tooltip.Root>
+  );
+}

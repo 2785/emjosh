@@ -1,5 +1,6 @@
 import { defineContract, eventStream, procedure } from '@emdash/wire/rpc';
 import { z } from 'zod';
+import type { DependencyEdge } from './dependency-order';
 
 export type Initiative = {
   id: string;
@@ -11,6 +12,13 @@ export type Initiative = {
   taskIds: string[];
   /** The task orchestrating the initiative; null when it has none. */
   leadTaskId: string | null;
+  /** What its active tasks declared they depend on; usually empty. */
+  dependencies: InitiativeDependency[];
+};
+
+export type InitiativeDependency = DependencyEdge & {
+  /** Why the dependency looked done when the lead was told (e.g. "PR #12 merged"); else null. */
+  doneNotice: string | null;
 };
 
 export type InitiativeMessage = {
@@ -53,6 +61,11 @@ export const initiativesContract = defineContract({
   }),
   setTaskInitiative: procedure({
     input: z.object({ taskIds: z.array(z.string()), initiativeId: z.string().nullable() }),
+    output: z.void(),
+  }),
+  /** Replaces what a task depends on (tasks of its initiative); rejects cycles. */
+  setDependencies: procedure({
+    input: z.object({ taskId: z.string(), dependsOnTaskIds: z.array(z.string()) }),
     output: z.void(),
   }),
   messages: procedure({

@@ -1,4 +1,9 @@
-import type { Initiative, InitiativeMessage } from '@core/features/initiatives/api/contract';
+import type {
+  Initiative,
+  InitiativeDependency,
+  InitiativeMessage,
+} from '@core/features/initiatives/api/contract';
+import { dependencyOrder } from '@core/features/initiatives/api/dependency-order';
 import { ensureUniqueTaskDisplayName, isRandomTaskName } from '@core/features/tasks/api/task-names';
 import type { AppApi } from './app-api';
 
@@ -27,7 +32,28 @@ export type ControlWorkspace = {
   agentStatus: string | null;
   lastActivityAt: string | null;
   initiativeId: string | null;
+  /** The user or the lead marked the workspace done (its task status). */
+  markedDone?: boolean;
   pullRequest: ControlPullRequest | null;
+  /**
+   * The order its initiative's workspaces should land in, from what they declared they depend
+   * on. Absent unless a workspace in its initiative declared a dependency.
+   */
+  dependencyOrder?: WorkspaceDependencyOrder;
+};
+
+export type WorkspaceDependencyOrder = {
+  /** 1 lands first; workspaces that can land in parallel share a rank. Null on or behind a cycle. */
+  rank: number | null;
+  inCycle?: true;
+  dependsOn: {
+    workspaceId: string;
+    name: string;
+    /** Why it looks done (e.g. "PR #12 merged"): the dependency can probably be dropped. */
+    looksDone: string | null;
+  }[];
+  /** The workspaces it depends on that don't look done yet. */
+  waitingOn: string[];
 };
 
 export type CreateWorkspaceInput = {
@@ -65,6 +91,13 @@ export type ControlInitiatives = {
   subscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
   unsubscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
   setTaskInitiative(taskIds: string[], initiativeId: string | null): Promise<void>;
+  /** Every live dependency; stale ones (archived or deleted tasks) are dropped on the way. */
+  dependencies(): Promise<(InitiativeDependency & { initiativeId: string })[]>;
+  setDependencies(taskId: string, dependsOnTaskIds: string[]): Promise<void>;
+  setDependencyDoneNotice(
+    dependency: { taskId: string; dependsOnTaskId: string },
+    doneNotice: string | null
+  ): Promise<void>;
   initiativeOfTask(taskId: string): Promise<Initiative | null>;
   post(input: {
     initiativeId: string;
@@ -116,6 +149,10 @@ export type WorkspaceControlDeps = {
   archiveWorkspace(projectId: string, taskId: string): Promise<void>;
   restoreWorkspace(projectId: string, taskId: string): Promise<void>;
   renameWorkspace(projectId: string, taskId: string, name: string): Promise<void>;
+  /** Sets or clears the workspace's done mark (its task status). */
+  setWorkspaceDone?(taskId: string, done: boolean): Promise<void>;
+  /** The base branch the workspace's branch was merged into since it started; else null. */
+  branchMergedInto?(workspaceId: string): Promise<string | null>;
   createWorkspace(
     input: CreateWorkspaceInput & {
       provider: string | undefined;
@@ -241,14 +278,187 @@ export class WorkspaceControlService {
       projectId: filter.projectId,
       includeArchived: filter.includeArchived ?? false,
     });
-    return Promise.all(
+    const pullRequests = new Map<string, Promise<ControlPullRequest | null>>();
+    const workspaces = await Promise.all(
       rows.map(async (row) => ({
         ...row,
-        pullRequest: row.branch
-          ? await this.deps.pullRequestForBranch(row.projectId, row.branch).catch(() => null)
-          : null,
+        pullRequest: await this.pullRequestOf(row, pullRequests),
       }))
     );
+    const orders = await this.dependencyOrders(pullRequests).catch(() => new Map());
+    return workspaces.map((workspace) => {
+      const order = orders.get(workspace.id);
+      return order ? { ...workspace, dependencyOrder: order } : workspace;
+    });
+  }
+
+  private pullRequestOf(
+    row: { id: string; projectId: string; branch: string | null },
+    cache: Map<string, Promise<ControlPullRequest | null>>
+  ): Promise<ControlPullRequest | null> {
+    let pending = cache.get(row.id);
+    if (!pending) {
+      pending = row.branch
+        ? this.deps.pullRequestForBranch(row.projectId, row.branch).catch(() => null)
+        : Promise.resolve(null);
+      cache.set(row.id, pending);
+    }
+    return pending;
+  }
+
+  /**
+   * Why a workspace looks done, so depending on it no longer makes sense: marked done, its PR
+   * merged, or its branch merged into the base branch. Null when it doesn't.
+   */
+  private async looksDone(
+    row: Omit<ControlWorkspace, 'pullRequest'>,
+    pullRequests: Map<string, Promise<ControlPullRequest | null>>
+  ): Promise<string | null> {
+    if (row.markedDone) return 'marked done';
+    const pr = await this.pullRequestOf(row, pullRequests);
+    if (pr?.state === 'merged') return pr.number ? `PR #${pr.number} merged` : 'its PR merged';
+    const base = await this.deps.branchMergedInto?.(row.id).catch(() => null);
+    return base ? `branch merged into ${base}` : null;
+  }
+
+  private checking: Promise<Map<string, WorkspaceDependencyOrder>> | null = null;
+
+  /**
+   * The dependency order of every workspace in an initiative with dependencies, keyed by
+   * workspace id. Tells each initiative's lead (once per dependency) when a workspace depends on
+   * one that looks done, so the lead can drop the dependency; it is not dropped automatically.
+   */
+  checkDependencies(): Promise<Map<string, WorkspaceDependencyOrder>> {
+    return this.dependencyOrders(new Map());
+  }
+
+  private dependencyOrders(
+    pullRequests: Map<string, Promise<ControlPullRequest | null>>
+  ): Promise<Map<string, WorkspaceDependencyOrder>> {
+    // One check at a time, so a dependency that looks done is announced once.
+    this.checking ??= this.computeDependencyOrders(pullRequests).finally(() => {
+      this.checking = null;
+    });
+    return this.checking;
+  }
+
+  private async computeDependencyOrders(
+    pullRequests: Map<string, Promise<ControlPullRequest | null>>
+  ): Promise<Map<string, WorkspaceDependencyOrder>> {
+    const result = new Map<string, WorkspaceDependencyOrder>();
+    const initiatives = this.deps.initiatives;
+    if (!initiatives) return result;
+    const dependencies = await initiatives.dependencies();
+    if (dependencies.length === 0) return result;
+
+    const active = await this.deps.listWorkspaces({ includeArchived: false });
+    const byId = new Map(active.map((row) => [row.id, row]));
+    const doneReasons = new Map<string, string | null>();
+    for (const id of new Set(dependencies.map((d) => d.dependsOnTaskId))) {
+      const row = byId.get(id);
+      doneReasons.set(id, row ? await this.looksDone(row, pullRequests) : null);
+    }
+
+    for (const initiativeId of new Set(dependencies.map((d) => d.initiativeId))) {
+      const edges = dependencies.filter((d) => d.initiativeId === initiativeId);
+      const members = active.filter((row) => row.initiativeId === initiativeId);
+      const order = dependencyOrder(
+        members.map((row) => row.id),
+        edges
+      );
+      for (const member of members) {
+        const dependsOn = edges
+          .filter((edge) => edge.taskId === member.id)
+          .map((edge) => ({
+            workspaceId: edge.dependsOnTaskId,
+            name: byId.get(edge.dependsOnTaskId)?.name ?? edge.dependsOnTaskId,
+            looksDone: doneReasons.get(edge.dependsOnTaskId) ?? null,
+          }));
+        result.set(member.id, {
+          rank: order.ranks.get(member.id) ?? null,
+          ...(order.inCycle.has(member.id) ? { inCycle: true as const } : {}),
+          dependsOn,
+          waitingOn: dependsOn.filter((d) => !d.looksDone).map((d) => d.workspaceId),
+        });
+      }
+      await this.announceDoneDependencies(initiativeId, edges, byId, doneReasons);
+    }
+    return result;
+  }
+
+  private async announceDoneDependencies(
+    initiativeId: string,
+    edges: InitiativeDependency[],
+    byId: Map<string, { name: string }>,
+    doneReasons: Map<string, string | null>
+  ): Promise<void> {
+    const initiatives = this.requireInitiatives();
+    let leadTaskId: string | null | undefined;
+    for (const edge of edges) {
+      const reason = doneReasons.get(edge.dependsOnTaskId) ?? null;
+      if (reason === edge.doneNotice) continue;
+      await initiatives.setDependencyDoneNotice(edge, reason);
+      // Only newly done dependencies are announced; one that stopped looking done is re-armed.
+      if (!reason || edge.doneNotice) continue;
+      leadTaskId ??= (await initiatives.get(initiativeId))?.leadTaskId ?? null;
+      const name = (id: string) => byId.get(id)?.name ?? id;
+      await initiatives.post({
+        initiativeId,
+        fromTaskId: null,
+        toTaskId: leadTaskId,
+        kind: 'event',
+        body:
+          `Workspace "${name(edge.taskId)}" depends on "${name(edge.dependsOnTaskId)}", which ` +
+          `looks done (${reason}). If so, drop the dependency with set_workspace_dependencies.`,
+      });
+    }
+  }
+
+  /**
+   * Replaces what a workspace depends on (workspaces of its initiative that should land first);
+   * an empty list removes them. Only the initiative's lead (or a client outside Emjosh) may.
+   */
+  async setWorkspaceDependencies(
+    caller: ControlCaller,
+    input: { workspaceId: string; dependsOn: string[] }
+  ): Promise<ControlWorkspace> {
+    const initiatives = this.requireInitiatives();
+    const initiative = await initiatives.initiativeOfTask(input.workspaceId);
+    if (!initiative) throw new Error(`Workspace '${input.workspaceId}' is not in an initiative.`);
+    const taskId = await this.callerTaskId(caller);
+    if (taskId && taskId !== initiative.leadTaskId) {
+      throw new Error(`Only the lead of initiative "${initiative.name}" sets its dependencies.`);
+    }
+    await initiatives.setDependencies(input.workspaceId, input.dependsOn);
+    return this.requireWorkspace(input.workspaceId);
+  }
+
+  /**
+   * Marks a workspace done (or not): workspaces depending on it are flagged and the lead told.
+   * The initiative's lead may mark any of its workspaces; a workspace may mark itself.
+   */
+  async markWorkspaceDone(
+    caller: ControlCaller,
+    input: { workspaceId: string; done: boolean }
+  ): Promise<ControlWorkspace> {
+    if (!this.deps.setWorkspaceDone) throw new Error('Marking workspaces done is not available.');
+    const taskId = await this.callerTaskId(caller);
+    if (taskId && taskId !== input.workspaceId) {
+      const initiative = await this.deps.initiatives?.initiativeOfTask(input.workspaceId);
+      if (!initiative || initiative.leadTaskId !== taskId) {
+        throw new Error('Only the workspace itself or its initiative lead can mark it done.');
+      }
+    }
+    await this.deps.setWorkspaceDone(input.workspaceId, input.done);
+    return this.requireWorkspace(input.workspaceId);
+  }
+
+  private async requireWorkspace(workspaceId: string): Promise<ControlWorkspace> {
+    const workspace = (await this.listWorkspaces({ includeArchived: true })).find(
+      (candidate) => candidate.id === workspaceId
+    );
+    if (!workspace) throw new Error(`Workspace '${workspaceId}' was not found.`);
+    return workspace;
   }
 
   async currentWorkspace(
