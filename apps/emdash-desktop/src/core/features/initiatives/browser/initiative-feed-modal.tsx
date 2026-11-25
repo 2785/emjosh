@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { getInitiativesClient } from '@core/features/initiatives/api/browser/client';
 import { getInitiativesStore } from '@core/features/initiatives/api/browser/initiatives-store';
 import { isInitiativeEvent, type InitiativeMessage } from '@core/features/initiatives/api/contract';
-import { stripWorkspaceLinks } from '@core/features/initiatives/api/labels';
+import { splitWorkspaceLinks } from '@core/features/initiatives/api/labels';
 import { InitiativeLabel } from '@core/features/initiatives/contributions/browser/initiative-label';
-import { useModalController } from '@core/manifests/browser/modal-api';
+import { openWorkspaceLink } from '@core/features/workspace-control/api/browser/open-workspace';
+import { useModalController, useOpenModal } from '@core/manifests/browser/modal-api';
 import { defineModal } from '@core/primitives/modals/react';
 import { cn } from '@core/primitives/styling/browser/cn';
 import { findTask } from './task-lookup';
@@ -25,6 +26,24 @@ export const InitiativeFeedModal = observer(function InitiativeFeedModal({
   const controller = useModalController('initiativeFeedModal');
   const initiative = getInitiativesStore().byId.get(initiativeId);
   const labels = initiative?.labels ?? {};
+  const openModal = useOpenModal('confirmActionModal');
+  const openLinkedWorkspace = (workspaceId: string) => {
+    void openWorkspaceLink(workspaceId, async (name) => {
+      const outcome = await openModal({
+        title: 'Unarchive workspace',
+        description: `"${name}" is archived. Unarchive it and open it?`,
+        confirmLabel: 'Unarchive and open',
+      });
+      return outcome.success;
+    })
+      .then((result) => {
+        if (result === 'not-found') toast.error('That workspace no longer exists');
+        if (result === 'opened') controller.dismiss();
+      })
+      .catch((error: unknown) =>
+        toast.error('Could not open the workspace', { description: String(error) })
+      );
+  };
   const [messages, setMessages] = useState<InitiativeMessage[]>([]);
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -115,7 +134,20 @@ export const InitiativeFeedModal = observer(function InitiativeFeedModal({
                   isInitiativeEvent(message.kind) && 'text-foreground-muted italic'
                 )}
               >
-                {stripWorkspaceLinks(message.body)}
+                {splitWorkspaceLinks(message.body).map((part, index) =>
+                  'workspaceId' in part ? (
+                    <button
+                      key={index}
+                      type="button"
+                      className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded border border-border px-1 align-baseline text-[10px] leading-none font-semibold text-foreground-secondary not-italic hover:bg-background-2"
+                      onClick={() => openLinkedWorkspace(part.workspaceId)}
+                    >
+                      {part.label}
+                    </button>
+                  ) : (
+                    part.text
+                  )
+                )}
               </p>
             </div>
           ))}
