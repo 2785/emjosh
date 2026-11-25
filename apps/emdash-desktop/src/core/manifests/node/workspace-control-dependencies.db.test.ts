@@ -16,6 +16,11 @@ describe('workspace dependencies', () => {
   const mergedIntoBase = new Set<string>();
   /** "web>api": web's branch contains api's work. */
   const contains = new Set<string>();
+  /** Workspaces with uncommitted changes, and what each agent chat was sent. */
+  const dirty = new Set<string>();
+  const chats = new Map<string, string[]>();
+  /** Workspaces whose agent answers a handoff request (by calling handoff_summary). */
+  const answering = new Set<string>();
   const lead = { conversationId: 'conv-lead' };
   const api = { conversationId: 'conv-api' };
 
@@ -23,6 +28,9 @@ describe('workspace dependencies', () => {
     merged.clear();
     mergedIntoBase.clear();
     contains.clear();
+    dirty.clear();
+    chats.clear();
+    answering.clear();
     fixture = await openFixture('empty');
     fixture.db.insert(projects).values({ id: 'p', name: 'p' }).run();
     for (const id of IDS) {
@@ -57,7 +65,29 @@ describe('workspace dependencies', () => {
           ? { url: `https://example.com/${branch}`, number: 7, title: branch, state: 'merged' }
           : null,
       branchMergedInto: async (taskId) => (mergedIntoBase.has(taskId) ? 'main' : null),
-      branchContains: async (taskId, otherTaskId) => contains.has(`${taskId}>${otherTaskId}`),
+      workspaceTip: async (taskId) => ({
+        projectId: 'p',
+        path: '/repo',
+        sha: taskId,
+        workedOn: taskId !== 'lead',
+      }),
+      isAncestor: async (_cwd, ancestor, descendant) =>
+        ancestor === descendant || contains.has(`${descendant}>${ancestor}`),
+      uncommittedChanges: async (taskId) => (dirty.has(taskId) ? [' M src/app.ts'] : []),
+      commitLog: async (taskId) => [`abc1234 Add ${taskId} endpoint`],
+      sendToWorkspaceChat: async (taskId, text) => {
+        chats.set(taskId, [...(chats.get(taskId) ?? []), text]);
+        if (answering.has(taskId) && text.includes('handoff_summary')) {
+          setTimeout(() => {
+            void service.submitHandoff(
+              { conversationId: `conv-${taskId}` },
+              { text: `${taskId}: added the endpoint; open: docs.` }
+            );
+          }, 0);
+        }
+        return taskId !== 'docs';
+      },
+      handoffTimeoutMs: 50,
       setWorkspaceDone: async (taskId, done) => {
         fixture.db
           .update(tasks)
@@ -69,7 +99,13 @@ describe('workspace dependencies', () => {
         taskId: conversationId.replace(/^conv-/, ''),
         provider: 'claude',
       }),
-      archiveWorkspace: async () => {},
+      archiveWorkspace: async (_projectId, taskId) => {
+        fixture.db
+          .update(tasks)
+          .set({ archivedAt: '2026-11-25' })
+          .where(eq(tasks.id, taskId))
+          .run();
+      },
       restoreWorkspace: async () => {},
       renameWorkspace: async () => {},
       addProject: async () => ({ id: 'x', name: 'x', path: '/x' }),
@@ -233,6 +269,7 @@ describe('workspace dependencies', () => {
     ]);
     // Dropped and announced; the remaining one is only flagged as looking done.
     expect(await leadEvents()).toEqual([
+      expect.stringContaining('"api"\'s branch is contained in "web"\'s'),
       'Dropped the dependency of "web" on "api": its branch already contains "api"\'s work.',
       expect.stringContaining('"docs" depends on "api", which looks done (PR #7 merged)'),
     ]);
@@ -256,5 +293,103 @@ describe('workspace dependencies', () => {
     expect((await orders()).web).toEqual({ rank: 2, waitingOn: ['api'] });
     await service.markWorkspaceDone(lead, { workspaceId: 'api', done: true });
     expect(await leadEvents()).toHaveLength(2);
+  });
+
+  describe('folding workspaces', () => {
+    it('tells the lead once when one branch is contained in another, in either order', async () => {
+      contains.add('web>api');
+      // Same commit both ways: reported once.
+      contains.add('docs>web').add('web>docs');
+      await service.checkDependencies();
+      await service.checkDependencies();
+
+      expect(await leadEvents()).toEqual([
+        '"api"\'s branch is contained in "web"\'s; fold "api" into "web"? (merge_workspaces from ' +
+          'api into web)',
+        '"docs"\'s branch is contained in "web"\'s; fold "docs" into "web"? (merge_workspaces ' +
+          'from docs into web)',
+      ]);
+    });
+
+    it('refuses uncommitted changes, work missing from the target, and non-leads', async () => {
+      contains.add('web>api');
+      await expect(service.mergeWorkspaces(api, { from: 'api', into: 'web' })).rejects.toThrow(
+        'Only the lead'
+      );
+      await expect(service.mergeWorkspaces(lead, { from: 'web', into: 'api' })).rejects.toThrow(
+        'has commits that "api"\'s branch doesn\'t contain'
+      );
+      dirty.add('api');
+      await expect(service.mergeWorkspaces(lead, { from: 'api', into: 'web' })).rejects.toThrow(
+        '"api" has 1 uncommitted change(s)'
+      );
+      await expect(service.mergeWorkspaces(lead, { from: 'lead', into: 'web' })).rejects.toThrow(
+        "The lead can't be folded away"
+      );
+      expect(chats.size).toBe(0);
+    });
+
+    it("hands the agent's summary over, moves dependencies, and archives the folded one", async () => {
+      contains.add('web>api');
+      answering.add('api');
+      await service.setWorkspaceDependencies(lead, { workspaceId: 'api', dependsOn: ['lead'] });
+      await service.setWorkspaceDependencies(lead, { workspaceId: 'docs', dependsOn: ['api'] });
+
+      const started = await service.mergeWorkspaces(lead, { from: 'api', into: 'web' });
+      expect(started).toMatchObject({ started: true, from: 'api', into: 'web' });
+      await service.waitForFold('api');
+
+      expect(chats.get('api')).toEqual([expect.stringContaining('call the handoff_summary tool')]);
+      expect(chats.get('web')).toEqual([
+        expect.stringMatching(
+          /^\[Handoff from workspace "api".*written by its agent.*\n\napi: added the endpoint; open: docs\.$/s
+        ),
+      ]);
+      expect(
+        fixture.db
+          .select()
+          .from(taskDependencies)
+          .all()
+          .map((row) => `${row.taskId}>${row.dependsOnTaskId}`)
+          .sort()
+      ).toEqual(['docs>web', 'web>lead']);
+      expect(fixture.db.select().from(tasks).where(eq(tasks.id, 'api')).get()?.archivedAt).not.toBe(
+        null
+      );
+      expect((await leadEvents()).at(-1)).toMatch(
+        /^Folded "api" into "web" and archived "api"\. Handoff summary \(written by its agent\) delivered to "web"\./
+      );
+    });
+
+    it("falls back to its commits and feed messages when the agent doesn't answer", async () => {
+      contains.add('web>api');
+      await service.postMessage(api, { text: 'API part done, PR #3 up.', toWorkspaceId: 'lead' });
+
+      await service.mergeWorkspaces(lead, { from: 'api', into: 'web' });
+      await service.waitForFold('api');
+
+      expect(chats.get('web')?.[0]).toContain("its agent didn't answer in time");
+      expect(chats.get('web')?.[0]).toContain('- abc1234 Add api endpoint');
+      expect(chats.get('web')?.[0]).toContain('- API part done, PR #3 up.');
+      await expect(service.submitHandoff(api, { text: 'late' })).rejects.toThrow('No fold');
+    });
+
+    it('stops without archiving when the folded workspace changes while handing off', async () => {
+      contains.add('web>api');
+      answering.add('api');
+      const { sendToWorkspaceChat } = service['deps'];
+      service['deps'].sendToWorkspaceChat = async (taskId, text) => {
+        if (taskId === 'api') dirty.add('api');
+        return sendToWorkspaceChat!(taskId, text);
+      };
+
+      await service.mergeWorkspaces(lead, { from: 'api', into: 'web' });
+      await service.waitForFold('api');
+
+      expect(fixture.db.select().from(tasks).where(eq(tasks.id, 'api')).get()?.archivedAt).toBe(
+        null
+      );
+      expect((await leadEvents()).at(-1)).toContain('Folding "api" into "web" stopped');
+    });
   });
 });

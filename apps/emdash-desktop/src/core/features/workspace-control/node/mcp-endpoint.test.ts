@@ -91,11 +91,13 @@ describe('control MCP endpoint', () => {
       'create_initiative',
       'create_workspace',
       'current_workspace',
+      'handoff_summary',
       'list_initiatives',
       'list_projects',
       'list_subscriptions',
       'list_workspaces',
       'mark_workspace_done',
+      'merge_workspaces',
       'post_message',
       'read_messages',
       'remove_from_initiative',
@@ -121,6 +123,7 @@ describe('control MCP endpoint', () => {
     expect(client.getInstructions()).toContain("the lead's broadcasts");
     expect(client.getInstructions()).toContain("Don't do a workspace's work on its branch");
     expect(client.getInstructions()).toContain("Don't add dependencies by default");
+    expect(client.getInstructions()).toContain('fold them with merge_workspaces');
     const dependencies = await client.callTool({
       name: 'set_workspace_dependencies',
       arguments: { workspaceId: 't1', dependsOn: [] },

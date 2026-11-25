@@ -68,6 +68,15 @@ export type CreateWorkspaceInput = {
   initiativeId?: string;
 };
 
+export type WorkspaceTip = {
+  projectId: string;
+  /** The worktree, where git commands for it run. */
+  path: string;
+  sha: string;
+  /** Commits were made on it after the workspace started (a fresh branch is its base commit). */
+  workedOn: boolean;
+};
+
 /** What a task listens to beyond messages addressed to it (see InitiativesService). */
 export type InitiativeSubscription = {
   topic: 'messages' | 'events';
@@ -112,7 +121,10 @@ export type ControlInitiatives = {
     initiativeId: string;
     forTaskId?: string;
     afterId?: string;
+    limit?: number;
   }): Promise<InitiativeMessage[]>;
+  /** Moves `fromTaskId`'s dependencies and dependents onto `intoTaskId`; reports skipped ones. */
+  moveDependencies(fromTaskId: string, intoTaskId: string): Promise<{ skipped: string[] }>;
   waitForMessages(
     input: { initiativeId: string; forTaskId?: string; afterId?: string },
     timeoutMs: number
@@ -155,8 +167,18 @@ export type WorkspaceControlDeps = {
   setWorkspaceDone?(taskId: string, done: boolean): Promise<void>;
   /** The base branch the workspace's branch was merged into since it started; else null. */
   branchMergedInto?(workspaceId: string): Promise<string | null>;
-  /** Whether the workspace's branch already contains the other's work (rebased or merged). */
-  branchContains?(workspaceId: string, otherWorkspaceId: string): Promise<boolean>;
+  /** The commit a local worktree workspace is on; null for other workspaces. */
+  workspaceTip?(workspaceId: string): Promise<WorkspaceTip | null>;
+  /** Whether commit `ancestor` is in the history of `descendant`, in the repository at `cwd`. */
+  isAncestor?(cwd: string, ancestor: string, descendant: string): Promise<boolean>;
+  /** The workspace's uncommitted changes (`git status --porcelain` lines). */
+  uncommittedChanges?(workspaceId: string): Promise<string[]>;
+  /** The workspace's commits since its base branch, newest first, one line each. */
+  commitLog?(workspaceId: string): Promise<string[]>;
+  /** Sends text into the workspace's agent chat; false when it has no chat to send to. */
+  sendToWorkspaceChat?(workspaceId: string, text: string): Promise<boolean>;
+  /** How long a fold waits for the folded workspace's agent to hand off (default 10 minutes). */
+  handoffTimeoutMs?: number;
   createWorkspace(
     input: CreateWorkspaceInput & {
       provider: string | undefined;
@@ -352,12 +374,14 @@ export class WorkspaceControlService {
     const result = new Map<string, WorkspaceDependencyOrder>();
     const initiatives = this.deps.initiatives;
     if (!initiatives) return result;
-    const declared = await initiatives.dependencies();
-    if (declared.length === 0) return result;
-
     const active = await this.deps.listWorkspaces({ includeArchived: false });
     const byId = new Map(active.map((row) => [row.id, row]));
-    const dependencies = await this.dropContainedDependencies(declared, byId);
+    const contains = this.containmentCheck();
+    await this.announceContainedWorkspaces(active, contains);
+
+    const declared = await initiatives.dependencies();
+    if (declared.length === 0) return result;
+    const dependencies = await this.dropContainedDependencies(declared, byId, contains);
     if (dependencies.length === 0) return result;
     const doneReasons = new Map<string, string | null>();
     for (const id of new Set(dependencies.map((d) => d.dependsOnTaskId))) {
@@ -401,14 +425,15 @@ export class WorkspaceControlService {
    */
   private async dropContainedDependencies<
     T extends InitiativeDependency & { initiativeId: string },
-  >(dependencies: T[], byId: Map<string, { name: string }>): Promise<T[]> {
-    const branchContains = this.deps.branchContains;
-    if (!branchContains) return dependencies;
+  >(
+    dependencies: T[],
+    byId: Map<string, { name: string }>,
+    contains: (holderId: string, heldId: string) => Promise<boolean>
+  ): Promise<T[]> {
     const initiatives = this.requireInitiatives();
     const kept: T[] = [];
     for (const edge of dependencies) {
-      const contained = await branchContains(edge.taskId, edge.dependsOnTaskId).catch(() => false);
-      if (!contained) {
+      if (!(await contains(edge.taskId, edge.dependsOnTaskId))) {
         kept.push(edge);
         continue;
       }
@@ -426,6 +451,276 @@ export class WorkspaceControlService {
       });
     }
     return kept;
+  }
+
+  /**
+   * Whether one workspace's branch contains another's work (it rebased onto it or merged it
+   * in), for one check: each workspace's tip is read once. A branch without work of its own is
+   * contained in every later one, so it never counts.
+   */
+  private containmentCheck(): (holderId: string, heldId: string) => Promise<boolean> {
+    const { workspaceTip, isAncestor } = this.deps;
+    if (!workspaceTip || !isAncestor) return async () => false;
+    const tips = new Map<string, Promise<WorkspaceTip | null>>();
+    const tipOf = (id: string) => {
+      let tip = tips.get(id);
+      if (!tip) {
+        tip = workspaceTip(id).catch(() => null);
+        tips.set(id, tip);
+      }
+      return tip;
+    };
+    return async (holderId, heldId) => {
+      const [holder, held] = await Promise.all([tipOf(holderId), tipOf(heldId)]);
+      if (!holder || !held?.workedOn || holder.projectId !== held.projectId) return false;
+      return isAncestor(holder.path, held.sha, holder.sha).catch(() => false);
+    };
+  }
+
+  /**
+   * Tells each initiative's lead, once, about workspaces whose branch is contained in another
+   * active workspace's of the same project, so it can fold them together (merge_workspaces).
+   */
+  private async announceContainedWorkspaces(
+    active: Omit<ControlWorkspace, 'pullRequest'>[],
+    contains: (holderId: string, heldId: string) => Promise<boolean>
+  ): Promise<void> {
+    const initiatives = this.requireInitiatives();
+    const groups = new Map<string, Omit<ControlWorkspace, 'pullRequest'>[]>();
+    for (const row of active) {
+      if (!row.initiativeId) continue;
+      const key = `${row.initiativeId}\0${row.projectId}`;
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+    for (const rows of groups.values()) {
+      if (rows.length < 2) continue;
+      const initiativeId = rows[0]!.initiativeId!;
+      const initiative = await initiatives.get(initiativeId);
+      const members = rows.filter(
+        (row) => row.id !== initiative?.leadTaskId && !this.folds.has(row.id)
+      );
+      const found: { from: (typeof rows)[number]; into: (typeof rows)[number] }[] = [];
+      for (const from of members) {
+        for (const into of members) {
+          if (from.id === into.id || !(await contains(into.id, from.id))) continue;
+          // Two branches on the same commit contain each other: report the pair once.
+          if (from.id > into.id && (await contains(from.id, into.id))) continue;
+          found.push({ from, into });
+        }
+      }
+      if (found.length === 0) continue;
+      const posted = new Set(
+        (await initiatives.messages({ initiativeId, limit: 100_000 })).map((m) => m.body)
+      );
+      for (const { from, into } of found) {
+        const body = containmentNotice(from, into);
+        if (posted.has(body)) continue;
+        await initiatives.post({
+          initiativeId,
+          fromTaskId: null,
+          toTaskId: initiative?.leadTaskId ?? null,
+          kind: 'event',
+          body,
+        });
+      }
+    }
+  }
+
+  // ── Folding workspaces ─────────────────────────────────────────────────────
+
+  /** Folds in progress, by the folded workspace: resolves with its agent's handoff. */
+  private readonly folds = new Map<
+    string,
+    { intoId: string; handoff: (text: string) => void; done: Promise<void> }
+  >();
+
+  /**
+   * Folds workspace `from` into `into` (whose branch already contains all of `from`'s work):
+   * asks `from`'s agent for a handoff summary (falling back to its commit log and feed messages
+   * if it can't answer in time), delivers it into `into`'s chat, moves `from`'s dependencies
+   * and dependents onto `into`, and archives `from`. Refuses up front if `from` has uncommitted
+   * changes or commits `into` lacks; the rest runs in the background and reports to the
+   * initiative's lead. Only the lead (or a client outside Emjosh) may fold.
+   */
+  async mergeWorkspaces(
+    caller: ControlCaller,
+    input: { from: string; into: string }
+  ): Promise<{ started: true; from: string; into: string; handoff: string }> {
+    const initiatives = this.requireInitiatives();
+    if (input.from === input.into) throw new Error('A workspace cannot be folded into itself.');
+    if (this.folds.has(input.from)) throw new Error('That workspace is already being folded.');
+    const { from, into, initiativeId } = await this.foldPair(caller, input);
+    await this.assertFoldable(from, into);
+
+    let handoff: (text: string) => void = () => {};
+    const handedOff = new Promise<string>((resolve) => {
+      handoff = resolve;
+    });
+    const fold = { intoId: into.id, handoff, done: Promise.resolve() };
+    this.folds.set(from.id, fold);
+    const timeoutMs = this.deps.handoffTimeoutMs ?? 10 * 60_000;
+    fold.done = this.runFold({ from, into, initiativeId, handedOff, timeoutMs })
+      .catch(async (error: unknown) => {
+        await initiatives.post({
+          initiativeId,
+          fromTaskId: null,
+          toTaskId: (await initiatives.get(initiativeId))?.leadTaskId ?? null,
+          kind: 'event',
+          body: `Folding "${from.name}" into "${into.name}" stopped: ${errorMessage(error)}`,
+        });
+      })
+      .finally(() => this.folds.delete(from.id));
+    return {
+      started: true,
+      from: from.id,
+      into: into.id,
+      handoff:
+        `Asked "${from.name}"'s agent for a handoff summary (waiting up to ` +
+        `${Math.round(timeoutMs / 60_000)} min, then falling back to its commit log and feed ` +
+        'messages). You get an event when the fold is done.',
+    };
+  }
+
+  /** Waits for a fold in progress to finish (for tests and callers that need it settled). */
+  async waitForFold(fromId: string): Promise<void> {
+    await this.folds.get(fromId)?.done;
+  }
+
+  /** The folded workspace's agent hands over its context (see mergeWorkspaces). */
+  async submitHandoff(caller: ControlCaller, input: { text: string }): Promise<{ ok: true }> {
+    const taskId = await this.callerTaskId(caller);
+    const fold = taskId ? this.folds.get(taskId) : undefined;
+    if (!fold) throw new Error('No fold is waiting for a handoff from this workspace.');
+    const text = input.text.trim();
+    if (!text) throw new Error('The handoff needs text.');
+    fold.handoff(text);
+    return { ok: true };
+  }
+
+  private async foldPair(caller: ControlCaller, input: { from: string; into: string }) {
+    const initiatives = this.requireInitiatives();
+    const active = await this.deps.listWorkspaces({ includeArchived: false });
+    const from = active.find((row) => row.id === input.from);
+    const into = active.find((row) => row.id === input.into);
+    if (!from || !into) {
+      throw new Error(`Workspace '${from ? input.into : input.from}' is not an active workspace.`);
+    }
+    if (!from.initiativeId || from.initiativeId !== into.initiativeId) {
+      throw new Error('Both workspaces must be in the same initiative.');
+    }
+    if (from.projectId !== into.projectId) {
+      throw new Error('Both workspaces must be in the same project (repository).');
+    }
+    const initiative = await initiatives.get(from.initiativeId);
+    const taskId = await this.callerTaskId(caller);
+    if (taskId && taskId !== initiative?.leadTaskId) {
+      throw new Error(`Only the lead of initiative "${initiative?.name}" folds its workspaces.`);
+    }
+    if (from.id === initiative?.leadTaskId) throw new Error("The lead can't be folded away.");
+    return { from, into, initiativeId: from.initiativeId };
+  }
+
+  /** Throws unless all of `from`'s work is committed and contained in `into`'s branch. */
+  private async assertFoldable(
+    from: { id: string; name: string },
+    into: { id: string; name: string }
+  ): Promise<void> {
+    const { workspaceTip, isAncestor, uncommittedChanges } = this.deps;
+    if (!workspaceTip || !isAncestor || !uncommittedChanges) {
+      throw new Error('Folding workspaces is not available.');
+    }
+    const [fromTip, intoTip] = await Promise.all([workspaceTip(from.id), workspaceTip(into.id)]);
+    if (!fromTip || !intoTip) {
+      throw new Error('Both workspaces need a local worktree to compare their branches.');
+    }
+    const changes = await uncommittedChanges(from.id);
+    if (changes.length > 0) {
+      throw new Error(
+        `"${from.name}" has ${changes.length} uncommitted change(s); commit or discard them ` +
+          `first:\n${changes.slice(0, 10).join('\n')}`
+      );
+    }
+    if (!(await isAncestor(intoTip.path, fromTip.sha, intoTip.sha))) {
+      throw new Error(
+        `"${from.name}" has commits that "${into.name}"'s branch doesn't contain; merge or ` +
+          'rebase them in first.'
+      );
+    }
+  }
+
+  private async runFold(input: {
+    from: Omit<ControlWorkspace, 'pullRequest'>;
+    into: Omit<ControlWorkspace, 'pullRequest'>;
+    initiativeId: string;
+    handedOff: Promise<string>;
+    timeoutMs: number;
+  }): Promise<void> {
+    const { from, into, initiativeId } = input;
+    const initiatives = this.requireInitiatives();
+    const asked =
+      (await this.deps
+        .sendToWorkspaceChat?.(from.id, handoffRequest(from.name, into.name))
+        .catch(() => false)) ?? false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const fromAgent = asked
+      ? await Promise.race([
+          input.handedOff,
+          new Promise<null>((resolve) => {
+            timer = setTimeout(() => resolve(null), input.timeoutMs);
+          }),
+        ])
+      : null;
+    clearTimeout(timer);
+    const summary = fromAgent ?? (await this.fallbackHandoff(from, initiativeId));
+    const source = fromAgent
+      ? 'written by its agent'
+      : asked
+        ? "built from its commits and feed messages; its agent didn't answer in time"
+        : 'built from its commits and feed messages; it has no agent chat to ask';
+
+    // The agent may have changed things while answering.
+    await this.assertFoldable(from, into);
+    const delivered =
+      (await this.deps
+        .sendToWorkspaceChat?.(
+          into.id,
+          `[Handoff from workspace "${from.name}", folded into this one by the initiative lead. ` +
+            `Its branch is already part of yours; this is its context (${source}). Read it ` +
+            `and carry on with your work.]\n\n${summary}`
+        )
+        .catch(() => false)) ?? false;
+    const { skipped } = await initiatives.moveDependencies(from.id, into.id);
+    await this.deps.archiveWorkspace(from.projectId, from.id);
+    await initiatives.post({
+      initiativeId,
+      fromTaskId: null,
+      toTaskId: (await initiatives.get(initiativeId))?.leadTaskId ?? null,
+      kind: 'event',
+      body:
+        `Folded "${from.name}" into "${into.name}" and archived "${from.name}". Handoff summary ` +
+        `(${source}) ${delivered ? `delivered to "${into.name}"` : `could not be delivered to "${into.name}"'s chat`}.` +
+        (skipped.length > 0
+          ? ` Dependencies not moved (would form a cycle): ${skipped.join('; ')}.`
+          : '') +
+        `\n\n${summary}`,
+    });
+  }
+
+  private async fallbackHandoff(
+    from: { id: string; name: string },
+    initiativeId: string
+  ): Promise<string> {
+    const commits = (await this.deps.commitLog?.(from.id).catch(() => [])) ?? [];
+    const posts = (await this.requireInitiatives().messages({ initiativeId, limit: 100_000 }))
+      .filter((message) => message.fromTaskId === from.id && message.kind === 'message')
+      .slice(-5);
+    return [
+      `Commits on "${from.name}" (newest first):`,
+      ...(commits.length > 0 ? commits.slice(0, 30).map((line) => `- ${line}`) : ['- none found']),
+      '',
+      `Its last messages to the initiative:`,
+      ...(posts.length > 0 ? posts.map((m) => `- ${m.body.replace(/\s+/g, ' ')}`) : ['- none']),
+    ].join('\n');
   }
 
   private async announceDoneDependencies(
@@ -891,4 +1186,31 @@ export function leadPrompt(input: {
       '(code changes, builds, test runs, long investigations); send it to a workspace. Do not ' +
       'change code in this workspace.',
   ].join('\n\n');
+}
+
+/** The lead's notice that one workspace's branch is contained in another's. */
+export function containmentNotice(
+  from: { id: string; name: string },
+  into: { id: string; name: string }
+): string {
+  return (
+    `"${from.name}"'s branch is contained in "${into.name}"'s; fold "${from.name}" into ` +
+    `"${into.name}"? (merge_workspaces from ${from.id} into ${into.id})`
+  );
+}
+
+/** What the folded workspace's agent is asked for. */
+export function handoffRequest(fromName: string, intoName: string): string {
+  return (
+    `[From Emjosh: the initiative lead is folding this workspace ("${fromName}") into ` +
+    `"${intoName}", whose branch already contains all of this branch's work. This workspace ` +
+    'will be archived.] Hand over your context: call the handoff_summary tool once with a ' +
+    'concise summary for the agent taking over: what changed and why, decisions made (and ' +
+    "alternatives rejected), and open items or follow-ups. Don't change, commit or push " +
+    'anything now.'
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

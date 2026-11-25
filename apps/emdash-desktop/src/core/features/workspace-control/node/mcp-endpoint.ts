@@ -23,7 +23,7 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - If you lead an initiative (current_workspace shows isLead), you orchestrate and nothing else. Members' messages and status events are delivered into your chat but wait until your turn ends, so keep turns short; any slow or non-trivial work (code changes, builds, test runs, long investigations) goes to a workspace:
   - For each part (find projects with list_projects; if a repository isn't a project yet, add it with add_project or clone_project), call create_workspace with the initiativeId and a self-contained prompt: the goal, that part, the contract the parts must agree on (API shapes, field names, rollout order), that it belongs to the initiative you lead (give your workspace id), and that it should post_message to you when it is done, blocked, or needs a decision. Tell the user which workspaces you started.
   - You receive every message and status event in the initiative, and every member receives your broadcasts. Address one workspace with toWorkspaceId when it concerns only that one. Delivery is on by default; if not, call set_message_delivery. Call wait_for_messages only when you can't continue without an answer.
-  - When workspaces must land in an order (an API before its UI, a shared change before others rebase on it), record it with set_workspace_dependencies; list_workspaces then shows the order. Don't add dependencies by default. When one is announced as looking done, check and drop it.
+  - When workspaces must land in an order (an API before its UI, a shared change before others rebase on it), record it with set_workspace_dependencies; list_workspaces then shows the order. Don't add dependencies by default. When one is announced as looking done, check and drop it. When an event says one workspace's branch is contained in another's, fold them with merge_workspaces (after checking with the user if either still has work in flight).
   - Don't do a workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
 - If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish, get blocked, or need a decision. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
 - Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
@@ -352,6 +352,40 @@ export function buildControlMcpServer(
           done: input.done ?? true,
         })
       )
+  );
+
+  server.registerTool(
+    'merge_workspaces',
+    {
+      description:
+        "Initiative leads: fold workspace `from` into `into` when `into`'s branch already " +
+        "contains all of `from`'s work (you get an event when Emjosh notices). Refuses if " +
+        "`from` has uncommitted changes or commits `into` lacks. Otherwise asks `from`'s agent " +
+        'for a handoff summary (falling back to its commit log and feed messages), delivers it ' +
+        "into `into`'s chat, moves `from`'s dependencies and dependents onto `into`, and " +
+        'archives `from`. Runs in the background; you get an event when it is done.',
+      inputSchema: {
+        from: z.string().describe('The workspace to fold away and archive.'),
+        into: z.string().describe('The workspace that keeps going.'),
+      },
+    },
+    async (input) => json(await service.mergeWorkspaces(caller, input))
+  );
+
+  server.registerTool(
+    'handoff_summary',
+    {
+      description:
+        "Only when Emjosh asks you to: hand over this workspace's context because it is being " +
+        'folded into another workspace. Call once with the summary.',
+      inputSchema: {
+        text: z
+          .string()
+          .min(1)
+          .describe('What changed and why, decisions made, and open items or follow-ups.'),
+      },
+    },
+    async (input) => json(await service.submitHandoff(caller, input))
   );
 
   server.registerTool(

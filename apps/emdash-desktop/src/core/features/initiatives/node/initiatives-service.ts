@@ -214,6 +214,53 @@ export class InitiativesService {
     this.emit({ type: 'initiatives-changed' });
   }
 
+  /**
+   * Moves a task's dependencies and dependents onto another task of its initiative (when one
+   * is folded into the other). Edges that would point at itself or form a cycle are skipped
+   * and reported by name.
+   */
+  async moveDependencies(fromTaskId: string, intoTaskId: string): Promise<{ skipped: string[] }> {
+    const all = (await this.dependencies()).filter(
+      (dependency) => dependency.taskId !== fromTaskId && dependency.dependsOnTaskId !== fromTaskId
+    );
+    const moved = (await this.db.select().from(taskDependencies))
+      .filter((row) => row.taskId === fromTaskId || row.dependsOnTaskId === fromTaskId)
+      .map((row) => ({
+        taskId: row.taskId === fromTaskId ? intoTaskId : row.taskId,
+        dependsOnTaskId: row.dependsOnTaskId === fromTaskId ? intoTaskId : row.dependsOnTaskId,
+      }))
+      .filter((edge) => edge.taskId !== edge.dependsOnTaskId);
+    const skipped: { taskId: string; dependsOnTaskId: string }[] = [];
+    const kept = [...all];
+    for (const edge of moved) {
+      if (kept.some((k) => k.taskId === edge.taskId && k.dependsOnTaskId === edge.dependsOnTaskId))
+        continue;
+      const current = kept.filter((k) => k.taskId === edge.taskId).map((k) => k.dependsOnTaskId);
+      if (findCycle(kept, edge.taskId, [...current, edge.dependsOnTaskId])) {
+        skipped.push(edge);
+        continue;
+      }
+      await this.db.insert(taskDependencies).values(edge);
+      kept.push({ ...edge, doneNotice: null, initiativeId: '' });
+    }
+    await this.db
+      .delete(taskDependencies)
+      .where(
+        or(
+          eq(taskDependencies.taskId, fromTaskId),
+          eq(taskDependencies.dependsOnTaskId, fromTaskId)
+        )
+      );
+    this.emit({ type: 'initiatives-changed' });
+    const names = await this.taskNames(skipped.flatMap((e) => [e.taskId, e.dependsOnTaskId]));
+    return {
+      skipped: skipped.map(
+        (e) =>
+          `"${names.get(e.taskId) ?? e.taskId}" on "${names.get(e.dependsOnTaskId) ?? e.dependsOnTaskId}"`
+      ),
+    };
+  }
+
   async removeDependency(dependency: { taskId: string; dependsOnTaskId: string }): Promise<void> {
     await this.deleteDependency(dependency);
     this.emit({ type: 'initiatives-changed' });
@@ -231,6 +278,7 @@ export class InitiativesService {
   }
 
   private async taskNames(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
     const rows = await this.db
       .select({ id: tasks.id, name: tasks.name })
       .from(tasks)

@@ -430,10 +430,54 @@ export async function startWorkspaceControl(
       return null;
     },
 
-    async branchContains(taskId, otherTaskId) {
-      const [tip, other] = await Promise.all([workspaceTip(taskId), workspaceTip(otherTaskId)]);
-      if (!tip || !other?.workedOn || tip.projectId !== other.projectId) return false;
-      return isAncestor(tip.path, other.sha, tip.sha);
+    async workspaceTip(taskId) {
+      const tip = await workspaceTip(taskId);
+      return (
+        tip && { projectId: tip.projectId, path: tip.path, sha: tip.sha, workedOn: tip.workedOn }
+      );
+    },
+
+    isAncestor,
+
+    async uncommittedChanges(taskId) {
+      const tip = await workspaceTip(taskId);
+      if (!tip) throw new Error('The workspace has no local worktree.');
+      const status = await execFileAsync('git', ['status', '--porcelain'], { cwd: tip.path });
+      return status.stdout.split('\n').filter((line) => line.trim().length > 0);
+    },
+
+    async commitLog(taskId) {
+      const tip = await workspaceTip(taskId);
+      if (!tip) return [];
+      const base = tip.fromBranch;
+      const bases = base
+        ? [
+            ...(base.remote ? [`refs/remotes/${base.remote.name}/${base.branch}`] : []),
+            `refs/remotes/origin/${base.branch}`,
+            `refs/heads/${base.branch}`,
+          ]
+        : [];
+      // The first base ref that exists; without one, just its latest commits.
+      for (const ref of [...bases, null]) {
+        try {
+          const { stdout } = await execFileAsync(
+            'git',
+            ['log', '-n', '30', '--format=%h %s', tip.sha, ...(ref ? ['--not', ref] : [])],
+            { cwd: tip.path }
+          );
+          return stdout.split('\n').filter((line) => line.trim().length > 0);
+        } catch {
+          // Missing ref: try the next.
+        }
+      }
+      return [];
+    },
+
+    async sendToWorkspaceChat(taskId, text) {
+      const conversationId = await primaryConversation(taskId);
+      if (!conversationId) return false;
+      const sent = await sendAcpConversationPrompt(context, conversationId, text);
+      return sent.success;
     },
 
     archiveWorkspace: (projectId, taskId) => taskService.archiveTask(projectId, taskId, telemetry),
