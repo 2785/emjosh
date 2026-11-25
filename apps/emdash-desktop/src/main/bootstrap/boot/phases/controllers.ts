@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { Scope } from '@emdash/shared/concurrency';
 import { connect, memoryTransportPair, type Connection, type Controller } from '@emdash/wire/rpc';
 import { app } from 'electron';
@@ -15,10 +17,12 @@ import { desktopDomainContracts } from '@core/manifests/shared/domain-contracts'
 import { IS_PERSONAL } from '@core/primitives/app-identity/api/app-identity';
 import { agentStatusService } from '@main/core/agent-status/agent-status-service';
 import { controlEndpointFile } from '@main/core/workspace-control/endpoint-file';
+import { createClaudeSearchModel } from '@main/core/workspace-control/search-model';
 import type { DesktopRuntimes } from '@main/gateway/desktop-runtimes';
 import { serveDesktopWire } from '@main/gateway/desktop-wire';
 import { getRemoteControlService } from '@main/host/remote-control';
 import { log } from '@main/lib/logger';
+import { buildLaunchedToolEnv } from '@main/lib/userEnv';
 import { appScope } from '../../core/app-scope';
 import { createDesktopWireOptions } from '../wiring';
 import type { DatabaseBundle } from './database';
@@ -86,6 +90,14 @@ export async function bootControllers(
             version: app.getVersion(),
             logger: log,
             onAgentEvent: (handler) => agentStatusService.on('agent:event', handler),
+            transcripts: {
+              acpHistory: join(app.getPath('userData'), 'acp-history'),
+              claudeProjects: join(
+                process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'),
+                'projects'
+              ),
+            },
+            runSearchModel: createClaudeSearchModel({ env: buildLaunchedToolEnv }),
           }
         );
         scope.add(() => endpoint.close());

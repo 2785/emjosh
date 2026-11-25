@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { access, readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -71,5 +71,24 @@ export async function isAncestor(
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * The branch checked out in the worktree or repository at `path`, read from its HEAD file
+ * (no git process, so it is cheap for every workspace). Null when detached or unreadable.
+ */
+export async function checkedOutBranch(path: string): Promise<string | null> {
+  try {
+    let gitDir = join(path, '.git');
+    const dotGit = await readFile(gitDir, 'utf8').catch(() => null);
+    // A worktree's .git is a file pointing at its git dir; a repository's is the directory.
+    const pointer = dotGit && /^gitdir:\s*(.+)$/m.exec(dotGit);
+    if (pointer) gitDir = resolve(path, pointer[1]!.trim());
+    const head = (await readFile(join(gitDir, 'HEAD'), 'utf8')).trim();
+    const ref = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+    return ref ? ref[1]! : null;
+  } catch {
+    return null;
   }
 }

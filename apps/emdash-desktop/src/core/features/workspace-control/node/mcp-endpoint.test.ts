@@ -67,6 +67,12 @@ describe('control MCP endpoint', () => {
     return client;
   }
 
+  it('tells agents to link workspaces with the emjosh scheme', async () => {
+    await start();
+    expect(CONTROL_MCP_INSTRUCTIONS).toContain('emjosh://workspace/<workspace id>');
+    expect(CONTROL_MCP_INSTRUCTIONS).toContain('find_workspaces');
+  });
+
   it('publishes its URL, token and instructions in a file only the user can read', async () => {
     const { file } = await start();
 
@@ -96,6 +102,7 @@ describe('control MCP endpoint', () => {
       'create_initiative',
       'create_workspace',
       'current_workspace',
+      'find_workspaces',
       'handoff_summary',
       'list_initiatives',
       'list_projects',

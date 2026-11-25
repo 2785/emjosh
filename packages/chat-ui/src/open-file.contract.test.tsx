@@ -249,4 +249,35 @@ describe('open-file command contract', () => {
       source: 'prose-mention',
     });
   });
+  it('opens an emjosh workspace link through onOpenWorkspace instead of navigating', async () => {
+    const onOpenWorkspace = vi.fn();
+    const host = mount(
+      [
+        {
+          kind: 'message',
+          id: 'message-1',
+          role: 'assistant',
+          text: 'It is [Fix login](emjosh://workspace/abc-123).',
+        },
+      ],
+      {
+        classifyLink: (href) =>
+          href.startsWith('emjosh://workspace/')
+            ? { kind: 'workspace', workspaceId: href.slice('emjosh://workspace/'.length) }
+            : { kind: 'external' },
+        onOpenWorkspace,
+      }
+    );
+    await nextPaint();
+
+    const link = host.querySelector('a[href="emjosh://workspace/abc-123"]') as HTMLElement | null;
+    expect(link).not.toBeNull();
+    expect(link!.hasAttribute('data-workspace-link')).toBe(true);
+    expect(dispatchLinkClick(link!)).toBe(true);
+    expect(onOpenWorkspace).toHaveBeenCalledWith({
+      workspaceId: 'abc-123',
+      label: 'Fix login',
+      itemId: 'message-1#0',
+    });
+  });
 });

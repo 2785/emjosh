@@ -1,5 +1,6 @@
 import { DEV_PERF_COMMAND_PALETTE_ITEMS } from '@core/features/dev-perf/contributions/palette';
 import { TASK_COMMAND_PALETTE_ITEMS } from '@core/features/tasks/contributions/palette';
+import { WORKSPACE_CONTROL_COMMAND_PALETTE_ITEMS } from '@core/features/workspace-control/contributions/palette';
 import { WORKBENCH_COMMAND_PALETTE_ITEMS } from '@core/features/workbench/contributions/palette';
 import { defineCommandPaletteCatalog } from '@core/primitives/palette/api';
 import { COMMAND_CATALOG } from './command-catalog';
@@ -8,6 +9,7 @@ export const COMMAND_PALETTE_CATALOG = defineCommandPaletteCatalog(COMMAND_CATAL
   ...WORKBENCH_COMMAND_PALETTE_ITEMS,
   ...TASK_COMMAND_PALETTE_ITEMS,
   ...DEV_PERF_COMMAND_PALETTE_ITEMS,
+  ...WORKSPACE_CONTROL_COMMAND_PALETTE_ITEMS,
 ] as const);
 
 export type CommandPaletteCommandId =

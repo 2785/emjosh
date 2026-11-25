@@ -6,6 +6,14 @@ vi.mock('@core/features/editor/api/browser/open-file-in-file-editor', () => ({
 }));
 
 describe('classifyTranscriptLink', () => {
+  it('classifies emjosh workspace links as workspaces, not files', () => {
+    expect(classifyTranscriptLink('emjosh://workspace/abc-123')).toEqual({
+      kind: 'workspace',
+      workspaceId: 'abc-123',
+    });
+    expect(classifyTranscriptLink('emjosh://other/abc')).toEqual({ kind: 'external' });
+  });
+
   it.each([
     ['src/auth/jwt.ts', 'src/auth/jwt.ts'],
     ['./src/app.ts', './src/app.ts'],
