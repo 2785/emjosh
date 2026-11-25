@@ -1076,7 +1076,8 @@ export class WorkspaceControlService {
 
   /**
    * Posts to the caller's initiative (or the given one), to everyone or one workspace. `kind`
-   * (default `fyi`) decides whether it wakes the recipients (see messageWakesTask).
+   * decides whether it wakes the recipients (see messageWakesTask); without one, a message to the
+   * lead wakes it and a broadcast stays quiet.
    */
   async postMessage(
     caller: ControlCaller,
@@ -1092,7 +1093,7 @@ export class WorkspaceControlService {
       initiativeId,
       fromTaskId: taskId,
       toTaskId: input.toWorkspaceId ?? null,
-      kind: input.kind ?? 'fyi',
+      kind: input.kind,
       body: input.text,
     });
   }

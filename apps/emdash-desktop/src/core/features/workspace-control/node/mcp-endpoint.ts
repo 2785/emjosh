@@ -30,7 +30,7 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
   - The user's chat with you is for the user. Turns that start with an initiative delivery are collapsed in it, except your final message: make that what the user needs to know or decide, or end with just \`[quiet]\` when nothing needs them.
   - When workspaces must land in an order (an API before its UI, a shared change before others rebase on it), record it with set_workspace_dependencies; list_workspaces then shows the order. Don't add dependencies by default. When one is announced as looking done, check and drop it. When an event says one workspace's branch is contained in another's, fold them with merge_workspaces (after checking with the user if either still has work in flight).
   - Don't do a workspace's work on its branch. If one seems stuck or silent, check list_workspaces (agent status) and read_messages, message it, and ask the user before taking over its work.
-- If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish (kind done, with what you checked), get blocked (kind blocked), or need a decision (kind decision); only those wake the lead. Anything else is kind fyi, which the lead reads when it wants. Don't acknowledge broadcasts, and don't reply unless something changed or you were asked. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
+- If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish (kind done, with what you checked), get blocked (kind blocked), or need a decision (kind decision); only those wake the lead. Mark anything else kind fyi, which the lead reads when it wants. Don't acknowledge broadcasts, and don't reply unless something changed or you were asked. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
 - Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
 - Anything else the Emjosh app can do (its settings, automations, MCP servers, skills, prompt library, project settings, conversations, terminals, pull requests, and so on) is reachable through the app API: find operations with app_api_list, read their input with app_api_describe, then app_api_call or app_api_read. Use the dedicated tools above where one fits. Confirm with the user before anything destructive (deleting projects, workspaces, conversations, files or automations) they did not explicitly ask for.
@@ -475,7 +475,8 @@ export function buildControlMcpServer(
         "workspaces that subscribed to the sender's broadcasts. kind decides who is woken: " +
         "done, blocked and decision are delivered into the lead's chat (and broadcasts with " +
         "them into members' chats); fyi is stored for read_messages, except that a message " +
-        'addressed to a member is always delivered.',
+        'addressed to a member is always delivered. Always pass a kind: without one, a ' +
+        'message to the lead wakes it and a broadcast stays quiet.',
       inputSchema: {
         text: z.string(),
         kind: z
@@ -483,7 +484,7 @@ export function buildControlMcpServer(
           .optional()
           .describe(
             'done: your part is finished; blocked: you cannot continue; decision: you need one; ' +
-              'fyi (default): anything else.'
+              'fyi: anything else.'
           ),
         toWorkspaceId: z
           .string()

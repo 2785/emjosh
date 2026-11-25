@@ -28,6 +28,14 @@ describe('initiative deliveries', () => {
     expect(parseInitiativeDelivery(text)).toEqual({ initiativeName: 'Accounts v2', count: 2 });
   });
 
+  it('labels a message without a kind by its sender only', () => {
+    const text = formatInitiativeDelivery({
+      initiativeName: 'X',
+      entries: [{ kind: 'message', sender: 'API', fromLead: false, direct: true, body: 'Done.' }],
+    });
+    expect(text).toContain('— Workspace "API" · to you\nDone.');
+  });
+
   it('recognizes one-message deliveries from before bundling', () => {
     expect(
       parseInitiativeDelivery('[Initiative "X" message from workspace "A". It comes from…]\n\nhi')

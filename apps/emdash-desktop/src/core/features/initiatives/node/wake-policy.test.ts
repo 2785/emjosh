@@ -17,6 +17,13 @@ describe('messageWakesTask', () => {
     }
   });
 
+  it('wakes the lead for a message to it without a kind, but not for an untyped broadcast', () => {
+    expect(wakes({ kind: 'message', fromTaskId: 'a', toTaskId: LEAD }, LEAD)).toBe(true);
+    expect(wakes({ kind: 'message', fromTaskId: 'a', toTaskId: null }, LEAD)).toBe(false);
+    expect(wakes({ kind: 'message', fromTaskId: 'a', toTaskId: 'b' }, LEAD)).toBe(false);
+    expect(wakes({ kind: 'message', fromTaskId: 'b', toTaskId: null }, 'a')).toBe(false);
+  });
+
   it('keeps fyi and status events quiet for the lead', () => {
     expect(wakes({ kind: 'fyi', fromTaskId: 'a', toTaskId: LEAD }, LEAD)).toBe(false);
     expect(wakes({ kind: 'event', fromTaskId: 'a', toTaskId: null }, LEAD)).toBe(false);
@@ -29,8 +36,8 @@ describe('messageWakesTask', () => {
   });
 
   it("always wakes for the user's posts", () => {
-    expect(wakes({ kind: 'fyi', fromTaskId: null, toTaskId: null }, LEAD)).toBe(true);
-    expect(wakes({ kind: 'fyi', fromTaskId: null, toTaskId: null }, 'a')).toBe(true);
+    expect(wakes({ kind: 'message', fromTaskId: null, toTaskId: null }, LEAD)).toBe(true);
+    expect(wakes({ kind: 'message', fromTaskId: null, toTaskId: null }, 'a')).toBe(true);
   });
 
   it('wakes members for direct messages and for broadcasts marked as needing action', () => {

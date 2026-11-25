@@ -3,6 +3,13 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.22 — 2026-11-25
+
+- A message to the initiative lead sent without a kind now wakes the lead, so agents whose
+  sessions started before kinds existed still get their reports through. Only messages marked fyi
+  stay quiet.
+- The initiative feed labels the app's own events "Emjosh" instead of "You".
+
 ## 0.1.21 — 2026-11-25
 
 Antigravity and Codex:
