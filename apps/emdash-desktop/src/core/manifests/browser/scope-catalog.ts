@@ -13,7 +13,10 @@ import {
 import { WORKSPACE_CONTROL_COMMAND_DEFS } from '@core/features/workspace-control/contributions/commands';
 import { COMMAND_CATALOG } from '../shared/command-catalog';
 
-export const windowScope = defineWindowScope([...DEV_PERF_COMMAND_DEFS, ...WORKSPACE_CONTROL_COMMAND_DEFS]);
+export const windowScope = defineWindowScope([
+  ...DEV_PERF_COMMAND_DEFS,
+  ...WORKSPACE_CONTROL_COMMAND_DEFS,
+]);
 
 export const SCOPE_CATALOG = [
   windowScope,

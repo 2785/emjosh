@@ -77,7 +77,9 @@ export type ChatCommands = {
     href: string
   ) =>
     | { kind: 'workspace-file'; path: string; line?: number }
-    | { kind: 'workspace'; workspaceId: string }
+    | { kind: 'workspace'; workspaceId: string; tooltip?: string }
+    /** Not navigable (e.g. a link to a workspace that no longer exists): render as plain text. */
+    | { kind: 'plain' }
     | { kind: 'external' };
 
   /**

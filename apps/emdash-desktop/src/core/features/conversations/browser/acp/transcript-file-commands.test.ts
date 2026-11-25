@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@core/features/workspace-control/api/browser/open-workspace', () => ({
+  workspaceLinkTooltip: (id: string) => (id === 'abc-123' ? 'Fix login · proj · working' : null),
+}));
+
 import { classifyTranscriptLink, createTranscriptFileCommands } from './transcript-file-commands';
 
 vi.mock('@core/features/editor/api/browser/open-file-in-file-editor', () => ({
@@ -10,7 +15,11 @@ describe('classifyTranscriptLink', () => {
     expect(classifyTranscriptLink('emjosh://workspace/abc-123')).toEqual({
       kind: 'workspace',
       workspaceId: 'abc-123',
+      tooltip: 'Fix login · proj · working',
     });
+    // Unknown or deleted workspaces are plain text, never a navigable link.
+    expect(classifyTranscriptLink('emjosh://workspace/gone')).toEqual({ kind: 'plain' });
+    expect(classifyTranscriptLink('emjosh://workspace/')).toEqual({ kind: 'plain' });
     expect(classifyTranscriptLink('emjosh://other/abc')).toEqual({ kind: 'external' });
   });
 

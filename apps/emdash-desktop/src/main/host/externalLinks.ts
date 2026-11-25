@@ -1,12 +1,12 @@
 import { shell, type BrowserWindow } from 'electron';
 import { desktopHostEvents } from '@core/features/workbench/node';
-import { isInternalAppUrl } from '@main/host/external-link-policy';
+import { decideMainWindowLink } from '@main/host/external-link-policy';
 import { getMainWindow } from '@main/host/window';
 import { log } from '@main/lib/logger';
 
 /**
- * Ensure any external HTTP(S) links open in the user's default browser
- * rather than inside the Electron window. Keeps app navigation scoped
+ * Ensure external HTTP(S) links open in the user's default browser and every other
+ * non-app link is denied, rather than opening inside (or beside) the Electron window. Keeps app navigation scoped
  * to our renderer while preserving expected link behavior.
  */
 function requestExternalLinkOpen(url: string) {
@@ -31,18 +31,16 @@ export function registerExternalLinkHandlers(win: BrowserWindow, rendererUrl: st
 
   // Handle window.open and target="_blank"
   wc.setWindowOpenHandler(({ url }) => {
-    if (!isInternalAppUrl(url, rendererUrl) && /^https?:\/\//i.test(url)) {
-      requestExternalLinkOpen(url);
-      return { action: 'deny' };
-    }
-    return { action: 'allow' };
+    const decision = decideMainWindowLink(url, rendererUrl);
+    if (decision === 'external') requestExternalLinkOpen(url);
+    return decision === 'stay' ? { action: 'allow' } : { action: 'deny' };
   });
 
   // Intercept navigations that would leave the app
   wc.on('will-navigate', (event, url) => {
-    if (!isInternalAppUrl(url, rendererUrl) && /^https?:\/\//i.test(url)) {
-      event.preventDefault();
-      requestExternalLinkOpen(url);
-    }
+    const decision = decideMainWindowLink(url, rendererUrl);
+    if (decision === 'stay') return;
+    event.preventDefault();
+    if (decision === 'external') requestExternalLinkOpen(url);
   });
 }

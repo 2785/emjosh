@@ -263,7 +263,7 @@ describe('open-file command contract', () => {
       {
         classifyLink: (href) =>
           href.startsWith('emjosh://workspace/')
-            ? { kind: 'workspace', workspaceId: href.slice('emjosh://workspace/'.length) }
+            ? { kind: 'workspace', workspaceId: href.slice('emjosh://workspace/'.length), tooltip: 'Fix login · proj' }
             : { kind: 'external' },
         onOpenWorkspace,
       }
@@ -273,11 +273,29 @@ describe('open-file command contract', () => {
     const link = host.querySelector('a[href="emjosh://workspace/abc-123"]') as HTMLElement | null;
     expect(link).not.toBeNull();
     expect(link!.hasAttribute('data-workspace-link')).toBe(true);
+    expect(link!.getAttribute('title')).toBe('Fix login · proj');
     expect(dispatchLinkClick(link!)).toBe(true);
     expect(onOpenWorkspace).toHaveBeenCalledWith({
       workspaceId: 'abc-123',
       label: 'Fix login',
       itemId: 'message-1#0',
     });
+  });
+
+  it('renders a classified-plain link as text, not an anchor', async () => {
+    const host = mount(
+      [
+        {
+          kind: 'message',
+          id: 'message-1',
+          role: 'assistant',
+          text: 'Gone: [M](emjosh://workspace/deleted)',
+        },
+      ],
+      { classifyLink: () => ({ kind: 'plain' }) }
+    );
+    await nextPaint();
+    expect(host.querySelector('a[href^="emjosh://"]')).toBeNull();
+    expect(host.textContent).toContain('M');
   });
 });

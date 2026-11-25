@@ -1,7 +1,13 @@
-import { getProjectManagerStore } from '@core/features/projects/api/browser/stores/project-selectors';
+import { taskAgentStatus } from '@core/features/conversations/api/browser/conversation-selectors';
+import {
+  getProjectManagerStore,
+  getProjectStore,
+  projectDisplayName,
+} from '@core/features/projects/api/browser/stores/project-selectors';
 import {
   getRegisteredTaskData,
   getTaskManagerStore,
+  getTaskStore,
 } from '@core/features/tasks/api/browser/task-state/task-selectors';
 import { taskViewDef } from '@core/features/tasks/contributions/views';
 import { getNavigation } from '@core/primitives/navigation/browser/navigation-selectors';
@@ -79,4 +85,20 @@ export async function openWorkspaceLink(
   if (needsUnarchive(target) && !(await confirmUnarchive(target.name))) return 'cancelled';
   await openWorkspace(target);
   return 'opened';
+}
+
+/**
+ * Tooltip text for a workspace chip (name, project, status), from the loaded stores; null when
+ * no loaded project has the workspace (unknown or deleted), which renders the link as plain text.
+ */
+export function workspaceLinkTooltip(workspaceId: string): string | null {
+  for (const projectId of getProjectManagerStore().projects.keys()) {
+    const data = getRegisteredTaskData(projectId, workspaceId);
+    if (!data) continue;
+    const store = getTaskStore(projectId, workspaceId);
+    const status = data.archivedAt ? 'archived' : store ? taskAgentStatus(store) : null;
+    const project = projectDisplayName(getProjectStore(projectId));
+    return [data.name, project, status].filter(Boolean).join(' · ');
+  }
+  return null;
 }

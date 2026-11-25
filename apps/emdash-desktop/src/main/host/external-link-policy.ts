@@ -22,3 +22,15 @@ function parseOrigin(value: string): { protocol: string; host: string } | undefi
     return undefined;
   }
 }
+
+export type LinkDecision = 'stay' | 'external' | 'deny';
+
+/**
+ * What the main window does with a link or navigation target: same-origin stays, http(s) goes to
+ * the external-link flow, and anything else (e.g. `emjosh://workspace/<id>`, which the renderer
+ * handles itself) is denied so it can never open an unmanaged window.
+ */
+export function decideMainWindowLink(url: string, rendererUrl: string): LinkDecision {
+  if (isInternalAppUrl(url, rendererUrl)) return 'stay';
+  return /^https?:\/\//i.test(url) ? 'external' : 'deny';
+}

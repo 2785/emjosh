@@ -33,8 +33,8 @@ import {
   type WorkspaceControlDeps,
   WorkspaceControlService,
 } from '@core/features/workspace-control/node/workspace-control-service';
-import { WorkspaceSearchService } from '@core/features/workspace-control/node/workspace-search-service';
 import { setWorkspaceSearch } from '@core/features/workspace-control/node/workspace-search-registry';
+import { WorkspaceSearchService } from '@core/features/workspace-control/node/workspace-search-service';
 import {
   checkedOutBranch,
   isAncestor,
@@ -119,7 +119,12 @@ export type TranscriptDirs = {
 /** The transcript files of one conversation, most complete first. */
 export function transcriptPaths(
   dirs: TranscriptDirs,
-  conversation: { id: string; provider: string | null; cwd: string | null; sessionId: string | null }
+  conversation: {
+    id: string;
+    provider: string | null;
+    cwd: string | null;
+    sessionId: string | null;
+  }
 ): string[] {
   const paths: string[] = [];
   if (conversation.provider === 'claude' && conversation.cwd && conversation.sessionId) {
