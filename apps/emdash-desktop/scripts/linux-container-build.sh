@@ -18,7 +18,9 @@ supportedArchitectures:
   cpu: [current, x64]
   libc: [glibc]
 YAML
-pnpm install --frozen-lockfile --ignore-scripts
+# pnpm's linking sometimes fails here with ENOENT renaming a temporary directory (seen with
+# esbuild-register's nested esbuild); a second run finishes the install.
+pnpm install --frozen-lockfile --ignore-scripts || pnpm install --frozen-lockfile --ignore-scripts
 
 cd apps/emdash-desktop
 node ../../tooling/scripts/ensure-packages-built.mjs
