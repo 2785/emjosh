@@ -258,12 +258,45 @@ describe('WorkspaceControlService', () => {
         setLead: vi.fn(async (_id: string, taskId: string | null) => {
           initiative.leadTaskId = taskId;
         }),
+        assertCanJoin: vi.fn(async () => {}),
         setTaskInitiative: vi.fn(async () => {}),
         post: vi.fn(async () => ({}) as never),
       } as unknown as ControlInitiatives;
       const service = new WorkspaceControlService({ ...ctx.deps, initiatives });
       return { ...ctx, service, initiatives };
     }
+
+    it('creates no workspace when the initiative or label is rejected up front', async () => {
+      const { service, deps, initiatives } = withInitiatives([workspace({ id: 'self' })]);
+      vi.mocked(initiatives.assertCanJoin).mockRejectedValueOnce(
+        new Error("Initiative 'stale' was not found.")
+      );
+
+      await expect(
+        service.createWorkspace(
+          { conversationId: 'conv-self' },
+          { projectId: 'p1', initiativeId: 'stale', prompt: 'Do it.' }
+        )
+      ).rejects.toThrow("Initiative 'stale' was not found.");
+
+      expect(initiatives.assertCanJoin).toHaveBeenCalledWith('stale', undefined);
+      expect(deps.createWorkspace).not.toHaveBeenCalled();
+    });
+
+    it('says the workspace exists when joining the initiative fails after it started', async () => {
+      const { service, deps, initiatives } = withInitiatives([workspace({ id: 'self' })]);
+      vi.mocked(initiatives.setTaskInitiative).mockRejectedValueOnce(new Error('disk full'));
+
+      const failure = service.createWorkspace(
+        { conversationId: 'conv-self' },
+        { projectId: 'p1', initiativeId: 'i1' }
+      );
+
+      await expect(failure).rejects.toThrow(
+        /Workspace "new" \(new\) was created, but adding it to the initiative failed: disk full.*do not create it again/
+      );
+      expect(deps.createWorkspace).toHaveBeenCalledTimes(1);
+    });
 
     it('starts an unpushed lead workspace with the goal and keeps the caller as a member', async () => {
       const { service, deps, initiatives } = withInitiatives([

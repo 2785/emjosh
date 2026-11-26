@@ -25,8 +25,21 @@ const ATTENTION_ORDER: Partial<Record<AgentStatus, number>> = {
   completed: 2,
 };
 
+/**
+ * Epoch milliseconds for an activity time. SQLite's CURRENT_TIMESTAMP is UTC but carries no
+ * zone ("2026-11-26 16:30:17"), which `Date.parse` would read as local time.
+ */
+export function parseActivityTime(value: string | undefined): number {
+  if (!value) return Number.NaN;
+  const utc = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(value)
+    ? `${value.replace(' ', 'T')}Z`
+    : value;
+  return Date.parse(utc);
+}
+
 const byRecency = (a: MobileTaskEntry, b: MobileTaskEntry) =>
-  (b.activityAt ?? '').localeCompare(a.activityAt ?? '') || a.taskId.localeCompare(b.taskId);
+  (parseActivityTime(b.activityAt) || 0) - (parseActivityTime(a.activityAt) || 0) ||
+  a.taskId.localeCompare(b.taskId);
 
 /** Splits workspaces into what needs the user, what's running, and the rest, newest first. */
 export function mobileTaskSections(
@@ -59,7 +72,7 @@ export function mobileTaskSections(
 /** "now", "5m", "3h", "2d": compact enough for a phone row. */
 export function shortAgo(iso: string | undefined, now = Date.now()): string {
   if (!iso) return '';
-  const minutes = Math.floor(Math.max(0, now - Date.parse(iso)) / 60_000);
+  const minutes = Math.floor(Math.max(0, now - parseActivityTime(iso)) / 60_000);
   if (minutes < 1) return 'now';
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);

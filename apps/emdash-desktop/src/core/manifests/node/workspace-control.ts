@@ -28,6 +28,7 @@ import {
   startControlMcpEndpoint,
   type ControlMcpEndpoint,
 } from '@core/features/workspace-control/node/mcp-endpoint';
+import { hasGitRemote } from '@core/features/workspace-control/node/repository-remotes';
 import {
   type ControlPullRequest,
   humanizeSlug,
@@ -569,6 +570,7 @@ export async function startWorkspaceControl(
         ? { type: 'local' as const, branch: input.baseBranch }
         : await defaultBaseBranch(repoPath, 'origin');
       if (!fromBranch) throw new Error('Could not determine a base branch; pass baseBranch.');
+      const hasRemote = await hasGitRemote(repoPath);
 
       // The workspace shows the name as given; its branch needs the branch-safe form.
       const name = formatTaskDisplayName(humanizeSlug(input.name ?? '')) || generateRandom();
@@ -612,11 +614,14 @@ export async function startWorkspaceControl(
         workspaceConfig: buildWorkspaceConfigFromPreset(
           'new-worktree',
           { defaultBranch: fromBranch },
-          { branchName, fromBranch, pushBranch: input.pushBranch ?? true }
+          // A repository without a remote has nowhere to push; asking to would fail provisioning.
+          { branchName, fromBranch, pushBranch: hasRemote && (input.pushBranch ?? true) }
         ),
       });
-      if (!created.success)
-        throw new Error(`Could not create the workspace: ${created.error.type}`);
+      if (!created.success) {
+        const detail = 'message' in created.error ? `: ${String(created.error.message)}` : '';
+        throw new Error(`Could not create the workspace: ${created.error.type}${detail}`);
+      }
 
       void (async () => {
         const provisioned = await taskService.provisionWorkspace(taskId);

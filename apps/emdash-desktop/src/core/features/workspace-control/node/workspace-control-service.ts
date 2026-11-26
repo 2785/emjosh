@@ -129,6 +129,7 @@ export type ControlInitiatives = {
   create(name: string): Promise<Initiative>;
   update(id: string, changes: { pushMessages?: boolean }): Promise<void>;
   setLead(initiativeId: string, taskId: string | null): Promise<void>;
+  assertCanJoin(initiativeId: string, label?: string | null): Promise<void>;
   subscriptions(initiativeId: string, taskId: string): Promise<InitiativeSubscription[]>;
   subscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
   unsubscribe(input: SubscriptionChange): Promise<InitiativeSubscription[]>;
@@ -983,6 +984,11 @@ export class WorkspaceControlService {
       : null;
     const provider = input.provider ?? context?.provider;
     const { label: _label, ...workspaceInput } = input;
+    // A bad initiative or label has to fail before the workspace exists: an error afterwards
+    // makes the caller retry and start a second one.
+    if (input.initiativeId) {
+      await this.requireInitiatives().assertCanJoin(input.initiativeId, input.label);
+    }
     const created = await this.deps.createWorkspace({
       ...workspaceInput,
       provider,
@@ -992,21 +998,28 @@ export class WorkspaceControlService {
     });
     if (input.initiativeId) {
       const initiatives = this.requireInitiatives();
-      await initiatives.setTaskInitiative([created.id], input.initiativeId, {
-        ...(input.label !== undefined && { label: input.label }),
-      });
-      const label = (await initiatives.get(input.initiativeId))?.labels[created.id];
-      await initiatives.post({
-        initiativeId: input.initiativeId,
-        fromTaskId: context?.taskId ?? null,
-        kind: 'event',
-        body: `${workspaceRef(created.name, label, created.id)} was created${input.prompt ? ' and given a first task' : ''}.`,
-      });
-      return {
-        ...created,
-        ...(label && { label }),
-        link: workspaceChip(created.id, created.name, label),
-      };
+      try {
+        await initiatives.setTaskInitiative([created.id], input.initiativeId, {
+          ...(input.label !== undefined && { label: input.label }),
+        });
+        const label = (await initiatives.get(input.initiativeId))?.labels[created.id];
+        await initiatives.post({
+          initiativeId: input.initiativeId,
+          fromTaskId: context?.taskId ?? null,
+          kind: 'event',
+          body: `${workspaceRef(created.name, label, created.id)} was created${input.prompt ? ' and given a first task' : ''}.`,
+        });
+        return {
+          ...created,
+          ...(label && { label }),
+          link: workspaceChip(created.id, created.name, label),
+        };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Workspace "${created.name}" (${created.id}) was created, but adding it to the initiative failed: ${reason} It is running: do not create it again; fix the problem and add it with add_to_initiative.`
+        );
+      }
     }
     return created;
   }
