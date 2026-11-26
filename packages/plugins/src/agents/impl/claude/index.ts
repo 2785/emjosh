@@ -171,6 +171,8 @@ export const provider = registerPluginBehavior(plugin, {
       buildStandardCommand(ctx, {
         autoApproveFlag: '--dangerously-skip-permissions',
         initialPromptFlag: '',
+        // `--mcp-config <configs...>` is variadic and would take the prompt as a config path.
+        positionalPromptSeparator: '--',
         resumeFlag: '--resume',
         sessionIdFlag: '--session-id',
         modelFlag: '--model',
