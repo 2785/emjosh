@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { PREVIOUS_DB_FILENAME } from '@main/db/default-path';
 
@@ -15,6 +15,26 @@ export function resolveLegacyUserDataPathCandidates(
   }
 
   return candidates;
+}
+
+const SQLITE_HEADER = 'SQLite format 3\0';
+
+/**
+ * True for a file that starts with the SQLite header. An empty file (created when
+ * something opens a database path that does not exist yet) is not an import source.
+ */
+export function isSqliteDatabaseFile(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const buffer = Buffer.alloc(SQLITE_HEADER.length);
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
+    return bytesRead === buffer.length && buffer.toString('latin1') === SQLITE_HEADER;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 export function resolveLegacyDatabasePath(userDataPath: string): string {
@@ -35,7 +55,7 @@ export function resolveExistingLegacyDatabasePath(userDataPath: string): string 
 
 export function hasLegacyDatabaseFile(userDataPath: string): boolean {
   return resolveLegacyUserDataPathCandidates(userDataPath).some((candidate) =>
-    existsSync(resolveLegacyDatabasePath(candidate))
+    isSqliteDatabaseFile(resolveLegacyDatabasePath(candidate))
   );
 }
 
@@ -53,6 +73,6 @@ export function resolveExistingBetaDatabasePath(userDataPath: string): string {
 
 export function hasBetaDatabaseFile(userDataPath: string): boolean {
   return resolveLegacyUserDataPathCandidates(userDataPath).some((candidate) =>
-    existsSync(resolveBetaDatabasePath(candidate))
+    isSqliteDatabaseFile(resolveBetaDatabasePath(candidate))
   );
 }

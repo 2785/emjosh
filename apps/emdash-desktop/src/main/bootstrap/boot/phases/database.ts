@@ -1,3 +1,5 @@
+import { existsSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import type Database from 'better-sqlite3';
 import { recordInterruptedAcpTurns } from '@core/features/conversations/node/interrupted-turns';
 import { resetStaleAcpAgentStatuses } from '@core/features/conversations/node/reset-stale-acp-agent-statuses';
@@ -16,7 +18,10 @@ import { createAppSettingsService, type AppSettingsService } from '@core/service
 import { createDrizzleClient } from '@main/db/drizzleClient';
 import { initializeDatabase } from '@main/db/initialize';
 import { closeAppDb, setAppDb } from '@main/db/instance';
+import { protectExistingDataFromLegacyImport } from '@main/db/legacy-port/protect-existing-data';
+import { createDefaultLegacyPortStateStore } from '@main/db/legacy-port/service';
 import { resolveDatabasePath } from '@main/db/path';
+import { snapshotDatabase } from '@main/db/snapshots';
 import { cleanupLegacyBrowserPartitions } from '@main/host/browser/browser-partition-cleanup';
 import { log } from '@main/lib/logger';
 import { runInBackground } from '../../core/background';
@@ -41,9 +46,20 @@ export async function bootDatabase(config: AppConfig): Promise<DatabaseBundle> {
   let published = false;
   let editorBuffer: EditorBufferService | undefined;
   try {
+    await step('db-snapshot', () => snapshotBeforeMigrations(client.sqlite));
     await step('db-initialize', () => initializeDatabase(client.sqlite));
     setAppDb(client);
     published = true;
+    await step('db-protect-existing-data', async () => {
+      try {
+        await protectExistingDataFromLegacyImport(
+          client.sqlite,
+          await createDefaultLegacyPortStateStore()
+        );
+      } catch (error) {
+        log.warn('Failed to record legacy import status for an existing database', { error });
+      }
+    });
     const workspaceIdentity = createWorkspaceIdentityService({ db: client.db });
     // Crash-recovery buffers live in their own derived SQLite store beside the
     // app database; it is opened here but never touches the Drizzle migrations.
@@ -73,6 +89,20 @@ export async function bootDatabase(config: AppConfig): Promise<DatabaseBundle> {
       else client.close();
     }
     throw error;
+  }
+}
+
+/** Best effort: a failed snapshot is logged and never blocks startup. */
+async function snapshotBeforeMigrations(sqlite: Database.Database): Promise<void> {
+  const databasePath = resolveDatabasePath();
+  try {
+    if (!existsSync(databasePath) || statSync(databasePath).size === 0) return;
+    await snapshotDatabase(sqlite, {
+      directory: join(dirname(databasePath), 'backups'),
+      reason: 'startup',
+    });
+  } catch (error) {
+    log.warn('Failed to snapshot the app database before startup', { error });
   }
 }
 

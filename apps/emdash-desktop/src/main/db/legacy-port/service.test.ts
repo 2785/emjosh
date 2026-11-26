@@ -222,6 +222,81 @@ describe('runLegacyPort', () => {
     }
   });
 
+  it('refuses to clear a database that already has projects and marks the import skipped', async () => {
+    const appDb = createAppDb();
+    openDbs.push(appDb);
+    appDb
+      .prepare(`INSERT INTO projects (id, name, base_ref) VALUES (?, ?, ?)`)
+      .run('existing-project', 'Existing Project', 'main');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-port-refuse-'));
+    tempDirs.push(tmpDir);
+    seedLegacyDb(path.join(tmpDir, 'emdash.db'));
+    const stateStore = new InMemoryLegacyPortStateStore();
+
+    await runLegacyPort(tmpDir, { appDb, stateStore });
+
+    expect(appDb.prepare(`SELECT id FROM projects`).all()).toEqual([{ id: 'existing-project' }]);
+    expect(await stateStore.getStatus()).toBe('skipped-legacy');
+  });
+
+  it('refuses the "start fresh" wipe when the database has projects', async () => {
+    const appDb = createAppDb();
+    openDbs.push(appDb);
+    appDb
+      .prepare(`INSERT INTO projects (id, name, base_ref) VALUES (?, ?, ?)`)
+      .run('existing-project', 'Existing Project', 'main');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-port-wipe-'));
+    tempDirs.push(tmpDir);
+    const stateStore = new InMemoryLegacyPortStateStore();
+
+    await runLegacyPort(tmpDir, { appDb, stateStore, sources: [] });
+
+    expect(appDb.prepare(`SELECT id FROM projects`).all()).toEqual([{ id: 'existing-project' }]);
+    expect(await stateStore.getStatus()).toBe('skipped-legacy');
+  });
+
+  it('does not treat an empty emdash.db placeholder as an import source', async () => {
+    const appDb = createAppDb();
+    openDbs.push(appDb);
+    appDb
+      .prepare(`INSERT INTO projects (id, name, base_ref) VALUES (?, ?, ?)`)
+      .run('existing-project', 'Existing Project', 'main');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-port-empty-file-'));
+    tempDirs.push(tmpDir);
+    fs.writeFileSync(path.join(tmpDir, 'emdash.db'), '');
+    const stateStore = new InMemoryLegacyPortStateStore();
+
+    await runLegacyPort(tmpDir, { appDb, stateStore });
+
+    expect(appDb.prepare(`SELECT id FROM projects`).all()).toEqual([{ id: 'existing-project' }]);
+    expect(await stateStore.getStatus()).toBe('no-legacy-file');
+  });
+
+  it('saves a snapshot of the existing data before replacing it when overwrite is confirmed', async () => {
+    const appDb = createAppDb();
+    openDbs.push(appDb);
+    appDb
+      .prepare(`INSERT INTO projects (id, name, base_ref) VALUES (?, ?, ?)`)
+      .run('existing-project', 'Existing Project', 'main');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-port-snapshot-'));
+    tempDirs.push(tmpDir);
+    seedLegacyDb(path.join(tmpDir, 'emdash.db'));
+    const stateStore = new InMemoryLegacyPortStateStore();
+
+    await runLegacyPort(tmpDir, { appDb, stateStore, allowOverwriteExisting: true });
+
+    const backups = fs.readdirSync(path.join(tmpDir, 'backups'));
+    expect(backups).toHaveLength(1);
+    expect(backups[0]).toMatch(/^emdash4-pre-legacy-port-.*\.db$/);
+    const snapshot = new Database(path.join(tmpDir, 'backups', backups[0]), { readonly: true });
+    openDbs.push(snapshot);
+    expect(snapshot.prepare(`SELECT id FROM projects`).all()).toEqual([{ id: 'existing-project' }]);
+  });
+
   it('marks no-legacy-file when emdash.db is missing', async () => {
     const appDb = createAppDb();
     openDbs.push(appDb);
@@ -379,7 +454,7 @@ describe('runLegacyPort', () => {
 
     const stateStore = new InMemoryLegacyPortStateStore();
 
-    await runLegacyPort(tmpDir, { appDb, stateStore });
+    await runLegacyPort(tmpDir, { appDb, stateStore, allowOverwriteExisting: true });
 
     const projects = appDb.prepare(`SELECT id, name FROM projects ORDER BY id ASC`).all() as Array<{
       id: string;

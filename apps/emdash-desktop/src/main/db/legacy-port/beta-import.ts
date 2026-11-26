@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { clearDestinationDataPreservingSignIn } from './reset';
+import { clearDestinationDataPreservingSignIn, type ClearDestinationOptions } from './reset';
 import {
   columnsForTable,
   quoteIdentifier,
@@ -42,15 +42,18 @@ function copyTable(sqlite: Database.Database, tableName: string): void {
     .run();
 }
 
-function copyAttachedBetaTables(sqlite: Database.Database): void {
-  clearDestinationDataPreservingSignIn(sqlite);
+function copyAttachedBetaTables(sqlite: Database.Database, options: ClearDestinationOptions): void {
+  clearDestinationDataPreservingSignIn(sqlite, options);
   for (const tableName of COPY_TABLE_ORDER) {
     copyTable(sqlite, tableName);
   }
 }
 
-export function copyAttachedBetaDatabaseIntoDestination(sqlite: Database.Database): void {
-  copyAttachedBetaTables(sqlite);
+export function copyAttachedBetaDatabaseIntoDestination(
+  sqlite: Database.Database,
+  options: ClearDestinationOptions = {}
+): void {
+  copyAttachedBetaTables(sqlite, options);
 }
 
 export async function withBetaDatabaseAttached<T>(
@@ -69,14 +72,15 @@ export async function withBetaDatabaseAttached<T>(
 
 export function importBetaDatabaseIntoDestination(
   sqlite: Database.Database,
-  betaDatabasePath: string
+  betaDatabasePath: string,
+  options: ClearDestinationOptions = {}
 ): void {
   withForeignKeysDisabled(sqlite, () => {
     sqlite.exec(`ATTACH DATABASE ${quoteSqliteString(betaDatabasePath)} AS beta`);
 
     try {
       sqlite.transaction(() => {
-        copyAttachedBetaTables(sqlite);
+        copyAttachedBetaTables(sqlite, options);
       })();
     } finally {
       sqlite.exec('DETACH DATABASE beta');

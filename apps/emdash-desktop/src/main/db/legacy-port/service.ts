@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { hostRefFromParts, hostRefKey } from '@emdash/core/primitives/host/api';
 import type Database from 'better-sqlite3';
 import { eq, inArray } from 'drizzle-orm';
@@ -8,6 +9,7 @@ import * as schema from '@core/services/app-db/node/schema';
 import { runLocalCommand } from '@main/core/utils/exec';
 import { getAppDb, getSqlite } from '@main/db/instance';
 import { log } from '../../lib/logger';
+import { snapshotDatabase } from '../snapshots';
 import {
   copyAttachedBetaDatabaseIntoDestination,
   importBetaDatabaseIntoDestination,
@@ -29,7 +31,7 @@ import {
   resolveExistingLegacyDatabasePath,
   resolveExistingLegacyUserDataPath,
 } from './legacy-source/path';
-import { clearDestinationDataPreservingSignIn } from './reset';
+import { clearDestinationDataPreservingSignIn, destinationHasUserData } from './reset';
 import { buildLegacyProjectSelection } from './source-analysis';
 import { createLegacyPortStateStore } from './state-store';
 import { ensureImportedTaskWorkspaces } from './task-workspace-backfill';
@@ -53,6 +55,14 @@ export type RunLegacyPortOptions = {
   stateStore?: LegacyPortStateStore;
   sources?: LegacyImportSource[];
   conflictChoices?: Record<string, LegacyImportSource>;
+  /**
+   * Allow the import to delete projects and tasks already in the app database. Off
+   * unless the user explicitly confirmed replacing their data; otherwise the import is
+   * skipped. A snapshot is saved first either way.
+   */
+  allowOverwriteExisting?: boolean;
+  /** Where the pre-import snapshot goes. Defaults to `<userData>/backups`. */
+  backupDirectory?: string;
 };
 
 async function resolveAppTarget(appSqlite?: Database.Database): Promise<AppTarget> {
@@ -119,6 +129,28 @@ export async function runLegacyPort(
   const appTarget = await resolveAppTarget(options.appDb);
   const stateStore = options.stateStore ?? (await createDefaultLegacyPortStateStore());
   const selectedSources = new Set<LegacyImportSource>(options.sources ?? ['v0']);
+  const allowNonEmpty = options.allowOverwriteExisting === true;
+
+  /**
+   * Every import path clears the destination first. Returns false when the destination
+   * holds user data that must not be cleared; otherwise saves a snapshot (throws if that
+   * fails, so nothing is deleted without a way back).
+   */
+  const prepareDestructiveReset = async (): Promise<boolean> => {
+    if (!destinationHasUserData(appTarget.sqlite)) return true;
+    if (!allowNonEmpty) {
+      log.warn(
+        'legacy-port: refusing to clear existing projects and tasks; the legacy import was skipped'
+      );
+      await markStatus(stateStore, 'skipped-legacy');
+      return false;
+    }
+    await snapshotDatabase(appTarget.sqlite, {
+      directory: options.backupDirectory ?? join(userDataPath, 'backups'),
+      reason: 'pre-legacy-port',
+    });
+    return true;
+  };
 
   try {
     const status = await stateStore.getStatus();
@@ -132,7 +164,8 @@ export async function runLegacyPort(
   }
 
   if (selectedSources.size === 0) {
-    clearDestinationDataPreservingSignIn(appTarget.sqlite);
+    if (!(await prepareDestructiveReset())) return;
+    clearDestinationDataPreservingSignIn(appTarget.sqlite, { allowNonEmpty });
     await markStatus(stateStore, 'wiped-beta');
     return;
   }
@@ -140,7 +173,8 @@ export async function runLegacyPort(
   if (selectedSources.has('v1-beta') && !selectedSources.has('v0')) {
     const betaPath = resolveExistingBetaDatabasePath(userDataPath);
     if (hasBetaDatabaseFile(userDataPath)) {
-      importBetaDatabaseIntoDestination(appTarget.sqlite, betaPath);
+      if (!(await prepareDestructiveReset())) return;
+      importBetaDatabaseIntoDestination(appTarget.sqlite, betaPath, { allowNonEmpty });
     } else {
       log.warn('legacy-port: v1-beta source selected but emdash3.db was not found', { betaPath });
     }
@@ -185,14 +219,14 @@ export async function runLegacyPort(
       const remap = createRemapTables();
       if (selectedSources.has('v1-beta')) {
         if (shouldCopyBeta) {
-          copyAttachedBetaDatabaseIntoDestination(appTarget.sqlite);
+          copyAttachedBetaDatabaseIntoDestination(appTarget.sqlite, { allowNonEmpty });
         } else {
           log.warn('legacy-port: v1-beta source selected but emdash3.db was not found', {
             betaPath,
           });
         }
       } else {
-        clearDestinationDataPreservingSignIn(appTarget.sqlite);
+        clearDestinationDataPreservingSignIn(appTarget.sqlite, { allowNonEmpty });
       }
 
       const selection = await buildLegacyProjectSelection({
@@ -254,6 +288,11 @@ export async function runLegacyPort(
 
       return { sshSummary, projectsSummary, taskResult, conversationsSummary };
     });
+
+  if (!(await prepareDestructiveReset())) {
+    legacyDb.close();
+    return;
+  }
 
   try {
     const { sshSummary, projectsSummary, taskResult, conversationsSummary } = shouldCopyBeta
