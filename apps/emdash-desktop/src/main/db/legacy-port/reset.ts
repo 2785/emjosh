@@ -31,7 +31,36 @@ export function listUserTables(sqlite: Database.Database): string[] {
   return rows.map((row) => row.name).filter((name) => !shadowTables.has(name));
 }
 
-export function clearDestinationDataPreservingSignIn(sqlite: Database.Database): void {
+/** True when the destination holds projects or tasks the user created. */
+export function destinationHasUserData(sqlite: Database.Database): boolean {
+  return ['projects', 'tasks'].some((table) => {
+    if (!tableExists(sqlite, table)) return false;
+    return sqlite.prepare(`SELECT 1 FROM ${quoteIdentifier(table)} LIMIT 1`).get() !== undefined;
+  });
+}
+
+export class DestructiveResetRefusedError extends Error {
+  constructor() {
+    super(
+      'Refusing to clear a database that contains projects or tasks. ' +
+        'Pass allowNonEmpty only after the user explicitly confirmed replacing their data.'
+    );
+    this.name = 'DestructiveResetRefusedError';
+  }
+}
+
+export type ClearDestinationOptions = {
+  /** Allow clearing a database that has projects or tasks. Off unless the user confirmed. */
+  allowNonEmpty?: boolean;
+};
+
+export function clearDestinationDataPreservingSignIn(
+  sqlite: Database.Database,
+  options: ClearDestinationOptions = {}
+): void {
+  if (!options.allowNonEmpty && destinationHasUserData(sqlite)) {
+    throw new DestructiveResetRefusedError();
+  }
   withForeignKeysDisabled(sqlite, () => {
     const tables = listUserTables(sqlite);
     const clear = sqlite.transaction(() => {

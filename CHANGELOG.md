@@ -3,6 +3,17 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.25 — 2026-11-26
+
+- The app database can no longer be wiped by the import step. The import refuses to clear a
+  database that already has projects or tasks, an empty `emdash.db` placeholder no longer counts as
+  something to import, a database that already has data is marked as not needing the import, and
+  the personal build never offers it.
+- The app database is copied to a `backups` folder beside it before startup migrations (at most
+  every six hours, keeping the last 14), and before any import that is allowed to replace data.
+- Starting a Claude terminal chat with a prompt that begins with `@name` (or contains text that
+  looks like a flag value) no longer fails with "name too long"; the prompt now goes after `--`.
+
 ## 0.1.24 — 2026-11-25
 
 - Find a workspace from free text: Cmd+Shift+K or "Find Workspace" opens a search that matches

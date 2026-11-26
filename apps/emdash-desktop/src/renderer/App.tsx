@@ -61,7 +61,9 @@ function AppContent() {
       const computed: OnboardingStep[] = [];
       // Sign-in creates an Emdash account, which Emjosh does not use.
       if (!IS_PERSONAL && !session?.isSignedIn) computed.push('sign-in');
-      const needsImport = legacyStatus?.hasImportSources && !legacyStatus.portStatus;
+      // The personal build starts from a seeded database; importing would replace it.
+      const needsImport =
+        !IS_PERSONAL && legacyStatus?.hasImportSources && !legacyStatus.portStatus;
       if (needsImport) computed.push('import');
       setFrozenSteps(computed);
     }

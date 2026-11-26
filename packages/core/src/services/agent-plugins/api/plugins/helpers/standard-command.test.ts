@@ -192,4 +192,36 @@ describe('buildStandardCommand', () => {
     expect(mIdx).toBeGreaterThanOrEqual(0);
     expect(result.args[mIdx + 1]).toBe('gpt-5-codex');
   });
+  it('puts the positional prompt after a separator so variadic flags cannot swallow it', () => {
+    const base = {
+      cli: 'claude',
+      autoApprove: false,
+      sessionId: 'conversation-1',
+      isResuming: false,
+      model: '',
+      initialPrompt: '@someone it looks like ykk is broken',
+      extraArgs: ['--mcp-config', '{"mcpServers":{}}'],
+    };
+
+    const withSeparator = buildStandardCommand(base, {
+      initialPromptFlag: '',
+      positionalPromptSeparator: '--',
+      sessionIdFlag: '--session-id',
+    });
+    expect(withSeparator.args).toEqual([
+      '--session-id',
+      'conversation-1',
+      '--mcp-config',
+      '{"mcpServers":{}}',
+      '--',
+      '@someone it looks like ykk is broken',
+    ]);
+
+    const withoutSeparator = buildStandardCommand(base, {
+      initialPromptFlag: '',
+      sessionIdFlag: '--session-id',
+    });
+    expect(withoutSeparator.args.at(-2)).toBe('{"mcpServers":{}}');
+    expect(withoutSeparator.args).not.toContain('--');
+  });
 });

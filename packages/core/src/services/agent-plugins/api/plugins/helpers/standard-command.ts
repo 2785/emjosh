@@ -25,6 +25,12 @@ export type StandardCommandSpec = {
    * (prompt appended as last arg without a flag). Leave undefined to skip prompt injection.
    */
   initialPromptFlag?: string;
+  /**
+   * Inserted before a positional initial prompt (`initialPromptFlag: ''`). Needed for
+   * CLIs with variadic options (Claude's `--mcp-config <configs...>`, `--allowedTools`),
+   * which otherwise swallow the prompt as another option value. Example: '--'.
+   */
+  positionalPromptSeparator?: string;
   /** Whether the initial prompt should be delivered via stdin pipe instead of CLI args. */
   initialPromptViaStdinPipe?: boolean;
   /**
@@ -140,6 +146,7 @@ export function buildStandardCommand(ctx: CommandContext, spec: StandardCommandS
       // Handled later by caller via wrapWithStdinPipe
     } else if (spec.initialPromptFlag !== undefined) {
       if (spec.initialPromptFlag === '') {
+        if (spec.positionalPromptSeparator) args.push(spec.positionalPromptSeparator);
         args.push(ctx.initialPrompt);
       } else {
         args.push(...splitFlag(spec.initialPromptFlag), ctx.initialPrompt);
