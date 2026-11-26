@@ -18,13 +18,13 @@ import { sx } from '@styles/sprinkles.css';
 export type ThinkingVars = {
   /** Measure-only: vertical padding baked into the body block-stack layout. */
   padY: number;
-  /** Measure-only: preview window height during active thinking. */
+  /** Measure-only: tallest the live preview window grows while thinking (it fits shorter text). */
   windowH: number;
 };
 
 export const THINKING_VARS: ThinkingVars = {
   padY: 8,
-  windowH: 72,
+  windowH: 240,
 };
 
 function thinkingHeaderH(ctx: MeasureCtx): number {
@@ -91,7 +91,7 @@ export function thinkingMeasure(item: ChatThinking, ctx: MeasureCtx, vars: Think
   const blocks = flattenBlockHeadings(ctx.caches.parseBlocks(item.id, item.text ?? ''));
   const body = layoutThinkingBody(blocks, ctx, vars.padY);
 
-  if (!isExpanded) return headerH + vars.windowH;
+  if (!isExpanded) return headerH + Math.min(body.height, vars.windowH);
   return headerH + body.height;
 }
 
@@ -124,6 +124,7 @@ export function ThinkingUnitRender(props: {
 
   const showBody = () => isExpanded() || props.data.status === 'thinking';
   const bodyH = () => body()?.height ?? 0;
+  const previewH = () => Math.min(bodyH(), props.vars.windowH);
 
   const styleVars = (): ThinkingStyleVars => ({ height: totalH() });
 
@@ -138,7 +139,7 @@ export function ThinkingUnitRender(props: {
           when={isExpanded()}
           fallback={
             <PreviewWindow
-              height={props.vars.windowH}
+              height={previewH()}
               maxH={props.vars.windowH}
               overlay="fade-top"
               autoScrollBottom={props.data.status === 'thinking'}
@@ -164,13 +165,15 @@ export const thinkingUnitDef = defineUnit<ChatThinking, ThinkingVars>({
     const headerH = thinkingHeaderH(ctx);
     const isExpanded = ctx.expanded(item.id);
 
+    const lines = Math.max(1, Math.ceil((item.text?.length ?? 0) / 60));
+    const bodyH = 2 * vars.padY + lines * ctx.theme.fonts.body.lineHeight;
+
     if (!isExpanded) {
-      if (item.status === 'thinking') return headerH + vars.windowH;
+      if (item.status === 'thinking') return headerH + Math.min(bodyH, vars.windowH);
       return headerH;
     }
 
-    const lines = Math.max(1, Math.ceil((item.text?.length ?? 0) / 60));
-    return headerH + 2 * vars.padY + lines * ctx.theme.fonts.body.lineHeight;
+    return headerH + bodyH;
   },
 
   measure: thinkingMeasure,
