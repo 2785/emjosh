@@ -198,4 +198,15 @@ describe('InitiativesService', () => {
     await service.setTaskInitiative(['t1'], null);
     expect((await service.get(id))?.leadTaskId).toBeNull();
   });
+  it('checks an initiative and label before a workspace joins', async () => {
+    const initiative = await service.create('Accounts v2');
+    await service.setTaskInitiative(['t1'], initiative.id, { label: 'API' });
+
+    await expect(service.assertCanJoin(initiative.id)).resolves.toBeUndefined();
+    await expect(service.assertCanJoin(initiative.id, 'WEB')).resolves.toBeUndefined();
+    await expect(service.assertCanJoin('missing')).rejects.toThrow(
+      "Initiative 'missing' was not found."
+    );
+    await expect(service.assertCanJoin(initiative.id, 'api')).rejects.toThrow(/is taken by/);
+  });
 });

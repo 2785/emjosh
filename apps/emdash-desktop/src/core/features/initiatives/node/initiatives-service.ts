@@ -380,6 +380,18 @@ export class InitiativesService {
    * task that leaves loses its label. Tasks already in the initiative keep theirs unless `label`
    * is given.
    */
+  /**
+   * Throws when a new workspace could not join the initiative with this label. Callers check
+   * this before starting a workspace so a bad initiative or label fails before anything exists.
+   */
+  async assertCanJoin(initiativeId: string, label?: string | null): Promise<void> {
+    if (!(await this.get(initiativeId))) {
+      throw new Error(`Initiative '${initiativeId}' was not found.`);
+    }
+    const normalized = label ? normalizeLabel(label) : null;
+    if (normalized) await this.ensureLabelFree(initiativeId, '', normalized);
+  }
+
   async setTaskInitiative(
     taskIds: string[],
     initiativeId: string | null,
