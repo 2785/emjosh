@@ -3,6 +3,7 @@ import type { AcpAgentApi, IAcpBehavior } from '@emdash/core/services/agent-plug
 import { connectStdioAcp } from '../../helpers/acp-stdio';
 import { override } from './override';
 import { withPermissionModes } from './permissions';
+import { withSteering } from './steering';
 
 /** `_meta` key on a `usage_update` that closed a turn; read by `enrichAntigravityUpdate`. */
 export const TURN_END_META_KEY = 'emdash/antigravityTurnEnd';
@@ -27,11 +28,13 @@ export function createAntigravityAcpBehavior(): Pick<IAcpBehavior, 'buildSpawn' 
       return { command: ctx.cli, args: ['acp'] };
     },
     connect: (io, toClient) =>
-      withSessionSetup(
-        withPermissionModes((wrapClient) =>
-          connectStdioAcp(io, (agent) => wrapClient(withTurnEndMarkers(toClient(agent))))
-        ),
-        () => instructions
+      withSteering(
+        withSessionSetup(
+          withPermissionModes((wrapClient) =>
+            connectStdioAcp(io, (agent) => wrapClient(withTurnEndMarkers(toClient(agent))))
+          ),
+          () => instructions
+        )
       ),
   };
 }
