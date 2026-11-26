@@ -3,6 +3,22 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.26 — 2026-11-26
+
+- Antigravity: a message sent while it is working now steers the running turn instead of
+  cancelling it.
+- The live "Thinking" preview grows to fit the text (up to about 240 px) instead of showing three
+  lines.
+- Phone: workspace times show how long ago the work really happened (database times were read in
+  the wrong time zone, so rows said "now" for hours) and sort correctly; the chat box keeps its
+  attach, usage and send buttons on screen on a narrow screen, with the model and mode selectors
+  wrapping.
+- `create_workspace` checks the initiative and label before starting anything, so a stale id no
+  longer leaves a running workspace behind an error (which made agents retry into duplicates). If
+  joining the initiative fails afterwards, the error says the workspace exists.
+- `create_workspace` works in a repository without a git remote (it no longer tries to publish the
+  branch) and passes on the real reason when provisioning fails.
+
 ## 0.1.25 — 2026-11-26
 
 - The app database can no longer be wiped by the import step. The import refuses to clear a
