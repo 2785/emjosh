@@ -192,6 +192,7 @@ export const toolbar = style({
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
+  gap: '0.5rem',
   paddingLeft: '0.5rem',
   paddingRight: '0.5rem',
   paddingTop: '0.25rem',
@@ -201,7 +202,13 @@ export const toolbar = style({
 export const toolbarLeft = style({
   display: 'flex',
   alignItems: 'center',
+  // Selectors wrap onto a second line on a narrow screen instead of pushing the attach and
+  // send buttons out of view.
+  flexWrap: 'wrap',
+  flex: '1 1 0',
+  minWidth: 0,
   gap: '0.375rem',
+  rowGap: '0.125rem',
   minHeight: '2rem',
 });
 
@@ -221,7 +228,13 @@ export const mcpErrorText = style({
   overflowWrap: 'anywhere',
   whiteSpace: 'pre-wrap',
 });
-export const toolbarRight = style({ display: 'flex', alignItems: 'center', gap: '0.25rem' });
+export const toolbarRight = style({
+  display: 'flex',
+  alignItems: 'center',
+  flexShrink: 0,
+  alignSelf: 'flex-end',
+  gap: '0.25rem',
+});
 
 export const permissionModeTrigger = style({
   paddingLeft: '0.1875rem',

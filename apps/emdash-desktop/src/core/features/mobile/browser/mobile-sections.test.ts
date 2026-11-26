@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mobileTaskSections, shortAgo, type MobileTaskEntry } from './mobile-sections';
+import {
+  mobileTaskSections,
+  parseActivityTime,
+  shortAgo,
+  type MobileTaskEntry,
+} from './mobile-sections';
 
 const entry = (taskId: string, overrides: Partial<MobileTaskEntry> = {}): MobileTaskEntry => ({
   projectId: 'p',
@@ -51,5 +56,35 @@ describe('shortAgo', () => {
     expect(shortAgo('2026-11-10T09:00:00.000Z', now)).toBe('3h');
     expect(shortAgo('2026-11-08T12:00:00.000Z', now)).toBe('2d');
     expect(shortAgo(undefined, now)).toBe('');
+  });
+});
+
+describe('database timestamps without a zone', () => {
+  it('reads "YYYY-MM-DD HH:MM:SS" as UTC, whatever the phone time zone is', () => {
+    expect(parseActivityTime('2026-11-10 08:00:00')).toBe(Date.parse('2026-11-10T08:00:00.000Z'));
+    expect(parseActivityTime('2026-11-10T08:00:00.000Z')).toBe(
+      Date.parse('2026-11-10T08:00:00.000Z')
+    );
+    expect(parseActivityTime(undefined)).toBeNaN();
+  });
+
+  it('shows the real age instead of "now" for a recent database timestamp', () => {
+    const now = Date.parse('2026-11-10T12:00:00.000Z');
+    expect(shortAgo('2026-11-10 08:00:00', now)).toBe('4h');
+  });
+
+  it('orders database timestamps and ISO times by the moment they describe', () => {
+    const sections = mobileTaskSections([
+      entry('iso-early', { activityAt: '2026-11-10T08:00:00.000Z' }),
+      entry('db-late', { activityAt: '2026-11-10 20:00:00' }),
+      entry('iso-late', { activityAt: '2026-11-10T21:00:00.000Z' }),
+      entry('db-early', { activityAt: '2026-11-10 07:00:00' }),
+    ]);
+    expect(sections.recent.map((e) => e.taskId)).toEqual([
+      'iso-late',
+      'db-late',
+      'iso-early',
+      'db-early',
+    ]);
   });
 });
