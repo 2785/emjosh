@@ -19,7 +19,6 @@ import {
   DEFAULT_DELIVERY_WINDOW,
   DeliveryCoalescer,
 } from '@core/features/initiatives/node/delivery-coalescer';
-import { messageIsUrgent } from '@core/features/initiatives/node/initiatives-service';
 import { createProjectOperations } from '@core/features/projects/node/controller';
 import { createProjectFromRemote } from '@core/features/projects/node/operations/create-project-from-remote';
 import { formatTaskDisplayName, normalizeTaskName } from '@core/features/tasks/api/task-names';
@@ -221,21 +220,9 @@ export async function startWorkspaceControl(
   // (messageWakesTask) are fed into its chat in batches, labelled as coming from the feed rather
   // than the user. The rest only count towards the "quiet updates" note of its next delivery.
   const quietCounts = new Map<string, number>();
-  const isBusy = async (taskId: string) => {
-    const conversationId = await primaryConversation(taskId);
-    if (!conversationId) return false;
-    const [row] = await db
-      .select({ status: conversations.agentStatus })
-      .from(conversations)
-      .where(eq(conversations.id, conversationId))
-      .limit(1);
-    return row?.status === 'working';
-  };
   const coalescer = new DeliveryCoalescer<InitiativeMessage>({
     ...DEFAULT_DELIVERY_WINDOW,
     ...extras.deliveryWindow,
-    isBusy,
-    isUrgent: messageIsUrgent,
     onError: (error) => log.warn('Initiative message delivery failed', { error }),
     async flush(taskId, messages) {
       const initiative = await initiatives.get(messages[0]!.initiativeId);
@@ -259,14 +246,9 @@ export async function startWorkspaceControl(
         quietCount: quietCounts.get(taskId),
       });
       quietCounts.delete(taskId);
-      // An urgent message goes into the running turn when the agent takes steering; the rest, and
-      // agents that don't, queue behind it.
-      const sent = await sendAcpConversationPrompt(
-        context,
-        conversationId,
-        text,
-        messages.some(messageIsUrgent) ? 'steer' : 'auto'
-      );
+      // Into the running turn when the agent takes steering (Claude, Codex and Antigravity do);
+      // otherwise it queues, and queued prompts run as one when the turn ends.
+      const sent = await sendAcpConversationPrompt(context, conversationId, text, 'steer');
       if (!sent.success) log.warn('Initiative message delivery failed', { taskId });
     },
   });

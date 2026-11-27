@@ -3,15 +3,6 @@ export type DeliveryCoalescerOptions<T> = {
   debounceMs: number;
   /** Longest a batch waits from its first item, however busy the feed is. */
   maxWaitMs: number;
-  /**
-   * Whether the key's recipient is mid-turn. A batch that is due while it is busy keeps
-   * collecting, re-checked every debounceMs, for up to maxHoldMs from its first item: a busy agent
-   * would only queue each prompt as its own turn.
-   */
-  isBusy?: (key: string) => Promise<boolean>;
-  maxHoldMs?: number;
-  /** A batch holding an urgent item goes out when due, even to a busy recipient. */
-  isUrgent?: (item: T) => boolean;
   flush: (key: string, items: T[]) => Promise<void>;
   onError?: (error: unknown) => void;
 };
@@ -20,7 +11,6 @@ export type DeliveryCoalescerOptions<T> = {
 export const DEFAULT_DELIVERY_WINDOW = {
   debounceMs: 8_000,
   maxWaitMs: 45_000,
-  maxHoldMs: 10 * 60_000,
 } as const;
 
 type Batch<T> = { items: T[]; firstAt: number; timer: ReturnType<typeof setTimeout> | null };
@@ -57,15 +47,6 @@ export class DeliveryCoalescer<T> {
   }
 
   private async due(key: string, batch: Batch<T>): Promise<void> {
-    const { isBusy, isUrgent, maxHoldMs = DEFAULT_DELIVERY_WINDOW.maxHoldMs } = this.options;
-    const urgent = isUrgent ? batch.items.some(isUrgent) : false;
-    if (!urgent && isBusy && Date.now() - batch.firstAt < maxHoldMs && (await isBusy(key))) {
-      // An item added while checking already rescheduled the batch.
-      if (!batch.timer && this.batches.get(key) === batch) {
-        this.schedule(key, batch, this.options.debounceMs);
-      }
-      return;
-    }
     if (this.batches.get(key) !== batch) return;
     if (batch.timer) clearTimeout(batch.timer);
     this.batches.delete(key);
