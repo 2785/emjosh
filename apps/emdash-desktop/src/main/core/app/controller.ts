@@ -19,6 +19,7 @@ import { setApplicationMenuKeybindings } from '@main/host/menu';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
 import { appService } from './service';
+import { usesTilingWindowManager } from './tiling-window-manager';
 
 const execFileAsync = promisify(execFile);
 
@@ -194,6 +195,7 @@ export const appOperations = {
     return { success: true };
   },
   isWindowMaximized: () => appService.isWindowMaximized(),
+  usesTilingWindowManager: () => usesTilingWindowManager(process.env),
   getAppVersion: () => appService.getCachedAppVersion(),
   getElectronVersion: () => process.versions.electron,
   getPlatform: () => process.platform,

@@ -167,6 +167,8 @@ export const desktopHostContract = defineContract({
   toggleMaximizeWindow: procedure({ input: z.void(), output: z.custom<ActionResult>() }),
   closeWindow: procedure({ input: z.void(), output: z.custom<ActionResult>() }),
   isWindowMaximized: procedure({ input: z.void(), output: z.boolean() }),
+  /** Linux under a tiling window manager, where the app draws no window buttons. */
+  usesTilingWindowManager: procedure({ input: z.void(), output: z.boolean() }),
   getAppVersion: procedure({ input: z.void(), output: z.string() }),
   getElectronVersion: procedure({ input: z.void(), output: z.string() }),
   getPlatform: procedure({ input: z.void(), output: z.custom<NodePlatform>() }),

@@ -45,6 +45,7 @@ vi.mock('@core/features/workbench/contributions/browser/Titlebar', () => ({
   Titlebar: () => <header data-fallback-titlebar />,
 }));
 
+import { useRegisterBorderlessTitlebar } from '@core/features/workbench/contributions/browser/borderless-titlebar-registry';
 import { Workspace } from '@renderer/app/workspace';
 
 type TestSlots = {
@@ -112,5 +113,44 @@ describe('Workspace active view composition', () => {
 
     expect(host.querySelector('[data-fallback-titlebar]')).not.toBeNull();
     expect(host.querySelector('[data-main="home"]')).not.toBeNull();
+  });
+  it('adds no plain titlebar when the view draws its own borderless one', async () => {
+    const OwnTitlebarMain = () => {
+      useRegisterBorderlessTitlebar();
+      return <main data-main="project" data-own-titlebar />;
+    };
+    navigationMocks.useWorkspaceSlots.mockReturnValue({
+      ...slotsFor('project'),
+      TitlebarSlot: () => null,
+      hasTitlebar: false,
+      MainPanel: OwnTitlebarMain,
+    });
+
+    await act(async () => root.render(<Workspace />));
+
+    expect(host.querySelector('[data-own-titlebar]')).not.toBeNull();
+    expect(host.querySelector('[data-fallback-titlebar]')).toBeNull();
+  });
+
+  it('brings the plain titlebar back once a borderless view is left', async () => {
+    const OwnTitlebarMain = () => {
+      useRegisterBorderlessTitlebar();
+      return <main data-main="project" />;
+    };
+    const borderless = {
+      ...slotsFor('project'),
+      TitlebarSlot: () => null,
+      hasTitlebar: false,
+      MainPanel: OwnTitlebarMain,
+    };
+    const home = { ...slotsFor('home'), TitlebarSlot: () => null, hasTitlebar: false };
+    navigationMocks.useWorkspaceSlots.mockReturnValue(borderless);
+    await act(async () => root.render(<Workspace />));
+    expect(host.querySelector('[data-fallback-titlebar]')).toBeNull();
+
+    navigationMocks.useWorkspaceSlots.mockReturnValue(home);
+    await act(async () => root.render(<Workspace />));
+
+    expect(host.querySelector('[data-fallback-titlebar]')).not.toBeNull();
   });
 });
