@@ -3,6 +3,12 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.32 — 2026-11-27
+
+- An initiative lead is no longer woken when a member waits for your approval. The app already
+  notifies you, so the lead only repeated it. Members stopping with an error still wake the lead,
+  and approval waits stay visible in `list_workspaces`.
+
 ## 0.1.31 — 2026-11-27
 
 - New app icon and mark: a mint lowercase j with a white dot on a dark rounded square. It is used

@@ -30,7 +30,7 @@ describe('messageWakesTask', () => {
     expect(wakes({ kind: 'event', fromTaskId: null, toTaskId: LEAD }, LEAD)).toBe(false);
   });
 
-  it('wakes on attention events, such as an agent waiting for approval', () => {
+  it('wakes on attention events, such as an agent stopping with an error', () => {
     expect(wakes({ kind: 'attention', fromTaskId: 'a', toTaskId: null }, LEAD)).toBe(true);
     expect(wakes({ kind: 'attention', fromTaskId: 'a', toTaskId: null }, 'b')).toBe(true);
   });
@@ -49,7 +49,7 @@ describe('messageWakesTask', () => {
 });
 
 describe('describeAgentEvent', () => {
-  it('makes a finished turn a status event and a pending approval or error an attention one', () => {
+  it('makes a finished turn or a pending approval a status event and an error an attention one', () => {
     expect(describeAgentEvent({ type: 'stop' })).toEqual({
       kind: 'event',
       what: 'finished its turn',
@@ -59,7 +59,7 @@ describe('describeAgentEvent', () => {
         type: 'notification',
         payload: { notificationType: 'permission_prompt' },
       })
-    ).toEqual({ kind: 'attention', what: 'is waiting for the user to approve something' });
+    ).toEqual({ kind: 'event', what: 'is waiting for the user to approve something' });
     expect(describeAgentEvent({ type: 'error' })?.kind).toBe('attention');
     // A turn ending with background work still running is status too; its end follows as `stop`.
     expect(describeAgentEvent({ type: 'background' })).toEqual({
