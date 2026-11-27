@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="emjosh">
+  <rect width="512" height="512" rx="112" fill="#13151B"/>
+  <!-- lowercase j: hook + stem -->
+  <path d="M346 215 V290 A90 90 0 0 1 166 290" fill="none" stroke="#A5F3C2" stroke-width="64" stroke-linecap="round"/>
+  <!-- the dot: the orchestrator node -->
+  <circle cx="346" cy="138" r="34" fill="#F5F5F7"/>
+</svg>

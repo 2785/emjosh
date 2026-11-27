@@ -1,40 +1,78 @@
-# Emjosh
+<p align="center">
+  <img src="docs/assets/logo.svg" width="112" alt="Emjosh logo">
+</p>
 
-**Emjosh is a shamelessly forked copy of [Emdash](https://github.com/generalaction/emdash).**
+<h1 align="center">Emjosh</h1>
 
-It's my personal build of Emdash with the features I want and the rough edges I care about
-filed down. For the time being I'm not planning to contribute any of it back upstream; that
-may change once I'm happy with it. It is intended for friends and family, not general
-distribution.
+<p align="center">
+  Run a team of coding agents in parallel, each in its own git worktree, from one desktop app.
+</p>
 
-The motivation: Meta acquired and shut down [Conductor](https://conductor.build), and I'd
-rather not depend on a tool I don't control again. Emdash is open source (Apache-2.0), so
-I have a copy I can keep running and shape however I like.
+<p align="center">
+  <a href="https://github.com/2785/emjosh/releases/latest">Download</a> ·
+  <a href="#install">Install</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
-Emjosh is not affiliated with or endorsed by the Emdash team. Please don't report Emjosh
-problems to them.
+---
 
-## What's different from Emdash
+Emjosh is a local-first desktop app (macOS, Linux, Windows) for working with several AI coding
+agents at once. Every task gets its own branch and git worktree, so agents never trample each
+other's changes, and you review each one's diff before anything is merged.
 
-See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+## How it works
+
+```mermaid
+flowchart LR
+  You([You]) --> Lead[Lead workspace<br/>orchestrates only]
+  Lead -->|creates, briefs| A[Workspace: API<br/>own worktree]
+  Lead -->|creates, briefs| B[Workspace: UI<br/>own worktree]
+  Lead -->|creates, briefs| C[Workspace: tests<br/>own worktree]
+  A & B & C -->|done / blocked / decision| Lead
+  A & B & C --> PR[(Pull requests)]
+```
+
+1. **Add a project**: any local repository, or one on a remote machine over SSH.
+2. **Start a workspace** for a task: pick an agent (Claude Code, Codex, Antigravity, Copilot, Cursor, OpenCode and
+   dozens more), and Emjosh creates a branch and worktree and starts it.
+3. **Work in parallel.** Chat with each agent, steer it mid-turn, watch its terminal, run
+   scripts, and read its diff, all in the same window.
+4. **Ship it.** Open the pull request from the app and archive the workspace when it merges.
+
+## What you get
 
 - **Agents that run workspaces.** Every agent gets an `emjosh` MCP server to create, name,
   archive and message workspaces and manage projects. Ask for "a workspace in each of these
   repos" or "archive the ones whose PRs merged".
 - **Initiatives.** Groups of workspaces across repositories working towards one goal, led by a
-  workspace that only orchestrates, with an opt-in message feed between them.
+  workspace that only orchestrates, with an opt-in message feed between them. Workspaces can
+  declare dependencies so work lands in the right order.
 - **A chat that keeps up.** Steer a running agent instead of interrupting it; queued messages
   go out together; screenshots and inline `[Image]` / `[Snippet]` references; history shows
   instantly when you open a chat.
 - **Built for hundreds of workspaces.** Fast typing and scrolling with lots of unarchived
   work, a sidebar that groups by project or initiative and tucks old workspaces behind
   *Show more*, and workspaces that name themselves in plain words.
-- **Its own app.** Installs next to Emdash on macOS, Linux and Windows, with its own data and
-  updates from [Emjosh releases](https://github.com/2785/emjosh/releases). No Emdash account,
-  telemetry or services; GitHub and GitLab connect through `gh` or an access token.
+- **Its own app.** Installs next to Emdash with its own data, and updates from
+  [Emjosh releases](https://github.com/2785/emjosh/releases). No Emdash account, telemetry or
+  services; GitHub and GitLab connect through `gh` or an access token.
 - **Small comforts.** Notifications only while Emjosh is in the background, a window frame
   tint, a *Reload* button for new builds, and *Record UI Performance Profile* for when
   something feels slow.
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
+
+## Why this exists
+
+Emjosh is a shamelessly forked copy of [Emdash](https://github.com/generalaction/emdash): my
+personal build with the features I want and the rough edges I care about filed down. It exists
+because Meta acquired and shut down [Conductor](https://conductor.build), and I'd rather not
+depend on a tool I don't control again. Emdash is open source (Apache-2.0), so I have a copy I
+can keep running and shape however I like.
+
+It is intended for friends and family, not general distribution. For the time being I'm not
+planning to contribute any of it back upstream; that may change. Emjosh is not affiliated with
+or endorsed by the Emdash team. Please don't report Emjosh problems to them.
 
 ## Install
 
