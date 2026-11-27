@@ -12,9 +12,6 @@ Upstream Emdash changes are not listed.
   `%LOCALAPPDATA%\emjosh\Cache`. If it can't start, Emjosh stays open. The old launcher is in
   the installed app, so Windows installs need this release's installer run by hand once; Reload
   works from this version on. The silent-install step itself hasn't been run on Windows.
-
-## 0.1.36 — 2026-11-27
-
 - `create_workspace` takes `options` (model, effort, permission mode, by the agent's option ids),
   so an agent or lead asked for "Antigravity on Neon, high effort" or "Opus 5.5" can start the
   workspace that way. Before, only the agent could be chosen, and the workspace came up on the
@@ -25,9 +22,6 @@ Upstream Emdash changes are not listed.
   `add_workspace_agent` (the new-chat button) and `pin_workspaces`. An agent can't change its own
   permission mode or message or stop itself; messages arrive marked as sent by the other
   workspace. The rest of the app stays reachable through the app API.
-
-## 0.1.35 — 2026-11-27
-
 - Agents can browse the web without any extra tool: the `emjosh` MCP server has `browser_open`,
   `browser_snapshot`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_select`,
   `browser_press`, `browser_scroll`, `browser_wait_for`, `browser_console`, `browser_navigate`,
@@ -35,22 +29,13 @@ Upstream Emdash changes are not listed.
   workspace, so they keep working while another workspace is on screen. They use a separate
   *Agent* browser profile (signed out of your own accounts), only open http(s) pages, and close
   after 30 idle minutes. `browser_show` pops a page up so you can watch or sign in.
-
-## 0.1.34 — 2026-11-27
-
 - Antigravity's *Bypass permissions* mode now sticks. It used to switch itself off whenever
   Antigravity changed its own mode (for example into plan mode and back to auto), leaving the
   chat in plain auto and asking you to approve commands such as a staging `curl`. Bypass now pauses
   while Antigravity is out of auto and resumes when it returns; only picking another mode turns it off.
-
-## 0.1.33 — 2026-11-27
-
 - With a window frame color set, the settings and project pages leave a gap below the title bar
   instead of starting flush against it, so the search box and headings are no longer jammed against
   the colored frame.
-
-## 0.1.32 — 2026-11-27
-
 - An initiative lead is no longer woken when a member waits for your approval. The app already
   notifies you, so the lead only repeated it. Members stopping with an error still wake the lead,
   and approval waits stay visible in `list_workspaces`.
