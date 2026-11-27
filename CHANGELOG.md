@@ -3,6 +3,16 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.27 — 2026-11-26
+
+- When an agent's turn is waiting on a shell command that has run for 20 seconds or more, the chat
+  box shows the command and how long it has run, with a Stop button. (Antigravity keeps a turn
+  open while its command runs, so a command stuck on a prompt looked like an agent still working.)
+- Initiative messages that need a decision (decisions, blockers, and anything you post) now reach
+  a busy agent after the normal short delay instead of being held for up to ten minutes. They go
+  into the running turn when the agent supports it (Codex, Antigravity) and otherwise queue
+  behind it. Nothing is cancelled. Reports and notes are still batched.
+
 ## 0.1.26 — 2026-11-26
 
 - Antigravity: a message sent while it is working now steers the running turn instead of
