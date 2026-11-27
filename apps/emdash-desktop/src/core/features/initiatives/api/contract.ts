@@ -31,9 +31,9 @@ export const initiativeMessageKinds = ['done', 'blocked', 'decision', 'fyi'] as 
 export type InitiativeMessageKind = (typeof initiativeMessageKinds)[number];
 
 /**
- * App events: `event` for status (a turn finished, a workspace was created), which wakes nobody;
- * `attention` for ones that stop work until someone acts (an agent waits for the user's approval
- * or stopped with an error), which wake whoever they reach.
+ * App events: `event` for status (a turn finished, an agent waits for the user's approval, a
+ * workspace was created), which wakes nobody; `attention` for ones the lead must act on (an agent
+ * stopped with an error), which wake whoever they reach.
  */
 export type InitiativeEventKind = 'event' | 'attention';
 
