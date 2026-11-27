@@ -12,6 +12,11 @@ Upstream Emdash changes are not listed.
   After the short batching delay they go into the running turn when the agent supports steering
   (Claude, Codex and Antigravity do); if not, they queue and run together when the turn ends.
   Nothing is cancelled.
+- Linux: the projects and settings views no longer show two title bars (a plain one was stacked on
+  top of their own).
+- Linux under a tiling window manager (sway, i3, Hyprland, niri and similar; detected from the
+  session) the app no longer draws its own minimize/maximize/close buttons. Set
+  `EMJOSH_WINDOW_CONTROLS=always` or `never` to override.
 
 ## 0.1.26 — 2026-11-26
 
