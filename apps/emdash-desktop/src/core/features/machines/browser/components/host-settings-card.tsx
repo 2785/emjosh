@@ -128,7 +128,7 @@ export const HostSettingsCard = observer(function HostSettingsCard({
             override it per project.
           </Field.Description>
           <Input
-            placeholder="~/emdash/worktrees"
+            placeholder="~/emjosh/worktrees"
             value={worktreeRoot}
             disabled={disabled}
             onFocus={() => setEditing('worktreeRoot')}

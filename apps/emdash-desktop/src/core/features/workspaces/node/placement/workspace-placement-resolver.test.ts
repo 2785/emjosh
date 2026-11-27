@@ -98,7 +98,7 @@ describe('WorkspacePlacementResolver', () => {
 
     await expect(resolver.resolveRepositoriesRoot(hostRef('remote', 'ssh-1'))).resolves.toEqual({
       success: true,
-      data: '/home/remote/emdash/repositories',
+      data: '/home/remote/emjosh/repositories',
     });
   });
 
@@ -116,7 +116,7 @@ describe('WorkspacePlacementResolver', () => {
     // The connection is healthy now; task creation reuses the same placement resolver.
     await expect(
       resolver.resolveWorktreeRoot({ ...project, type: 'ssh', connectionId: host.id })
-    ).resolves.toEqual(ok('/home/remote/emdash/worktrees'));
+    ).resolves.toEqual(ok('/home/remote/emjosh/worktrees'));
     expect(getHomeDir).toHaveBeenCalledOnce();
   });
 
@@ -129,7 +129,7 @@ describe('WorkspacePlacementResolver', () => {
       error: { type: 'host-home-unavailable' },
     });
 
-    const expected = ok('/home/remote/emdash/repositories');
+    const expected = ok('/home/remote/emjosh/repositories');
     await expect(
       Promise.all([resolver.resolveRepositoriesRoot(host), resolver.resolveRepositoriesRoot(host)])
     ).resolves.toEqual([expected, expected]);
@@ -163,7 +163,7 @@ describe('WorkspacePlacementResolver', () => {
 
     await expect(resolver.resolveRepositoriesRoot(hostRef('remote', 'ssh-1'))).resolves.toEqual({
       success: true,
-      data: '/home/remote/emdash/repositories',
+      data: '/home/remote/emjosh/repositories',
     });
   });
 
@@ -184,7 +184,7 @@ describe('WorkspacePlacementResolver', () => {
 
     await expect(resolver.resolveWorktreePool(project)).resolves.toEqual({
       success: true,
-      data: '/home/jona/emdash/worktrees/emdash-ba5cbeaf',
+      data: '/home/jona/emjosh/worktrees/emdash-ba5cbeaf',
     });
     await resolver.resolveWorktreePool(project);
     expect(getHomeDir).toHaveBeenCalledTimes(1);
@@ -265,7 +265,7 @@ describe('WorkspacePlacementResolver', () => {
 
     expect(result).toMatchObject({
       success: true,
-      data: expect.stringMatching(/^\/home\/jona\/emdash\/worktrees\/emdash-[a-f0-9]{8}$/u),
+      data: expect.stringMatching(/^\/home\/jona\/emjosh\/worktrees\/emdash-[a-f0-9]{8}$/u),
     });
   });
 
@@ -283,12 +283,12 @@ describe('WorkspacePlacementResolver', () => {
   it('treats a missing parent directory as an available candidate', async () => {
     const { resolver } = makeResolver({
       home: '/home/jona',
-      missingParents: ['/home/jona/emdash/repositories'],
+      missingParents: ['/home/jona/emjosh/repositories'],
     });
 
     await expect(resolver.resolveRepositoryDestination(LOCAL_HOST_REF, 'api')).resolves.toEqual({
       success: true,
-      data: '/home/jona/emdash/repositories/api',
+      data: '/home/jona/emjosh/repositories/api',
     });
   });
 
@@ -322,7 +322,7 @@ describe('WorkspacePlacementResolver', () => {
 
     await expect(
       resolver.resolveRepositoryDestination(hostRef('remote', 'ssh-1'), 'api')
-    ).resolves.toEqual({ success: true, data: '/home/remote/emdash/repositories/api' });
+    ).resolves.toEqual({ success: true, data: '/home/remote/emjosh/repositories/api' });
   });
 
   it('allocates local Windows drive and UNC destinations without desktop path semantics', async () => {
@@ -331,7 +331,7 @@ describe('WorkspacePlacementResolver', () => {
       drive.resolver.resolveRepositoryDestination(LOCAL_HOST_REF, 'api')
     ).resolves.toEqual({
       success: true,
-      data: 'C:\\Users\\dev\\emdash\\repositories\\api',
+      data: 'C:\\Users\\dev\\emjosh\\repositories\\api',
     });
 
     const unc = makeResolver({ home: '\\\\server\\share\\Users\\dev' });

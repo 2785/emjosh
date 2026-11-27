@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, nativeTheme } from 'electron';
-import devIcon from '@/assets/images/emdash/emdash-dev.png?asset';
+import devIcon from '@/assets/images/emjosh/emjosh.png?asset';
 import { desktopHostEvents } from '@core/features/workbench/node';
 import { PRODUCT_NAME } from '@core/primitives/app-identity/api/app-identity';
 import type { Theme } from '@core/primitives/app-settings/api';

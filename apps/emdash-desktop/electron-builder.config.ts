@@ -65,11 +65,11 @@ const config: Configuration = {
       { target: 'dmg', arch: ['arm64'] },
       { target: 'zip', arch: ['arm64'] },
     ],
-    icon: 'src/assets/images/emdash/emdash.icns',
+    icon: 'src/assets/images/emjosh/emjosh.icns',
     notarize: false,
   },
   dmg: {
-    icon: 'src/assets/images/emdash/emdash.icns',
+    icon: 'src/assets/images/emjosh/emjosh.icns',
     background: 'build/dmg-background.tiff',
     window: { width: 530, height: 319 },
     contents: [
@@ -79,7 +79,7 @@ const config: Configuration = {
   },
   linux: {
     category: 'Development',
-    icon: 'src/assets/images/emdash/emdash.png',
+    icon: 'src/assets/images/emjosh/emjosh.png',
     syncDesktopName: true,
     desktop: {
       entry: { StartupWMClass: PRODUCT_NAME },
@@ -97,7 +97,7 @@ const config: Configuration = {
     depends: RPM_DEPENDS,
   },
   win: {
-    icon: 'src/assets/images/emdash/emdash.png',
+    icon: 'src/assets/images/emjosh/emjosh.png',
     target: [
       { target: 'nsis', arch: ['x64'] },
       { target: 'msi', arch: ['x64'] },

@@ -1,17 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { app, Menu, nativeImage, Tray } from 'electron';
-import canaryIcon from '@/assets/images/emdash/emdash-canary.png?asset';
-import devIcon from '@/assets/images/emdash/emdash-dev.png?asset';
-import stableIcon from '@/assets/images/emdash/emdash.png?asset';
-import trayTemplate1x from '@/assets/images/emdash/trayTemplate.png?asset';
-import trayTemplate2x from '@/assets/images/emdash/trayTemplate@2x.png?asset';
-import emjoshTrayTemplate1x from '@/assets/images/emjosh/trayTemplate.png?asset';
-import emjoshTrayTemplate2x from '@/assets/images/emjosh/trayTemplate@2x.png?asset';
-import {
-  IS_CANARY,
-  IS_PERSONAL,
-  PRODUCT_NAME,
-} from '@core/primitives/app-identity/api/app-identity';
+import emjoshIcon from '@/assets/images/emjosh/emjosh.png?asset';
+import trayTemplate1x from '@/assets/images/emjosh/trayTemplate.png?asset';
+import trayTemplate2x from '@/assets/images/emjosh/trayTemplate@2x.png?asset';
+import { PRODUCT_NAME } from '@core/primitives/app-identity/api/app-identity';
 import { showMainWindow } from './window';
 
 let tray: Tray | null = null;
@@ -22,19 +14,15 @@ let tray: Tray | null = null;
 // Electron's automatic `@2x` sibling lookup.
 function createMacTrayIcon(): Electron.NativeImage {
   const icon = nativeImage.createEmpty();
-  const [x1, x2] = IS_PERSONAL
-    ? [emjoshTrayTemplate1x, emjoshTrayTemplate2x]
-    : [trayTemplate1x, trayTemplate2x];
-  icon.addRepresentation({ scaleFactor: 1, buffer: readFileSync(x1) });
-  icon.addRepresentation({ scaleFactor: 2, buffer: readFileSync(x2) });
+  icon.addRepresentation({ scaleFactor: 1, buffer: readFileSync(trayTemplate1x) });
+  icon.addRepresentation({ scaleFactor: 2, buffer: readFileSync(trayTemplate2x) });
   icon.setTemplateImage(true);
   return icon;
 }
 
 function createTrayIcon(): Electron.NativeImage {
   if (process.platform === 'darwin') return createMacTrayIcon();
-  const iconPath = import.meta.env.DEV ? devIcon : IS_CANARY ? canaryIcon : stableIcon;
-  return nativeImage.createFromPath(iconPath).resize({ width: 20, height: 20 });
+  return nativeImage.createFromPath(emjoshIcon).resize({ width: 20, height: 20 });
 }
 
 export function setTrayVisible(visible: boolean): void {

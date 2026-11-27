@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import devIcon from '@/assets/images/emdash/emdash-dev.png?asset';
+import devIcon from '@/assets/images/emjosh/emjosh.png?asset';
 import { initializeFileLogger, registerProcessErrorLogging } from '@main/host/file-logger';
 import { registerAppScheme } from '@main/host/protocol';
 import { log } from '@main/lib/logger';

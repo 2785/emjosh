@@ -3,6 +3,16 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.30 — 2026-11-27
+
+Removes the remaining Emdash branding:
+
+- New worktrees go under `~/emjosh/worktrees` and new clones under `~/emjosh/repositories`; the
+  default branch prefix is `emjosh`. Existing worktrees, repositories and prefixes are untouched.
+- The Windows and Linux tray icon, the dev dock/window icon, the boot splash, the welcome screen
+  and the home and empty-pane marks all use the Emjosh mark. The Emdash artwork is deleted, and
+  the stable and canary installer configs use the Emjosh icons.
+
 ## 0.1.29 — 2026-11-27
 
 - The "Waiting on a command" notice now waits the full 20 seconds before it shows. A clock bug made

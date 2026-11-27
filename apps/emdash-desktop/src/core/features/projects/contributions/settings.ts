@@ -23,7 +23,7 @@ export const projectSettingsContribution = defineSettingsContribution<'project',
   schema: projectSettingsSchema,
   defaults: {
     pushOnCreate: true,
-    branchPrefix: 'emdash',
+    branchPrefix: 'emjosh',
     appendRandomBranchSuffix: true,
     tmuxByDefault: false,
   },
