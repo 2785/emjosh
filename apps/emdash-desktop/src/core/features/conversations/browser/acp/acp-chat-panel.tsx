@@ -76,6 +76,7 @@ import { appendDraftCommentsContext } from './draft-comments-context';
 import { collapseInitiativeTurn } from './initiative-turns';
 import { buildIssueMentionHiddenContext } from './issue-mention-context';
 import { createTranscriptFileCommands } from './transcript-file-commands';
+import { useRunningCommandNotice } from './use-running-command-notice';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -614,6 +615,11 @@ const ComposerForStore = observer(function ComposerForStore({
 
   const a = store.affordances;
   const permissionRequest = toComposerPermission(store.permissionQueue[0]);
+  const runningCommandNotice = useRunningCommandNotice(
+    store.runningCommand,
+    a.isWorking && a.canCancel,
+    handleStop
+  );
 
   return createPortal(
     <>
@@ -649,6 +655,7 @@ const ComposerForStore = observer(function ComposerForStore({
           onSubmit={handleSubmit}
           onSubmitWhileWorking={store.liveActionsEnabled ? handleSubmit : undefined}
           onStop={a.canCancel ? handleStop : undefined}
+          notice={runningCommandNotice}
           permissionRequest={permissionRequest}
           permissionQueueCount={store.permissionQueue.length}
           onResolvePermission={handleResolvePermission}

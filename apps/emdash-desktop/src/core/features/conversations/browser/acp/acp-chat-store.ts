@@ -55,6 +55,11 @@ import {
   asValueSource,
 } from './acp-live-session';
 import { bindSessionTerminalOutputs } from './acp-terminal-output-binding';
+import {
+  findRunningCommand,
+  type RunningCommand,
+  type TranscriptItemLike,
+} from './running-command';
 
 export interface AgentAffordances {
   isWorking: boolean;
@@ -298,6 +303,15 @@ export class AcpChatStore {
     cost?: { amount: number; currency: string } | null;
   } | null {
     return this.session?.usage.current() ?? null;
+  }
+
+  /** The agent's turn is waiting on this shell command. */
+  get runningCommand(): RunningCommand | null {
+    return findRunningCommand(
+      this.chatState.transcript.state.activeTurnSnapshot?.items as
+        | readonly TranscriptItemLike[]
+        | undefined
+    );
   }
 
   get affordances(): AgentAffordances {

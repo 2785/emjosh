@@ -65,6 +65,25 @@ export const noticeBandMessageIndented = style({
   opacity: 0.8,
 });
 
+export const noticeAction = style({
+  marginLeft: '0.5rem',
+  flexShrink: 0,
+  alignSelf: 'center',
+  borderRadius: tokenVars.radiusMd,
+  border: '1px solid currentColor',
+  paddingLeft: '0.5rem',
+  paddingRight: '0.5rem',
+  paddingTop: '0.125rem',
+  paddingBottom: '0.125rem',
+  fontSize: tokenVars.textXs,
+  lineHeight: 1.25,
+  opacity: 0.85,
+  transition: 'opacity 150ms',
+  selectors: {
+    '&:hover': { opacity: 1 },
+  },
+});
+
 export const noticeDismiss = style({
   marginLeft: '0.25rem',
   flexShrink: 0,
