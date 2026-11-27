@@ -3,6 +3,12 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.31 — 2026-11-27
+
+- New app icon and mark: a mint lowercase j with a white dot on a dark rounded square. It is used
+  for the app and installer icons, the tray (macOS menu bar glyph included), the boot splash, and
+  the welcome, home and empty-pane marks.
+
 ## 0.1.30 — 2026-11-27
 
 Removes the remaining Emdash branding:
