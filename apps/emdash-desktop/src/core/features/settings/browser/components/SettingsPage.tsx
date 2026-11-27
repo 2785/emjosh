@@ -195,7 +195,7 @@ export const SettingsPage = observer(function SettingsPage({
       >
         {detailView ? (
           <PageLayout.Content>
-            <div className="sticky top-0 z-10 bg-background pt-10 pb-4">
+            <div className="sticky top-0 z-10 bg-background pt-[3.25rem] pb-4">
               <Breadcrumbs
                 items={[
                   {

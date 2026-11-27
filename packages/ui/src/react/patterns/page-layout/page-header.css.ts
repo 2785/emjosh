@@ -15,7 +15,7 @@ export const headerSticky = style({
   top: 0,
   zIndex: 10,
   backgroundColor: vars.background,
-  paddingTop: '2.5rem',
+  paddingTop: '3.25rem',
 });
 
 // ── Title block ───────────────────────────────────────────────────────────────

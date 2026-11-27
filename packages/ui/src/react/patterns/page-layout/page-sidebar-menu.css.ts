@@ -15,7 +15,7 @@ export const wrapper = style({
   minHeight: '100vh',
   maxHeight: '100vh',
   flexDirection: 'column',
-  paddingTop: '2.5rem',
+  paddingTop: '3.25rem',
   paddingBottom: '0.75rem',
 });
 

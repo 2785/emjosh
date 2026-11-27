@@ -3,6 +3,12 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.33 — 2026-11-27
+
+- With a window frame color set, the settings and project pages leave a gap below the title bar
+  instead of starting flush against it, so the search box and headings are no longer jammed against
+  the colored frame.
+
 ## 0.1.32 — 2026-11-27
 
 - An initiative lead is no longer woken when a member waits for your approval. The app already
