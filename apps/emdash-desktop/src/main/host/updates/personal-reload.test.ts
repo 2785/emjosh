@@ -14,6 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildWindowsLauncherCommand,
+  encodePowerShellCommand,
   buildLaunchdJobPlist,
   LINUX_RELOAD_HELPER_SCRIPT,
   PersonalReloadService,
@@ -290,6 +292,48 @@ describe('platform paths', () => {
       expect(WINDOWS_RELOAD_HELPER_SCRIPT).toContain(`$${name}`);
     }
     expect(WINDOWS_RELOAD_HELPER_SCRIPT).toContain("'/S'");
+  });
+});
+
+describe('Windows reload launcher', () => {
+  const launcher = (scriptPath: string, helperArguments: string[]) =>
+    buildWindowsLauncherCommand({
+      scriptPath,
+      logPath: 'C:\\Users\\me\\AppData\\Local\\emjosh\\reload.log',
+      errorLogPath: 'C:\\Users\\me\\AppData\\Local\\emjosh\\reload.err.log',
+      helperArguments,
+    });
+
+  it('starts the helper with Start-Process, hidden, with both output streams logged', () => {
+    const command = launcher('C:\\cache\\reload.ps1', [
+      '-AppPid',
+      '42',
+      '-Target',
+      'C:\\Apps\\Emjosh\\Emjosh.exe',
+    ]);
+    const helperLine =
+      '"-NoProfile" "-NonInteractive" "-ExecutionPolicy" "Bypass" "-File" "C:\\cache\\reload.ps1" ' +
+      '"-AppPid" "42" "-Target" "C:\\Apps\\Emjosh\\Emjosh.exe"';
+    expect(command).toBe(
+      `$ErrorActionPreference = 'Stop'; Start-Process -FilePath powershell.exe -WindowStyle Hidden ` +
+        `-ArgumentList '${helperLine}' ` +
+        `-RedirectStandardOutput 'C:\\Users\\me\\AppData\\Local\\emjosh\\reload.log' ` +
+        `-RedirectStandardError 'C:\\Users\\me\\AppData\\Local\\emjosh\\reload.err.log'`
+    );
+  });
+
+  it('double-quotes paths with spaces and doubles apostrophes inside the PowerShell string', () => {
+    const command = launcher("C:\\Users\\O'Brien\\My Cache\\reload.ps1", [
+      '-Target',
+      'C:\\Program Files\\Emjosh\\Emjosh.exe',
+    ]);
+    expect(command).toContain(`"C:\\Users\\O''Brien\\My Cache\\reload.ps1"`);
+    expect(command).toContain(`"C:\\Program Files\\Emjosh\\Emjosh.exe"`);
+  });
+
+  it('encodes the command as base64 UTF-16LE for -EncodedCommand', () => {
+    const encoded = encodePowerShellCommand("Write-Output 'é'");
+    expect(Buffer.from(encoded, 'base64').toString('utf16le')).toBe("Write-Output 'é'");
   });
 });
 

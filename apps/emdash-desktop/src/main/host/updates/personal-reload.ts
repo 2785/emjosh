@@ -295,26 +295,65 @@ export function windowsHelperArguments([pid, target, staged, waitSeconds]: strin
   ];
 }
 
+const psQuote = (value: string) => `'${value.replace(/'/g, "''")}'`;
+
+/**
+ * The PowerShell that starts the reload helper as its own hidden process. The helper can't be
+ * started with `detached: true` from here: on Windows that gives the process no console, and
+ * PowerShell then exits without running its script. A short-lived launcher that is not detached
+ * `Start-Process`es the real helper instead, which then outlives the app.
+ */
+export function buildWindowsLauncherCommand(input: {
+  scriptPath: string;
+  logPath: string;
+  errorLogPath: string;
+  helperArguments: string[];
+}): string {
+  // Start-Process joins its arguments with spaces, so each is double-quoted for paths with spaces.
+  const helperLine = [
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    input.scriptPath,
+    ...input.helperArguments,
+  ]
+    .map((argument) => `"${argument}"`)
+    .join(' ');
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `Start-Process -FilePath powershell.exe -WindowStyle Hidden -ArgumentList ${psQuote(helperLine)} -RedirectStandardOutput ${psQuote(input.logPath)} -RedirectStandardError ${psQuote(input.errorLogPath)}`,
+  ].join('; ');
+}
+
+/** `-EncodedCommand` takes base64 UTF-16LE, which avoids quoting the script on the command line. */
+export const encodePowerShellCommand = (command: string) =>
+  Buffer.from(command, 'utf16le').toString('base64');
+
 function spawnWindowsHelper(args: string[]): void {
   const jobDir = dirname(PERSONAL_STAGE_DIR);
   mkdirSync(jobDir, { recursive: true });
   const scriptPath = join(jobDir, 'reload.ps1');
   writeFileSync(scriptPath, WINDOWS_RELOAD_HELPER_SCRIPT);
-  const logFd = openSync(join(jobDir, 'reload.log'), 'a');
-  // Detached with its own console, so it outlives the app.
-  spawn(
+  const command = buildWindowsLauncherCommand({
+    scriptPath,
+    logPath: join(jobDir, 'reload.log'),
+    errorLogPath: join(jobDir, 'reload.err.log'),
+    helperArguments: windowsHelperArguments(args),
+  });
+  // Not detached (see above). `stdio: 'ignore'` keeps the long-lived helper from holding pipes
+  // that would block spawnSync; a failure to launch throws, which keeps the app open.
+  const result = spawnSync(
     'powershell.exe',
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      scriptPath,
-      ...windowsHelperArguments(args),
-    ],
-    { detached: true, windowsHide: true, stdio: ['ignore', logFd, logFd] }
-  ).unref();
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodePowerShellCommand(command)],
+    { windowsHide: true, stdio: 'ignore', timeout: 30_000 }
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `Could not start the reload helper: ${result.error ?? `exit ${result.status}`}`
+    );
+  }
 }
 
 export function createPersonalReloadService(electron: {

@@ -3,6 +3,16 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.37 — 2026-11-27
+
+- Windows: *Reload · new build* now starts its helper properly. It used to launch PowerShell
+  detached, which on Windows has no console, so the helper exited without running: Emjosh quit
+  and neither installed the update nor reopened. The helper now starts through a short-lived
+  PowerShell (`Start-Process`) and logs to `reload.log` and `reload.err.log` in
+  `%LOCALAPPDATA%\emjosh\Cache`. If it can't start, Emjosh stays open. The old launcher is in
+  the installed app, so Windows installs need this release's installer run by hand once; Reload
+  works from this version on. The silent-install step itself hasn't been run on Windows.
+
 ## 0.1.36 — 2026-11-27
 
 - `create_workspace` takes `options` (model, effort, permission mode, by the agent's option ids),
