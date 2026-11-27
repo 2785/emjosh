@@ -354,6 +354,62 @@ describe('WorkspaceControlService', () => {
     });
   });
 
+  describe('workspace chats', () => {
+    function withConversations() {
+      const { service, deps } = setup([
+        workspace({ id: 'self', name: 'Lead' }),
+        workspace({ id: 'other', name: 'API' }),
+      ]);
+      const conversations = {
+        settings: vi.fn(async () => []),
+        updateSettings: vi.fn(async () => ({ conversationId: 'c', applied: [], failed: [] })),
+        send: vi.fn(async () => ({ conversationId: 'c', sent: true as const })),
+        stop: vi.fn(async () => ({ stopped: ['c'] })),
+        addAgent: vi.fn(async () => ({ conversationId: 'c', provider: 'claude' })),
+        setPinned: vi.fn(async () => ({ pinned: true })),
+      };
+      deps.conversations = conversations as never;
+      return { service, conversations, caller: { conversationId: 'conv-self' } };
+    }
+
+    it('lets an agent change another workspace’s mode but not its own', async () => {
+      const { service, conversations, caller } = withConversations();
+      await service.updateWorkspaceSettings(caller, {
+        workspaceId: 'other',
+        options: { mode: 'x' },
+      });
+      await service.updateWorkspaceSettings(caller, { options: { model: 'opus' } });
+      expect(conversations.updateSettings).toHaveBeenNthCalledWith(
+        1,
+        'other',
+        expect.objectContaining({ forbidMode: false })
+      );
+      expect(conversations.updateSettings).toHaveBeenNthCalledWith(
+        2,
+        'self',
+        expect.objectContaining({ forbidMode: true })
+      );
+    });
+
+    it('marks messages as sent by the calling workspace, and refuses messaging or stopping itself', async () => {
+      const { service, conversations, caller } = withConversations();
+      await service.sendToWorkspace(caller, { workspaceId: 'other', message: 'Rebase please.' });
+      expect(conversations.send).toHaveBeenCalledWith('other', {
+        message:
+          '[Sent by workspace "Lead" through Emjosh, not typed by the user.]\n\nRebase please.',
+        conversationId: undefined,
+        placement: undefined,
+      });
+      await expect(
+        service.sendToWorkspace(caller, { workspaceId: 'self', message: 'hi' })
+      ).rejects.toThrow("can't message itself");
+      await expect(service.stopWorkspace(caller, { workspaceId: 'self' })).rejects.toThrow(
+        "can't stop itself"
+      );
+      await expect(service.stopWorkspace(caller, { workspaceId: 'ghost' })).rejects.toThrow();
+    });
+  });
+
   it("starts new workspaces with the caller's session settings when they run the same agent", async () => {
     const { service, deps } = setup([workspace({ id: 'self' })]);
     deps.callerContext.mockResolvedValue({
