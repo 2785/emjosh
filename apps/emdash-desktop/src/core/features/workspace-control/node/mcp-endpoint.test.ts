@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AgentBrowserPort } from '@core/features/browser/api/agent-browser';
 import {
   CONTROL_MCP_INSTRUCTIONS,
   type ControlMcpEndpoint,
@@ -20,7 +21,7 @@ describe('control MCP endpoint', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  async function start() {
+  async function start(browser?: AgentBrowserPort) {
     dir = mkdtempSync(join(tmpdir(), 'control-endpoint-'));
     const callerContext = vi.fn(async (conversationId: string) =>
       conversationId === 'conv-1' ? { taskId: 't1', provider: 'claude' } : null
@@ -50,6 +51,7 @@ describe('control MCP endpoint', () => {
       renameProject: async () => {},
       removeProject: async () => {},
       createWorkspace: async () => ({ id: 'x', name: 'x', branch: 'x' }),
+      browser,
     });
     endpoint = await startControlMcpEndpoint({
       service,
@@ -82,6 +84,67 @@ describe('control MCP endpoint', () => {
     expect(endpoint!.info.instructions).toBe(CONTROL_MCP_INSTRUCTIONS);
   });
 
+  it('lets agents drive browser pages scoped to their workspace', async () => {
+    const page = { pageId: 'p1', url: 'https://example.com/', title: 'Example', loading: false };
+    const browser: AgentBrowserPort = {
+      open: vi.fn(async () => page),
+      pages: vi.fn(() => [page]),
+      navigate: vi.fn(async () => page),
+      snapshot: vi.fn(async () => ({ page, text: '[e1] link "More"' })),
+      screenshot: vi.fn(async () => ({ page, pngBase64: 'aGk=' })),
+      act: vi.fn(async () => ({ page, detail: 'Clicked.' })),
+      console: vi.fn(async () => ({ page, entries: [{ level: 'error', text: 'boom' }] })),
+      show: vi.fn(async () => page),
+      close: vi.fn(async () => ({ closed: 'p1' })),
+    };
+    await start(browser);
+    const client = await connect({
+      authorization: `Bearer ${endpoint!.info.token}`,
+      'x-emjosh-conversation': 'conv-1',
+    });
+
+    const opened = await client.callTool({
+      name: 'browser_open',
+      arguments: { url: 'https://example.com', show: true },
+    });
+    expect(browser.open).toHaveBeenCalledWith('t1', { url: 'https://example.com', show: true });
+    expect(JSON.stringify(opened.content)).toContain('Page p1');
+
+    const snapshot = await client.callTool({ name: 'browser_snapshot', arguments: {} });
+    expect(browser.snapshot).toHaveBeenCalledWith('t1', undefined);
+    expect(JSON.stringify(snapshot.content)).toContain('[e1] link');
+
+    await client.callTool({ name: 'browser_click', arguments: { pageId: 'p1', ref: 'e1' } });
+    expect(browser.act).toHaveBeenCalledWith('t1', 'p1', { type: 'click', ref: 'e1' });
+
+    await client.callTool({
+      name: 'browser_type',
+      arguments: { ref: 'e2', text: 'hello', submit: true },
+    });
+    expect(browser.act).toHaveBeenLastCalledWith('t1', undefined, {
+      type: 'type',
+      ref: 'e2',
+      text: 'hello',
+      submit: true,
+    });
+
+    const shot = await client.callTool({ name: 'browser_screenshot', arguments: {} });
+    expect(shot.content).toContainEqual({ type: 'image', data: 'aGk=', mimeType: 'image/png' });
+
+    const logs = await client.callTool({ name: 'browser_console', arguments: {} });
+    expect(JSON.stringify(logs.content)).toContain('[error] boom');
+    await client.close();
+  });
+
+  it('reports that the agent browser is unavailable when the app has none', async () => {
+    await start();
+    const client = await connect({ authorization: `Bearer ${endpoint!.info.token}` });
+    const result = await client.callTool({ name: 'browser_pages', arguments: {} });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('not available');
+    await client.close();
+  });
+
   it('serves the workspace tools to authenticated callers, scoped to their conversation', async () => {
     await start();
     const client = await connect({
@@ -98,6 +161,20 @@ describe('control MCP endpoint', () => {
       'app_api_list',
       'app_api_read',
       'archive_workspaces',
+      'browser_click',
+      'browser_close',
+      'browser_console',
+      'browser_navigate',
+      'browser_open',
+      'browser_pages',
+      'browser_press',
+      'browser_screenshot',
+      'browser_scroll',
+      'browser_select',
+      'browser_show',
+      'browser_snapshot',
+      'browser_type',
+      'browser_wait_for',
       'clone_project',
       'create_initiative',
       'create_workspace',

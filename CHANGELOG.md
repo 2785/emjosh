@@ -3,6 +3,16 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.35 — 2026-11-27
+
+- Agents can browse the web without any extra tool: the `emjosh` MCP server has `browser_open`,
+  `browser_snapshot`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_select`,
+  `browser_press`, `browser_scroll`, `browser_wait_for`, `browser_console`, `browser_navigate`,
+  `browser_pages`, `browser_show` and `browser_close`. Pages are hidden windows owned by the
+  workspace, so they keep working while another workspace is on screen. They use a separate
+  *Agent* browser profile (signed out of your own accounts), only open http(s) pages, and close
+  after 30 idle minutes. `browser_show` pops a page up so you can watch or sign in.
+
 ## 0.1.34 — 2026-11-27
 
 - Antigravity's *Bypass permissions* mode now sticks. It used to switch itself off whenever

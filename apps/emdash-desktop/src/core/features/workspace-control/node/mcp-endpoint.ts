@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
+import type { AgentBrowserPort } from '@core/features/browser/api/agent-browser';
 import { initiativeMessageKinds } from '@core/features/initiatives/api/contract';
 import { MAX_LABEL_LENGTH } from '@core/features/initiatives/api/labels';
 import type { ControlCaller, WorkspaceControlService } from './workspace-control-service';
@@ -37,6 +38,7 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
 - Anything else the Emjosh app can do (its settings, automations, MCP servers, skills, prompt library, project settings, conversations, terminals, pull requests, and so on) is reachable through the app API: find operations with app_api_list, read their input with app_api_describe, then app_api_call or app_api_read. Use the dedicated tools above where one fits. Confirm with the user before anything destructive (deleting projects, workspaces, conversations, files or automations) they did not explicitly ask for.
+- To look at a web page (docs, a deployed site, a local dev server, a UI you built), use the browser_* tools instead of a separate browser CLI: browser_open, then browser_snapshot to read it and browser_click / browser_type to act on elements by ref. Pages are yours alone, hidden, and use a separate Agent profile, so they are signed out of the user's accounts; browser_show lets the user watch or sign in.
 - Whenever you name a workspace to the user (in any message, including a short label such as a letter), write it as a markdown link with the workspace scheme, \`[<workspace name>](emjosh://workspace/<workspace id>)\`, which the chat shows as a clickable chip that opens it; use the id from list_workspaces or current_workspace, never a guessed one. To find which workspace the user means (a PR/MR, branch, ticket, or description), call find_workspaces.
 - If current_workspace returns null, you are not running inside an Emjosh workspace, and the points above about workspaces and initiatives don't apply.`;
 
@@ -633,6 +635,222 @@ export function buildControlMcpServer(
       inputSchema: { path: z.string(), key: z.unknown().optional() },
     },
     async ({ path, key }) => json(await service.appApi().read(path, key))
+  );
+
+  const pageId = z
+    .string()
+    .optional()
+    .describe(
+      'Page id from browser_open or browser_pages; the most recently used page when omitted.'
+    );
+  const pageText = (page: { pageId: string; url: string; title: string; loading: boolean }) =>
+    `Page ${page.pageId}: ${JSON.stringify(page.title)} ${page.url}${page.loading ? ' (still loading)' : ''}`;
+  const text = (value: string) => ({ content: [{ type: 'text' as const, text: value }] });
+
+  server.registerTool(
+    'browser_open',
+    {
+      description:
+        'Open a web page in a new browser page of this workspace and return its id. Pages run in ' +
+        "Emjosh's separate Agent browser profile (no access to the user's own logins), hidden unless " +
+        'show is true. Then use browser_snapshot to read it.',
+      inputSchema: {
+        url: z.string().min(1).describe('http(s) URL.'),
+        show: z.boolean().optional().describe('Also show the page window to the user.'),
+      },
+    },
+    async (input) => {
+      const { scope, port } = await service.agentBrowser(caller);
+      return text(pageText(await port.open(scope, input)));
+    }
+  );
+
+  server.registerTool(
+    'browser_pages',
+    {
+      description: "List this workspace's open browser pages.",
+      inputSchema: {},
+    },
+    async () => {
+      const { scope, port } = await service.agentBrowser(caller);
+      return json(port.pages(scope));
+    }
+  );
+
+  server.registerTool(
+    'browser_navigate',
+    {
+      description: 'Load a URL in a browser page, or go back, forward or reload.',
+      inputSchema: {
+        pageId,
+        url: z.string().optional(),
+        action: z.enum(['back', 'forward', 'reload']).optional(),
+      },
+    },
+    async ({ pageId: id, ...input }) => {
+      const { scope, port } = await service.agentBrowser(caller);
+      return text(pageText(await port.navigate(scope, id, input)));
+    }
+  );
+
+  server.registerTool(
+    'browser_snapshot',
+    {
+      description:
+        'Read a browser page as text: headings, visible text, and its interactive elements, each ' +
+        'with a ref like e12 that browser_click, browser_type and browser_select take. Refs are ' +
+        'only valid until the next snapshot, so snapshot again after the page changes. Prefer this ' +
+        'to screenshots.',
+      inputSchema: { pageId },
+    },
+    async ({ pageId: id }) => {
+      const { scope, port } = await service.agentBrowser(caller);
+      const { page, text: outline } = await port.snapshot(scope, id);
+      return text(`${pageText(page)}\n\n${outline}`);
+    }
+  );
+
+  server.registerTool(
+    'browser_screenshot',
+    {
+      description: 'Take a PNG screenshot of a browser page, for layout and visual checks.',
+      inputSchema: {
+        pageId,
+        fullPage: z.boolean().optional().describe('The whole page, not just the viewport.'),
+      },
+    },
+    async ({ pageId: id, fullPage }) => {
+      const { scope, port } = await service.agentBrowser(caller);
+      const { page, pngBase64 } = await port.screenshot(scope, id, { fullPage });
+      return {
+        content: [
+          { type: 'text' as const, text: pageText(page) },
+          { type: 'image' as const, data: pngBase64, mimeType: 'image/png' },
+        ],
+      };
+    }
+  );
+
+  const actOn = async (id: string | undefined, action: Parameters<AgentBrowserPort['act']>[2]) => {
+    const { scope, port } = await service.agentBrowser(caller);
+    const { page, detail } = await port.act(scope, id, action);
+    return text([detail, pageText(page)].filter(Boolean).join('\n'));
+  };
+  const refSchema = z.string().describe('Element ref from the latest browser_snapshot, e.g. e12.');
+
+  server.registerTool(
+    'browser_click',
+    {
+      description: 'Click an element by ref.',
+      inputSchema: { pageId, ref: refSchema, doubleClick: z.boolean().optional() },
+    },
+    async ({ pageId: id, ...rest }) => actOn(id, { type: 'click', ...rest })
+  );
+
+  server.registerTool(
+    'browser_type',
+    {
+      description:
+        'Type text into an input or textarea by ref, replacing its content unless append is true.',
+      inputSchema: {
+        pageId,
+        ref: refSchema,
+        text: z.string(),
+        submit: z.boolean().optional().describe('Press Enter afterwards.'),
+        append: z.boolean().optional(),
+      },
+    },
+    async ({ pageId: id, ...rest }) => actOn(id, { type: 'type', ...rest })
+  );
+
+  server.registerTool(
+    'browser_select',
+    {
+      description: 'Choose an option of a select element by its label or value.',
+      inputSchema: { pageId, ref: refSchema, option: z.string() },
+    },
+    async ({ pageId: id, ...rest }) => actOn(id, { type: 'select', ...rest })
+  );
+
+  server.registerTool(
+    'browser_press',
+    {
+      description:
+        'Press a key on the focused element: a character, or Enter, Tab, Escape, Backspace, Delete, Arrow keys, Home, End, PageUp, PageDown, Space.',
+      inputSchema: { pageId, key: z.string().min(1) },
+    },
+    async ({ pageId: id, key }) => actOn(id, { type: 'press', key })
+  );
+
+  server.registerTool(
+    'browser_scroll',
+    {
+      description: 'Scroll a browser page by most of a screen, or to its top or bottom.',
+      inputSchema: { pageId, direction: z.enum(['up', 'down', 'top', 'bottom']) },
+    },
+    async ({ pageId: id, direction }) => actOn(id, { type: 'scroll', direction })
+  );
+
+  server.registerTool(
+    'browser_wait_for',
+    {
+      description:
+        'Wait until text appears (or disappears) on the page, or a fixed time passes (ms). Gives up after timeoutMs (default 10s, at most 30s).',
+      inputSchema: {
+        pageId,
+        text: z.string().optional(),
+        textGone: z.string().optional(),
+        ms: z.number().int().positive().optional(),
+        timeoutMs: z.number().int().positive().optional(),
+      },
+    },
+    async ({ pageId: id, ...rest }) => actOn(id, { type: 'wait', ...rest })
+  );
+
+  server.registerTool(
+    'browser_console',
+    {
+      description: "A browser page's recent console output, uncaught errors and failed requests.",
+      inputSchema: {
+        pageId,
+        clear: z.boolean().optional().describe('Empty the buffer after reading.'),
+      },
+    },
+    async ({ pageId: id, clear }) => {
+      const { scope, port } = await service.agentBrowser(caller);
+      const { page, entries } = await port.console(scope, id, { clear });
+      return text(
+        `${pageText(page)}\n` +
+          (entries.length
+            ? entries.map((entry) => `[${entry.level}] ${entry.text}`).join('\n')
+            : '(no console output)')
+      );
+    }
+  );
+
+  server.registerTool(
+    'browser_show',
+    {
+      description:
+        'Show a browser page to the user in its own window, so they can watch or take over (for example to sign in).',
+      inputSchema: { pageId },
+    },
+    async ({ pageId: id }) => {
+      const { scope, port } = await service.agentBrowser(caller);
+      return text(pageText(await port.show(scope, id)));
+    }
+  );
+
+  server.registerTool(
+    'browser_close',
+    {
+      description: 'Close a browser page. Pages also close on their own after 30 idle minutes.',
+      inputSchema: { pageId },
+    },
+    async ({ pageId: id }) => {
+      const { scope, port } = await service.agentBrowser(caller);
+      return json(await port.close(scope, id));
+    }
   );
 
   return server;

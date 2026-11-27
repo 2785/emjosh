@@ -20,6 +20,7 @@ import { controlEndpointFile } from '@main/core/workspace-control/endpoint-file'
 import { createClaudeSearchModel } from '@main/core/workspace-control/search-model';
 import type { DesktopRuntimes } from '@main/gateway/desktop-runtimes';
 import { serveDesktopWire } from '@main/gateway/desktop-wire';
+import { AgentBrowser } from '@main/host/browser/agent-browser';
 import { getRemoteControlService } from '@main/host/remote-control';
 import { log } from '@main/lib/logger';
 import { buildLaunchedToolEnv } from '@main/lib/userEnv';
@@ -74,6 +75,8 @@ export async function bootControllers(
     if (IS_PERSONAL) {
       // Agents manage workspaces through this endpoint; a failure only disables that.
       try {
+        const agentBrowser = new AgentBrowser();
+        scope.add(() => agentBrowser.dispose());
         const endpoint = await startWorkspaceControl(
           {
             ...options,
@@ -89,6 +92,7 @@ export async function bootControllers(
             endpointFile: controlEndpointFile(),
             version: app.getVersion(),
             logger: log,
+            agentBrowser,
             onAgentEvent: (handler) => agentStatusService.on('agent:event', handler),
             transcripts: {
               acpHistory: join(app.getPath('userData'), 'acp-history'),
