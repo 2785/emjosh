@@ -44,35 +44,35 @@ describe('useRunningCommandNotice', () => {
   const notice = () => host.firstElementChild?.getAttribute('data-notice') ?? '';
   const advance = (ms: number) => act(async () => void vi.advanceTimersByTime(ms));
 
-  it('stays quiet for the first 10 seconds of a command, however long the chat was open', async () => {
+  it('stays quiet for the first 20 seconds of a command, however long the chat was open', async () => {
     await act(async () => root.render(<Harness running={null} />));
     await advance(5 * 60_000);
 
     await act(async () => root.render(<Harness running={command} />));
     expect(notice()).toBe('');
-    await advance(6_000);
+    await advance(16_000);
     expect(notice()).toBe('');
     await advance(4_000);
-    expect(notice()).toBe('glab repo create synctera/x · running 10s');
+    expect(notice()).toBe('glab repo create synctera/x · running 20s');
     expect(host.firstElementChild?.getAttribute('data-action')).toBe('Stop');
   });
 
   it('starts counting again for the next command', async () => {
     await act(async () => root.render(<Harness running={command} />));
-    await advance(12_000);
+    await advance(22_000);
     expect(notice()).not.toBe('');
 
     await act(async () => root.render(<Harness running={null} />));
     await act(async () => root.render(<Harness running={{ id: 'c2', command: 'make test' }} />));
 
     expect(notice()).toBe('');
-    await advance(10_000);
-    expect(notice()).toBe('make test · running 10s');
+    await advance(20_000);
+    expect(notice()).toBe('make test · running 20s');
   });
 
   it('shows nothing when the turn cannot be stopped', async () => {
     await act(async () => root.render(<Harness running={command} canStop={false} />));
-    await advance(30_000);
+    await advance(40_000);
 
     expect(notice()).toBe('');
   });

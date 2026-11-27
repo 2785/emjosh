@@ -26,7 +26,7 @@ export function findRunningCommand(
 }
 
 /** A command that runs this long is worth pointing out: the agent's turn waits for it. */
-export const RUNNING_COMMAND_NOTICE_AFTER_MS = 10_000;
+export const RUNNING_COMMAND_NOTICE_AFTER_MS = 20_000;
 
 /** "45s", "6m 12s", "1h 3m". */
 export function formatElapsed(ms: number): string {
