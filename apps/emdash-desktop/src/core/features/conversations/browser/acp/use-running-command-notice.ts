@@ -29,9 +29,9 @@ export function useRunningCommandNotice(
   }, [runningId]);
 
   if (!running || !canStop) return null;
-  const since = firstSeen.current.get(running.id) ?? now;
-  if (!firstSeen.current.has(running.id)) firstSeen.current.set(running.id, since);
-  const elapsed = now - since;
+  // The clock starts at the first render that sees the command: `now` can be stale by then.
+  if (!firstSeen.current.has(running.id)) firstSeen.current.set(running.id, Date.now());
+  const elapsed = now - firstSeen.current.get(running.id)!;
   if (elapsed < RUNNING_COMMAND_NOTICE_AFTER_MS) return null;
 
   return {

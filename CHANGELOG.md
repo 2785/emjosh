@@ -3,6 +3,12 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.29 — 2026-11-27
+
+- The "Waiting on a command" notice appears only once a command has run for 10 seconds (it was
+  meant to be 20, and a clock bug made it show straight away for any command in a chat that had
+  been open a while), so short commands no longer flash it.
+
 ## 0.1.28 — 2026-11-27
 
 Fixes taken from upstream Emdash since we forked (the rest of upstream, such as the 2.0 waitlist
