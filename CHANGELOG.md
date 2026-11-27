@@ -3,6 +3,13 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.36 — 2026-11-27
+
+- `create_workspace` takes `options` (model, effort, permission mode, by the agent's option ids),
+  so an agent or lead asked for "Antigravity on Neon, high effort" or "Opus 5.5" can start the
+  workspace that way. Before, only the agent could be chosen, and the workspace came up on the
+  caller's model and effort or the agent's saved defaults.
+
 ## 0.1.35 — 2026-11-27
 
 - Agents can browse the web without any extra tool: the `emjosh` MCP server has `browser_open`,

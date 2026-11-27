@@ -374,4 +374,35 @@ describe('WorkspaceControlService', () => {
     });
     expect(deps.createWorkspace).toHaveBeenNthCalledWith(2, { projectId: 'p2', provider: 'codex' });
   });
+
+  it('lets the caller choose the new agent’s model and effort, over what it would inherit', async () => {
+    const { service, deps } = setup([workspace({ id: 'self' })]);
+    deps.callerContext.mockResolvedValue({
+      taskId: 'self',
+      provider: 'claude',
+      options: { mode: 'bypassPermissions', model: 'sonnet', effort: 'high' },
+    } as never);
+    const caller = { conversationId: 'conv-self' };
+
+    await service.createWorkspace(caller, {
+      projectId: 'p2',
+      options: { model: 'opus', effort: 'xhigh' },
+    });
+    await service.createWorkspace(caller, {
+      projectId: 'p2',
+      provider: 'antigravity',
+      options: { model: 'gemini-4-neon', thought_level: 'high' },
+    });
+
+    expect(deps.createWorkspace).toHaveBeenNthCalledWith(1, {
+      projectId: 'p2',
+      provider: 'claude',
+      options: { mode: 'bypassPermissions', model: 'opus', effort: 'xhigh' },
+    });
+    expect(deps.createWorkspace).toHaveBeenNthCalledWith(2, {
+      projectId: 'p2',
+      provider: 'antigravity',
+      options: { model: 'gemini-4-neon', thought_level: 'high' },
+    });
+  });
 });

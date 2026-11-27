@@ -39,6 +39,7 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
 - Anything else the Emjosh app can do (its settings, automations, MCP servers, skills, prompt library, project settings, conversations, terminals, pull requests, and so on) is reachable through the app API: find operations with app_api_list, read their input with app_api_describe, then app_api_call or app_api_read. Use the dedicated tools above where one fits. Confirm with the user before anything destructive (deleting projects, workspaces, conversations, files or automations) they did not explicitly ask for.
 - To look at a web page (docs, a deployed site, a local dev server, a UI you built), use the browser_* tools instead of a separate browser CLI: browser_open, then browser_snapshot to read it and browser_click / browser_type to act on elements by ref. Pages are yours alone, hidden, and use a separate Agent profile, so they are signed out of the user's accounts; browser_show lets the user watch or sign in.
+- When the user names an agent, model or effort for a workspace ("antigravity on neon, high effort", "Opus 5.5"), pass provider and options to create_workspace; left out, the workspace inherits your model and effort or the agent's saved defaults. Check the workspace's settings in the app (conversations.acp.session.config) if it matters.
 - Whenever you name a workspace to the user (in any message, including a short label such as a letter), write it as a markdown link with the workspace scheme, \`[<workspace name>](emjosh://workspace/<workspace id>)\`, which the chat shows as a clickable chip that opens it; use the id from list_workspaces or current_workspace, never a guessed one. To find which workspace the user means (a PR/MR, branch, ticket, or description), call find_workspaces.
 - If current_workspace returns null, you are not running inside an Emjosh workspace, and the points above about workspaces and initiatives don't apply.`;
 
@@ -249,6 +250,19 @@ export function buildControlMcpServer(
           .string()
           .optional()
           .describe("Agent to run (e.g. 'claude'); defaults to the calling workspace's agent."),
+        options: z
+          .record(z.string(), z.union([z.string(), z.boolean()]))
+          .optional()
+          .describe(
+            'Session settings for the agent, by its option ids, e.g. { model, effort } for claude, ' +
+              '{ model, reasoning_effort, mode } for codex, { model, thought_level, mode } for ' +
+              'antigravity. Without them the workspace inherits yours (same agent only) or the ' +
+              "agent's saved defaults, which is rarely the model or effort you were asked for. Ids " +
+              'and values come from app_api_read conversations.providerSettings.model.value with ' +
+              "key { host: 'local:local', providerId }: its catalogs list what earlier sessions " +
+              'offered. Pass the permission mode too if it matters; values that agent does not ' +
+              'offer are ignored.'
+          ),
         initiativeId: z
           .string()
           .optional()

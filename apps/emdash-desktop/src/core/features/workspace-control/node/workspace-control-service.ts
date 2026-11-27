@@ -90,6 +90,12 @@ export type CreateWorkspaceInput = {
   prompt?: string;
   /** Agent for the first conversation; defaults to the calling workspace's agent. */
   provider?: string;
+  /**
+   * Session settings for the first conversation (model, effort, permission mode), by the agent's
+   * option ids. They override the caller's (when it runs the same agent) and the agent's saved
+   * preferences.
+   */
+  options?: Record<string, string | boolean>;
   /** Initiative to put the new workspace in. */
   initiativeId?: string;
   /** Its label in the initiative; the next free letter when omitted, none with null. */
@@ -986,18 +992,20 @@ export class WorkspaceControlService {
       ? await this.deps.callerContext(caller.conversationId)
       : null;
     const provider = input.provider ?? context?.provider;
-    const { label: _label, ...workspaceInput } = input;
+    const { label: _label, options: requested, ...workspaceInput } = input;
     // A bad initiative or label has to fail before the workspace exists: an error afterwards
     // makes the caller retry and start a second one.
     if (input.initiativeId) {
       await this.requireInitiatives().assertCanJoin(input.initiativeId, input.label);
     }
+    // The new agent runs like the caller's (the same permission mode, above all), as far as
+    // they run the same agent; whatever the caller asks for explicitly wins.
+    const inherited = context?.options && provider === context.provider ? context.options : {};
+    const options = { ...inherited, ...requested };
     const created = await this.deps.createWorkspace({
       ...workspaceInput,
       provider,
-      // The new agent runs like the caller's (the same permission mode, above all), as far as
-      // they run the same agent.
-      ...(context?.options && provider === context.provider ? { options: context.options } : {}),
+      ...(Object.keys(options).length > 0 && { options }),
     });
     if (input.initiativeId) {
       const initiatives = this.requireInitiatives();
