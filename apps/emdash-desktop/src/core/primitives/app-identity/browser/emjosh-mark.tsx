@@ -1,28 +1,23 @@
-/** Emjosh's mark (a J on a rounded square); same artwork as src/assets/images/emjosh/emjosh.svg. */
+/** Emjosh's mark (a mint j on a dark rounded square); same artwork as src/assets/images/emjosh/emjosh.svg. */
 export function EmjoshMark({ size = 48, className }: { size?: number; className?: string }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="100 100 824 824"
+      viewBox="0 0 512 512"
       className={className}
       xmlns="http://www.w3.org/2000/svg"
       aria-label="Emjosh"
     >
-      <defs>
-        <linearGradient id="emjosh-mark-bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#6D5DFC" />
-          <stop offset="1" stopColor="#2A1F8F" />
-        </linearGradient>
-      </defs>
-      <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#emjosh-mark-bg)" />
+      <rect width="512" height="512" rx="112" fill="#13151B" />
       <path
-        d="M600 300 V600 A150 150 0 0 1 300 600"
+        d="M346 215 V290 A90 90 0 0 1 166 290"
         fill="none"
-        stroke="#FFFFFF"
-        strokeWidth="112"
+        stroke="#A5F3C2"
+        strokeWidth="64"
         strokeLinecap="round"
       />
+      <circle cx="346" cy="138" r="34" fill="#F5F5F7" />
     </svg>
   );
 }
