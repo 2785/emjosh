@@ -10,6 +10,8 @@ export type DeliveryCoalescerOptions<T> = {
    */
   isBusy?: (key: string) => Promise<boolean>;
   maxHoldMs?: number;
+  /** A batch holding an urgent item goes out when due, even to a busy recipient. */
+  isUrgent?: (item: T) => boolean;
   flush: (key: string, items: T[]) => Promise<void>;
   onError?: (error: unknown) => void;
 };
@@ -55,8 +57,9 @@ export class DeliveryCoalescer<T> {
   }
 
   private async due(key: string, batch: Batch<T>): Promise<void> {
-    const { isBusy, maxHoldMs = DEFAULT_DELIVERY_WINDOW.maxHoldMs } = this.options;
-    if (isBusy && Date.now() - batch.firstAt < maxHoldMs && (await isBusy(key))) {
+    const { isBusy, isUrgent, maxHoldMs = DEFAULT_DELIVERY_WINDOW.maxHoldMs } = this.options;
+    const urgent = isUrgent ? batch.items.some(isUrgent) : false;
+    if (!urgent && isBusy && Date.now() - batch.firstAt < maxHoldMs && (await isBusy(key))) {
       // An item added while checking already rescheduled the batch.
       if (!batch.timer && this.batches.get(key) === batch) {
         this.schedule(key, batch, this.options.debounceMs);

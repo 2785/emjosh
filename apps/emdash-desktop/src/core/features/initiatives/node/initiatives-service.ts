@@ -81,6 +81,15 @@ export function messageWakesTask(
   return taskId !== leadTaskId || message.kind !== 'fyi';
 }
 
+/**
+ * Whether a delivered message should reach a busy agent now rather than after a pause: decisions
+ * and blockers, and anything the user posted. Others (reports, notes) can wait and be batched.
+ */
+export function messageIsUrgent(message: Pick<InitiativeMessage, 'kind' | 'fromTaskId'>): boolean {
+  if (message.kind === 'decision' || message.kind === 'blocked') return true;
+  return message.fromTaskId === null && message.kind === 'message';
+}
+
 /** A workspace's latest status event and latest message, as shown in list_workspaces. */
 export type InitiativeTaskActivity = {
   lastEvent: Pick<InitiativeMessage, 'kind' | 'body' | 'createdAt'> | null;

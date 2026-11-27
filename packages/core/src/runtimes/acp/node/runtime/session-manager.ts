@@ -407,6 +407,9 @@ export class SessionManager {
       if (input.placement === 'interrupt') {
         return await lease.value.cell.interrupt(input.prompt, acceptance);
       }
+      if (input.placement === 'steer') {
+        return await lease.value.cell.steerOrQueue(input.prompt, acceptance);
+      }
       return await lease.value.cell.prompt(input.prompt, acceptance);
     } finally {
       await lease.release();

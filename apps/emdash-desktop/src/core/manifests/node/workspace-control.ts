@@ -19,6 +19,7 @@ import {
   DEFAULT_DELIVERY_WINDOW,
   DeliveryCoalescer,
 } from '@core/features/initiatives/node/delivery-coalescer';
+import { messageIsUrgent } from '@core/features/initiatives/node/initiatives-service';
 import { createProjectOperations } from '@core/features/projects/node/controller';
 import { createProjectFromRemote } from '@core/features/projects/node/operations/create-project-from-remote';
 import { formatTaskDisplayName, normalizeTaskName } from '@core/features/tasks/api/task-names';
@@ -234,6 +235,7 @@ export async function startWorkspaceControl(
     ...DEFAULT_DELIVERY_WINDOW,
     ...extras.deliveryWindow,
     isBusy,
+    isUrgent: messageIsUrgent,
     onError: (error) => log.warn('Initiative message delivery failed', { error }),
     async flush(taskId, messages) {
       const initiative = await initiatives.get(messages[0]!.initiativeId);
@@ -257,7 +259,14 @@ export async function startWorkspaceControl(
         quietCount: quietCounts.get(taskId),
       });
       quietCounts.delete(taskId);
-      const sent = await sendAcpConversationPrompt(context, conversationId, text);
+      // An urgent message goes into the running turn when the agent takes steering; the rest, and
+      // agents that don't, queue behind it.
+      const sent = await sendAcpConversationPrompt(
+        context,
+        conversationId,
+        text,
+        messages.some(messageIsUrgent) ? 'steer' : 'auto'
+      );
       if (!sent.success) log.warn('Initiative message delivery failed', { taskId });
     },
   });

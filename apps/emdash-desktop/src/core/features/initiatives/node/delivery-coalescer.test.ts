@@ -72,4 +72,51 @@ describe('DeliveryCoalescer', () => {
     await vi.advanceTimersByTimeAsync(125_000);
     expect(flushed[1]).toEqual(['lead', ['c']]);
   });
+  describe('urgent items', () => {
+    function withUrgent() {
+      const urgentFlushed: [string, string[]][] = [];
+      const urgentCoalescer = new DeliveryCoalescer<string>({
+        debounceMs: 5_000,
+        maxWaitMs: 30_000,
+        maxHoldMs: 120_000,
+        isBusy: async () => true,
+        isUrgent: (item) => item.startsWith('!'),
+        flush: async (key, items) => {
+          urgentFlushed.push([key, items]);
+        },
+      });
+      return { urgentCoalescer, urgentFlushed };
+    }
+
+    it('goes out to a busy recipient when due instead of being held', async () => {
+      const { urgentCoalescer, urgentFlushed } = withUrgent();
+      urgentCoalescer.add('member', '!merge to main');
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(urgentFlushed).toEqual([['member', ['!merge to main']]]);
+      urgentCoalescer.dispose();
+    });
+
+    it('still holds a batch with nothing urgent in it', async () => {
+      const { urgentCoalescer, urgentFlushed } = withUrgent();
+      urgentCoalescer.add('member', 'status note');
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(urgentFlushed).toEqual([]);
+      urgentCoalescer.dispose();
+    });
+
+    it('takes the quiet items along with an urgent one', async () => {
+      const { urgentCoalescer, urgentFlushed } = withUrgent();
+      urgentCoalescer.add('member', 'status note');
+      urgentCoalescer.add('member', '!merge to main');
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(urgentFlushed).toEqual([['member', ['status note', '!merge to main']]]);
+      urgentCoalescer.dispose();
+    });
+  });
 });

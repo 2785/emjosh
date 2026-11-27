@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { InitiativeMessage } from '@core/features/initiatives/api/contract';
 import { describeAgentEvent } from './agent-events';
-import { messageWakesTask } from './initiatives-service';
+import { messageIsUrgent, messageWakesTask } from './initiatives-service';
 
 type Message = Pick<InitiativeMessage, 'kind' | 'fromTaskId' | 'toTaskId'>;
 const LEAD = 'lead';
@@ -67,5 +67,21 @@ describe('describeAgentEvent', () => {
       what: 'finished its turn; background work it started is still running',
     });
     expect(describeAgentEvent({ type: 'notification', payload: {} })).toBeNull();
+  });
+});
+
+describe('messageIsUrgent', () => {
+  it("treats decisions, blockers and the user's posts as urgent", () => {
+    expect(messageIsUrgent({ kind: 'decision', fromTaskId: LEAD })).toBe(true);
+    expect(messageIsUrgent({ kind: 'blocked', fromTaskId: 'member' })).toBe(true);
+    expect(messageIsUrgent({ kind: 'message', fromTaskId: null })).toBe(true);
+  });
+
+  it('leaves reports, notes and events to be batched', () => {
+    expect(messageIsUrgent({ kind: 'done', fromTaskId: 'member' })).toBe(false);
+    expect(messageIsUrgent({ kind: 'fyi', fromTaskId: 'member' })).toBe(false);
+    expect(messageIsUrgent({ kind: 'message', fromTaskId: 'member' })).toBe(false);
+    expect(messageIsUrgent({ kind: 'attention', fromTaskId: null })).toBe(false);
+    expect(messageIsUrgent({ kind: 'event', fromTaskId: 'member' })).toBe(false);
   });
 });

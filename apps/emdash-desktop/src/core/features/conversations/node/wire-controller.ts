@@ -5,7 +5,11 @@ import {
   type HostRef,
   type SerializedHostRef,
 } from '@emdash/core/primitives/host/api';
-import { acpErr, providerOptionValuesSchema } from '@emdash/core/runtimes/acp/api/client';
+import {
+  acpErr,
+  providerOptionValuesSchema,
+  type PromptPlacement,
+} from '@emdash/core/runtimes/acp/api/client';
 import { err, ok, type Result } from '@emdash/shared';
 import { createKeyedLanes } from '@emdash/shared/concurrency';
 import type { Logger } from '@emdash/shared/logger';
@@ -111,12 +115,13 @@ export function startAcpConversationSession(
 
 /**
  * Sends a prompt into a chat conversation from the host (e.g. a peer workspace's message),
- * starting its agent session first when it isn't running. Queues behind a running turn.
+ * starting its agent session first when it isn't running. Queues behind a running turn unless `placement` says otherwise (`steer` goes into the turn when the agent takes it).
  */
 export async function sendAcpConversationPrompt(
   options: Parameters<typeof startAcpConversationSession>[0],
   conversationId: string,
-  text: string
+  text: string,
+  placement: PromptPlacement = 'auto'
 ) {
   const started = await startAcpConversationSession(options, conversationId);
   if (!started.success) return started;
@@ -129,7 +134,7 @@ export async function sendAcpConversationPrompt(
   );
   return withConversationRuntime(options, target, (client) =>
     client.acp.sendPrompt(
-      { conversationId, promptId: crypto.randomUUID(), prompt: { text }, placement: 'auto' },
+      { conversationId, promptId: crypto.randomUUID(), prompt: { text }, placement },
       { timeoutMs: 0 }
     )
   );
