@@ -91,7 +91,7 @@ export function ProjectPageShell({
       data-project-page-scroll
       className="flex h-full min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto"
     >
-      <div className="flex min-h-full w-full px-8 py-10">
+      <div className="flex min-h-full w-full px-8 pt-[3.25rem] pb-10">
         <div
           data-project-page-content
           className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col gap-6"
