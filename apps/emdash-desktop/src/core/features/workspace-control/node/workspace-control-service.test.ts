@@ -368,7 +368,7 @@ describe('WorkspaceControlService', () => {
         addAgent: vi.fn(async () => ({ conversationId: 'c', provider: 'claude' })),
         setPinned: vi.fn(async () => ({ pinned: true })),
       };
-      deps.conversations = conversations as never;
+      (deps as WorkspaceControlDeps).conversations = conversations as never;
       return { service, conversations, caller: { conversationId: 'conv-self' } };
     }
 
