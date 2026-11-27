@@ -1,3 +1,4 @@
+import type { AgentBrowserPort } from '@core/features/browser/api/agent-browser';
 import {
   isInitiativeEvent,
   type Initiative,
@@ -232,6 +233,8 @@ export type WorkspaceControlDeps = {
   initiatives?: ControlInitiatives;
   /** The rest of the app, for whatever the dedicated operations don't cover. */
   appApi?: AppApi;
+  /** Browser pages agents can drive. */
+  browser?: AgentBrowserPort;
 };
 
 function baseName(path: string): string {
@@ -1272,6 +1275,13 @@ export class WorkspaceControlService {
       { initiativeId, forTaskId: taskId ?? undefined, afterId: input.afterId },
       seconds * 1000
     );
+  }
+
+  /** The browser pages of the caller's workspace (a shared scope for callers outside one). */
+  async agentBrowser(caller: ControlCaller): Promise<{ scope: string; port: AgentBrowserPort }> {
+    const port = this.deps.browser;
+    if (!port) throw new Error('The agent browser is not available.');
+    return { scope: (await this.callerTaskId(caller)) ?? 'external', port };
   }
 
   private async callerTaskId(caller: ControlCaller): Promise<string | null> {

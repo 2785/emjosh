@@ -5,6 +5,7 @@ import { formatHostRef, LOCAL_HOST_REF } from '@emdash/core/primitives/host/api'
 import type { Logger } from '@emdash/shared/logger';
 import type { ContractClient } from '@emdash/wire/rpc';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import type { AgentBrowserPort } from '@core/features/browser/api/agent-browser';
 import { conversationRegistryTable as conversations } from '@core/features/conversations/api/node/registry/conversation-registry';
 import { getProviderSettingsService } from '@core/features/conversations/node/provider-settings-service';
 import {
@@ -160,6 +161,8 @@ export async function startWorkspaceControl(
     }): Promise<string>;
     /** Batching of initiative deliveries; DEFAULT_DELIVERY_WINDOW when omitted. */
     deliveryWindow?: Partial<typeof DEFAULT_DELIVERY_WINDOW>;
+    /** Browser pages agents can drive. */
+    agentBrowser?: AgentBrowserPort;
     /** Subscribes to live agent status events; returns the unsubscribe function. */
     onAgentEvent?(
       handler: (event: {
@@ -635,6 +638,7 @@ export async function startWorkspaceControl(
   };
 
   deps.initiatives = initiatives;
+  if (extras.agentBrowser) deps.browser = extras.agentBrowser;
   if (extras.appWire) deps.appApi = new AppApi(appApiCatalog(desktopWireContract), extras.appWire);
   const service = new WorkspaceControlService(deps);
 
