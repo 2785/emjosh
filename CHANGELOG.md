@@ -3,6 +3,18 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.28 — 2026-11-27
+
+Fixes taken from upstream Emdash since we forked (the rest of upstream, such as the 2.0 waitlist
+card and the dependency bumps, is deliberately not taken):
+
+- Worktree changes rescan only the changed worktree instead of all of them, which matters with
+  many worktrees.
+- SSH connections turn off Nagle's algorithm, which cuts latency on interactive sessions.
+- The packaged app resolves `ssh2` through its real entry, a fix for packaged (notably Windows)
+  builds.
+- The legacy v0 import runs in one synchronous transaction.
+
 ## 0.1.27 — 2026-11-26
 
 - When an agent's turn is waiting on a shell command that has run for 20 seconds or more, the chat
