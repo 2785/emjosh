@@ -26,7 +26,7 @@ import {
 export type WorktreeRootContext = {
   /** Per-host default worktree root from the host-settings runtime, if configured. */
   hostWorktreeRoot: string | null;
-  /** Built-in worktree root for the host (`<home>/emdash/worktrees`). */
+  /** Built-in worktree root for the host (`<home>/emjosh/worktrees`). */
   builtInWorktreeRoot: string;
   /** The host's home directory, for `~` expansion of configured roots. */
   homeDirectory: string;
@@ -34,12 +34,12 @@ export type WorktreeRootContext = {
   pathProfile?: PathProfile;
 };
 
-/** The built-in (last) worktree-root layer: `<home>/emdash/worktrees`. */
+/** The built-in (last) worktree-root layer: `<home>/emjosh/worktrees`. */
 export function builtInWorktreeRootFor(homeDirectory: string, pathProfile?: PathProfile): string {
   const profile = pathProfile ?? pathProfileFor(homeDirectory);
   const home = parseAbsolute(homeDirectory, { profile });
   if (!home.success) return homeDirectory;
-  const builtIn = joinAbsolute(home.data, 'emdash', 'worktrees');
+  const builtIn = joinAbsolute(home.data, 'emjosh', 'worktrees');
   if (!builtIn.success) return homeDirectory;
   return formatForProfile(builtIn.data, profile);
 }

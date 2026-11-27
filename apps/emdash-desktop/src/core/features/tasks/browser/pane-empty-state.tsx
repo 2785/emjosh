@@ -3,8 +3,6 @@ import type { ReactNode } from 'react';
 import { useTaskViewContext } from '@core/features/tasks/contributions/browser/task-view-context';
 import { useWorkspaceId } from '@core/features/workbench/api/browser/task-composition-context';
 import { useOpenModal } from '@core/manifests/browser/modal-api';
-import { IS_PERSONAL } from '@core/primitives/app-identity/api/app-identity';
-import { EmdashLogo } from '@core/primitives/app-identity/browser/emdash-logo';
 import { EmjoshMark } from '@core/primitives/app-identity/browser/emjosh-mark';
 import { BoundShortcut } from '@core/primitives/keybindings/browser/shortcut';
 import { useArrowKeyNavigation } from '@core/primitives/react-hooks/browser/use-arrow-key-navigation';
@@ -42,11 +40,7 @@ export function PaneEmptyState() {
 
   return (
     <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3">
-      {IS_PERSONAL ? (
-        <EmjoshMark size={48} />
-      ) : (
-        <EmdashLogo height={32} className="text-background-2" />
-      )}
+      <EmjoshMark size={48} />
       <div className="mx-auto mt-10 flex w-full max-w-xs flex-col gap-0.5">
         <PaneEmptyStateAction
           isSelected={selectedIndex === 0}

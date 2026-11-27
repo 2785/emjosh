@@ -7,7 +7,7 @@ export type DeriveWorktreePoolPathOptions = {
 };
 
 export function defaultRepositoriesRoot(homeDirectory: string): string {
-  return joinHostPath(homeDirectory, 'emdash', 'repositories');
+  return joinHostPath(homeDirectory, 'emjosh', 'repositories');
 }
 
 // The built-in worktree root lives in the portable resolver module

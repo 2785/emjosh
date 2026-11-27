@@ -44,7 +44,7 @@ export type StoredSettings = {
   project: StoredProjectGitSettings;
   /** Per-host default worktree root from host settings, if configured. */
   hostWorktreeRoot?: string | null;
-  /** Built-in worktree root for the host, e.g. `<home>/emdash/worktrees`. */
+  /** Built-in worktree root for the host, e.g. `<home>/emjosh/worktrees`. */
   builtInWorktreeRoot: string;
   /**
    * The host's home directory, for `~` expansion and validation of the

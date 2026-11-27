@@ -1,11 +1,9 @@
 import { Button } from '@emdash/ui/react/primitives';
 import { motion, type Variants } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import IconLight from '@/assets/images/emdash/icon-light.png';
 import YTBanner from '@/assets/images/ytbanner.webp';
 import { useAppSettingsKey } from '@core/features/settings/api/browser/use-app-settings-key';
 import { confirmCommand } from '@core/features/workbench/contributions/commands';
-import { IS_PERSONAL } from '@core/primitives/app-identity/api/app-identity';
 import { EmjoshMark } from '@core/primitives/app-identity/browser/emjosh-mark';
 import { detectPlatformContext, resolveEffectiveChord } from '@core/primitives/keybindings/api';
 import { useChordKeydown } from '@core/primitives/keybindings/browser';
@@ -114,11 +112,7 @@ export function WelcomeScreen({ onGetStarted }: WelcomeScreenProps) {
           className="rounded-md border border-border/40 bg-white p-1.5 shadow-lg ring-1 shadow-black/5 ring-black/5"
           variants={itemVariants}
         >
-          {IS_PERSONAL ? (
-            <EmjoshMark size={48} className="rounded-sm" />
-          ) : (
-            <img src={IconLight} alt="Emdash" className="h-12 w-12 rounded-sm" />
-          )}
+          <EmjoshMark size={48} className="rounded-sm" />
         </motion.div>
 
         <motion.h1
