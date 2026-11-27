@@ -156,6 +156,7 @@ describe('control MCP endpoint', () => {
     expect(tools).toEqual([
       'add_project',
       'add_to_initiative',
+      'add_workspace_agent',
       'app_api_call',
       'app_api_describe',
       'app_api_list',
@@ -187,20 +188,25 @@ describe('control MCP endpoint', () => {
       'list_workspaces',
       'mark_workspace_done',
       'merge_workspaces',
+      'pin_workspaces',
       'post_message',
       'read_messages',
       'remove_from_initiative',
       'remove_project',
       'rename_project',
       'rename_workspace',
+      'send_to_workspace',
       'set_initiative_lead',
       'set_message_delivery',
       'set_workspace_dependencies',
       'set_workspace_label',
+      'stop_workspace',
       'subscribe',
       'unarchive_workspaces',
       'unsubscribe',
+      'update_workspace_settings',
       'wait_for_messages',
+      'workspace_settings',
     ]);
     // Clients such as Claude Code put these into the agent's system prompt.
     expect(client.getInstructions()).toContain('call rename_workspace');

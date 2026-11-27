@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { formatHostRef, LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
 import type { Logger } from '@emdash/shared/logger';
 import type { ContractClient } from '@emdash/wire/rpc';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { AgentBrowserPort } from '@core/features/browser/api/agent-browser';
 import { conversationRegistryTable as conversations } from '@core/features/conversations/api/node/registry/conversation-registry';
 import { getProviderSettingsService } from '@core/features/conversations/node/provider-settings-service';
@@ -36,6 +36,7 @@ import {
   type WorkspaceControlDeps,
   WorkspaceControlService,
 } from '@core/features/workspace-control/node/workspace-control-service';
+import { WorkspaceConversations } from '@core/features/workspace-control/node/workspace-conversations';
 import { setWorkspaceSearch } from '@core/features/workspace-control/node/workspace-search-registry';
 import { WorkspaceSearchService } from '@core/features/workspace-control/node/workspace-search-service';
 import {
@@ -640,6 +641,31 @@ export async function startWorkspaceControl(
   deps.initiatives = initiatives;
   if (extras.agentBrowser) deps.browser = extras.agentBrowser;
   if (extras.appWire) deps.appApi = new AppApi(appApiCatalog(desktopWireContract), extras.appWire);
+  if (extras.appWire) {
+    deps.appApi = new AppApi(appApiCatalog(desktopWireContract), extras.appWire);
+    deps.conversations = new WorkspaceConversations({
+      appApi: deps.appApi,
+      taskConversations: (taskId) =>
+        db
+          .select({
+            id: conversations.id,
+            provider: sql<string>`coalesce(${conversations.provider}, 'claude')`,
+            title: conversations.title,
+            type: conversations.type,
+          })
+          .from(conversations)
+          .where(eq(conversations.taskId, taskId))
+          .orderBy(asc(conversations.createdAt)),
+      projectIdOf: async (taskId) => {
+        const [row] = await db
+          .select({ projectId: tasks.projectId })
+          .from(tasks)
+          .where(eq(tasks.id, taskId))
+          .limit(1);
+        return row?.projectId ?? null;
+      },
+    });
+  }
   const service = new WorkspaceControlService(deps);
 
   const worktreePaths = async () =>

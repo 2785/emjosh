@@ -37,8 +37,10 @@ export const CONTROL_MCP_INSTRUCTIONS = `You are running in an Emjosh workspace:
 - If you are a member of an initiative (current_workspace shows one and you are not its lead), do your part, and post_message to the lead (toWorkspaceId) when you finish (kind done, with what you checked), get blocked (kind blocked), or need a decision (kind decision); only those wake the lead. Mark anything else kind fyi, which the lead reads when it wants. Don't acknowledge broadcasts, and don't reply unless something changed or you were asked. You receive messages addressed to you, the user's posts, and the lead's broadcasts; subscribe to more only if your work needs other workspaces' updates. Check read_messages before ending a turn so instructions sent mid-turn aren't missed.
 - Unless you lead an initiative, keep work that belongs in this repository here; don't create workspaces for it.
 - Waiting on something outside this chat (CI pipelines, deploys, reviews, another workspace): nothing tells you when it finishes, and once your turn ends nobody is watching it. Run a background shell loop that checks every 30 to 60 seconds and exits when it is done or after a time limit (about 45 minutes), so its exit is what wakes you, for example \`until <check>; do sleep 30; done\`. Don't end your turn to wait, and don't schedule long or repeated wakeups to poll: each one re-reads the whole conversation.
+- What the user does in a workspace's chat from the app has dedicated tools: workspace_settings and update_workspace_settings (model, effort, permission mode), send_to_workspace, stop_workspace, add_workspace_agent and pin_workspaces. Everything else the user can do in the app is reachable through the app API.
 - Anything else the Emjosh app can do (its settings, automations, MCP servers, skills, prompt library, project settings, conversations, terminals, pull requests, and so on) is reachable through the app API: find operations with app_api_list, read their input with app_api_describe, then app_api_call or app_api_read. Use the dedicated tools above where one fits. Confirm with the user before anything destructive (deleting projects, workspaces, conversations, files or automations) they did not explicitly ask for.
 - To look at a web page (docs, a deployed site, a local dev server, a UI you built), use the browser_* tools instead of a separate browser CLI: browser_open, then browser_snapshot to read it and browser_click / browser_type to act on elements by ref. Pages are yours alone, hidden, and use a separate Agent profile, so they are signed out of the user's accounts; browser_show lets the user watch or sign in.
+- When the user names an agent, model or effort for a workspace ("antigravity on neon, high effort", "Opus 5.5"), pass provider and options to create_workspace; left out, the workspace inherits your model and effort or the agent's saved defaults. Check the workspace's settings in the app (conversations.acp.session.config) if it matters.
 - Whenever you name a workspace to the user (in any message, including a short label such as a letter), write it as a markdown link with the workspace scheme, \`[<workspace name>](emjosh://workspace/<workspace id>)\`, which the chat shows as a clickable chip that opens it; use the id from list_workspaces or current_workspace, never a guessed one. To find which workspace the user means (a PR/MR, branch, ticket, or description), call find_workspaces.
 - If current_workspace returns null, you are not running inside an Emjosh workspace, and the points above about workspaces and initiatives don't apply.`;
 
@@ -249,6 +251,19 @@ export function buildControlMcpServer(
           .string()
           .optional()
           .describe("Agent to run (e.g. 'claude'); defaults to the calling workspace's agent."),
+        options: z
+          .record(z.string(), z.union([z.string(), z.boolean()]))
+          .optional()
+          .describe(
+            'Session settings for the agent, by its option ids, e.g. { model, effort } for claude, ' +
+              '{ model, reasoning_effort, mode } for codex, { model, thought_level, mode } for ' +
+              'antigravity. Without them the workspace inherits yours (same agent only) or the ' +
+              "agent's saved defaults, which is rarely the model or effort you were asked for. Ids " +
+              'and values come from app_api_read conversations.providerSettings.model.value with ' +
+              "key { host: 'local:local', providerId }: its catalogs list what earlier sessions " +
+              'offered. Pass the permission mode too if it matters; values that agent does not ' +
+              'offer are ignored.'
+          ),
         initiativeId: z
           .string()
           .optional()
@@ -583,6 +598,99 @@ export function buildControlMcpServer(
       },
     },
     async (input) => json(await service.waitForMessages(caller, input))
+  );
+
+  const optionsSchema = z
+    .record(z.string(), z.union([z.string(), z.boolean()]))
+    .describe('Option ids and values from workspace_settings, e.g. { model, effort, mode }.');
+  const conversationId = z
+    .string()
+    .optional()
+    .describe("One of the workspace's agent chats; its most recent chat when omitted.");
+  const workspaceIdOrSelf = z
+    .string()
+    .optional()
+    .describe('Workspace id; this workspace when omitted.');
+
+  server.registerTool(
+    'workspace_settings',
+    {
+      description:
+        "A workspace's agent chats with their model, effort and permission mode, each option's " +
+        'current value and the values it offers. Read this before update_workspace_settings.',
+      inputSchema: { workspaceId: workspaceIdOrSelf, conversationId },
+    },
+    async (input) => json(await service.workspaceSettings(caller, input))
+  );
+
+  server.registerTool(
+    'update_workspace_settings',
+    {
+      description:
+        "Change a workspace's model, effort or permission mode, as in the chat's menus; it takes " +
+        'effect on its next turn. You cannot change your own permission mode. saveAsDefault ' +
+        "also makes the values that agent's default for new workspaces.",
+      inputSchema: {
+        workspaceId: workspaceIdOrSelf,
+        conversationId,
+        options: optionsSchema,
+        saveAsDefault: z.boolean().optional(),
+      },
+    },
+    async (input) => json(await service.updateWorkspaceSettings(caller, input))
+  );
+
+  server.registerTool(
+    'send_to_workspace',
+    {
+      description:
+        "Type a message into another workspace's chat, like the user would; it is marked as sent " +
+        'by you. placement: auto (default: steer a running turn, else send), queue (after the ' +
+        'current turn), steer (into the running turn), interrupt (stop it and send).',
+      inputSchema: {
+        workspaceId: z.string(),
+        message: z.string().min(1),
+        conversationId,
+        placement: z.enum(['auto', 'queue', 'steer', 'interrupt']).optional(),
+      },
+    },
+    async (input) => json(await service.sendToWorkspace(caller, input))
+  );
+
+  server.registerTool(
+    'stop_workspace',
+    {
+      description: "Stop a workspace's running agent turn, like the stop button.",
+      inputSchema: { workspaceId: z.string(), conversationId },
+    },
+    async (input) => json(await service.stopWorkspace(caller, input))
+  );
+
+  server.registerTool(
+    'add_workspace_agent',
+    {
+      description:
+        'Start another agent chat in a workspace (this one by default), like the new-chat ' +
+        "button, optionally with a first prompt. Settings default to that agent's saved ones; " +
+        'options overrides them (see workspace_settings for ids).',
+      inputSchema: {
+        workspaceId: workspaceIdOrSelf,
+        provider: z.string().describe("Agent to run, e.g. 'claude', 'codex', 'antigravity'."),
+        title: z.string().optional(),
+        prompt: z.string().optional(),
+        options: optionsSchema.optional(),
+      },
+    },
+    async (input) => json(await service.addWorkspaceAgent(caller, input))
+  );
+
+  server.registerTool(
+    'pin_workspaces',
+    {
+      description: 'Pin or unpin workspaces in the sidebar.',
+      inputSchema: { workspaceIds: z.array(z.string()).min(1), pinned: z.boolean() },
+    },
+    async (input) => json(await service.setWorkspacesPinned(caller, input))
   );
 
   server.registerTool(

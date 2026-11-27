@@ -15,6 +15,7 @@ import {
 } from '@core/features/initiatives/api/labels';
 import { ensureUniqueTaskDisplayName, isRandomTaskName } from '@core/features/tasks/api/task-names';
 import type { AppApi } from './app-api';
+import type { PromptPlacement, WorkspaceConversations } from './workspace-conversations';
 
 /**
  * Workspace control: what an agent (inside Emjosh today, any MCP client later) can do with
@@ -90,6 +91,12 @@ export type CreateWorkspaceInput = {
   prompt?: string;
   /** Agent for the first conversation; defaults to the calling workspace's agent. */
   provider?: string;
+  /**
+   * Session settings for the first conversation (model, effort, permission mode), by the agent's
+   * option ids. They override the caller's (when it runs the same agent) and the agent's saved
+   * preferences.
+   */
+  options?: Record<string, string | boolean>;
   /** Initiative to put the new workspace in. */
   initiativeId?: string;
   /** Its label in the initiative; the next free letter when omitted, none with null. */
@@ -235,6 +242,8 @@ export type WorkspaceControlDeps = {
   appApi?: AppApi;
   /** Browser pages agents can drive. */
   browser?: AgentBrowserPort;
+  /** Operations on workspaces' agent chats: settings, messages, stopping, new agents. */
+  conversations?: WorkspaceConversations;
 };
 
 function baseName(path: string): string {
@@ -986,18 +995,20 @@ export class WorkspaceControlService {
       ? await this.deps.callerContext(caller.conversationId)
       : null;
     const provider = input.provider ?? context?.provider;
-    const { label: _label, ...workspaceInput } = input;
+    const { label: _label, options: requested, ...workspaceInput } = input;
     // A bad initiative or label has to fail before the workspace exists: an error afterwards
     // makes the caller retry and start a second one.
     if (input.initiativeId) {
       await this.requireInitiatives().assertCanJoin(input.initiativeId, input.label);
     }
+    // The new agent runs like the caller's (the same permission mode, above all), as far as
+    // they run the same agent; whatever the caller asks for explicitly wins.
+    const inherited = context?.options && provider === context.provider ? context.options : {};
+    const options = { ...inherited, ...requested };
     const created = await this.deps.createWorkspace({
       ...workspaceInput,
       provider,
-      // The new agent runs like the caller's (the same permission mode, above all), as far as
-      // they run the same agent.
-      ...(context?.options && provider === context.provider ? { options: context.options } : {}),
+      ...(Object.keys(options).length > 0 && { options }),
     });
     if (input.initiativeId) {
       const initiatives = this.requireInitiatives();
@@ -1282,6 +1293,133 @@ export class WorkspaceControlService {
     const port = this.deps.browser;
     if (!port) throw new Error('The agent browser is not available.');
     return { scope: (await this.callerTaskId(caller)) ?? 'external', port };
+  }
+
+  private requireConversations(): WorkspaceConversations {
+    if (!this.deps.conversations) throw new Error('Workspace chats are not available.');
+    return this.deps.conversations;
+  }
+
+  /** The workspace an operation means: the one named, else the caller's own. */
+  private async targetWorkspace(
+    caller: ControlCaller,
+    workspaceId: string | undefined
+  ): Promise<{ workspace: ControlWorkspace; isSelf: boolean }> {
+    const callerTask = await this.callerTaskId(caller);
+    const id = workspaceId ?? callerTask;
+    if (!id) throw new Error('Pass a workspaceId: this caller is not in a workspace.');
+    return { workspace: await this.requireWorkspace(id), isSelf: id === callerTask };
+  }
+
+  /** Model, effort and permission mode (with the values on offer) of a workspace's agent chats. */
+  async workspaceSettings(
+    caller: ControlCaller,
+    input: { workspaceId?: string; conversationId?: string }
+  ) {
+    const { workspace } = await this.targetWorkspace(caller, input.workspaceId);
+    return {
+      workspaceId: workspace.id,
+      conversations: await this.requireConversations().settings(workspace.id, input.conversationId),
+    };
+  }
+
+  /** Changes a workspace's model, effort or permission mode; an agent can't change its own mode. */
+  async updateWorkspaceSettings(
+    caller: ControlCaller,
+    input: {
+      workspaceId?: string;
+      conversationId?: string;
+      options: Record<string, string | boolean>;
+      saveAsDefault?: boolean;
+    }
+  ) {
+    const { workspace, isSelf } = await this.targetWorkspace(caller, input.workspaceId);
+    return {
+      workspaceId: workspace.id,
+      ...(await this.requireConversations().updateSettings(workspace.id, {
+        conversationId: input.conversationId,
+        options: input.options,
+        saveAsDefault: input.saveAsDefault,
+        forbidMode: isSelf,
+      })),
+    };
+  }
+
+  /** Types a message into another workspace's chat, marked as coming from the caller. */
+  async sendToWorkspace(
+    caller: ControlCaller,
+    input: {
+      workspaceId: string;
+      message: string;
+      conversationId?: string;
+      placement?: PromptPlacement;
+    }
+  ) {
+    const { workspace, isSelf } = await this.targetWorkspace(caller, input.workspaceId);
+    if (isSelf) throw new Error("A workspace can't message itself.");
+    const callerTask = await this.callerTaskId(caller);
+    const sender = callerTask
+      ? (await this.deps.listWorkspaces({ includeArchived: true })).find((w) => w.id === callerTask)
+      : undefined;
+    const from = sender ? `workspace "${sender.name}"` : 'an agent outside Emjosh';
+    return {
+      workspaceId: workspace.id,
+      ...(await this.requireConversations().send(workspace.id, {
+        message: `[Sent by ${from} through Emjosh, not typed by the user.]\n\n${input.message}`,
+        conversationId: input.conversationId,
+        placement: input.placement,
+      })),
+    };
+  }
+
+  /** Stops the running turn of a workspace's agent chat(s), like the stop button. */
+  async stopWorkspace(
+    caller: ControlCaller,
+    input: { workspaceId: string; conversationId?: string }
+  ) {
+    const { workspace, isSelf } = await this.targetWorkspace(caller, input.workspaceId);
+    if (isSelf) throw new Error("A workspace can't stop itself; end your turn instead.");
+    return {
+      workspaceId: workspace.id,
+      ...(await this.requireConversations().stop(workspace.id, input.conversationId)),
+    };
+  }
+
+  /** Starts another agent chat in a workspace, like the new-chat button. */
+  async addWorkspaceAgent(
+    caller: ControlCaller,
+    input: {
+      workspaceId?: string;
+      provider: string;
+      title?: string;
+      prompt?: string;
+      options?: Record<string, string | boolean>;
+    }
+  ) {
+    const { workspace } = await this.targetWorkspace(caller, input.workspaceId);
+    return {
+      workspaceId: workspace.id,
+      ...(await this.requireConversations().addAgent(workspace.id, {
+        provider: input.provider,
+        title: input.title,
+        prompt: input.prompt,
+        options: input.options,
+      })),
+    };
+  }
+
+  /** Pins or unpins workspaces in the sidebar. */
+  async setWorkspacesPinned(
+    caller: ControlCaller,
+    input: { workspaceIds: string[]; pinned: boolean }
+  ) {
+    const done: string[] = [];
+    for (const id of input.workspaceIds) {
+      const { workspace } = await this.targetWorkspace(caller, id);
+      await this.requireConversations().setPinned(workspace.id, input.pinned);
+      done.push(workspace.id);
+    }
+    return { pinned: input.pinned, workspaceIds: done };
   }
 
   private async callerTaskId(caller: ControlCaller): Promise<string | null> {
