@@ -3,6 +3,13 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.34 — 2026-11-27
+
+- Antigravity's *Bypass permissions* mode now sticks. It used to switch itself off whenever
+  Antigravity changed its own mode (for example into plan mode and back to auto), leaving the
+  chat in plain auto and asking you to approve commands such as a staging `curl`. Bypass now pauses
+  while Antigravity is out of auto and resumes when it returns; only picking another mode turns it off.
+
 ## 0.1.33 — 2026-11-27
 
 - With a window frame color set, the settings and project pages leave a gap below the title bar

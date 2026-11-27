@@ -142,14 +142,45 @@ describe('withPermissionModes', () => {
     expect(asked).toHaveLength(2);
   });
 
-  it('leaves bypass when agy switches itself out of auto', async () => {
-    const { agent, client, asked } = setup();
+  it('pauses bypass while agy is out of auto and resumes it when agy returns', async () => {
+    const { agent, client, updates, asked } = setup();
     await agent.newSession({ cwd: '/w', mcpServers: [] });
     await agent.setSessionConfigOption!({ sessionId: 's', configId: 'mode', value: BYPASS_MODE });
+    const switchTo = (mode: string) =>
+      client().sessionUpdate({
+        sessionId: 's',
+        update: { sessionUpdate: 'config_option_update', configOptions: [modeOption(mode)] },
+      });
+
     await client().sessionUpdate({
       sessionId: 's',
       update: { sessionUpdate: 'current_mode_update', currentModeId: 'plan' },
     });
+    await switchTo('plan');
+    await client().requestPermission(permission('ls', 'execute'));
+    expect(asked).toHaveLength(1);
+
+    // agy leaving plan mode puts itself back in auto: the user's bypass applies again.
+    await client().sessionUpdate({
+      sessionId: 's',
+      update: { sessionUpdate: 'current_mode_update', currentModeId: 'auto' },
+    });
+    await switchTo('auto');
+    const announced = updates.at(-1)!.update;
+    expect(
+      announced.sessionUpdate === 'config_option_update' && modeValues(announced.configOptions)
+    ).toMatchObject({ current: BYPASS_MODE });
+    await expect(
+      client().requestPermission(permission('curl -X POST https://staging', 'execute'))
+    ).resolves.toEqual(approved);
+    expect(asked).toHaveLength(1);
+  });
+
+  it('drops bypass when the user picks another mode, even after agy changes modes itself', async () => {
+    const { agent, client, asked } = setup();
+    await agent.newSession({ cwd: '/w', mcpServers: [] });
+    await agent.setSessionConfigOption!({ sessionId: 's', configId: 'mode', value: BYPASS_MODE });
+    await agent.setSessionConfigOption!({ sessionId: 's', configId: 'mode', value: 'auto' });
     await client().requestPermission(permission('ls', 'execute'));
     expect(asked).toHaveLength(1);
   });

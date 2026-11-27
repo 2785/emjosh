@@ -29,7 +29,9 @@ type SessionModes = Map<string, { agyMode?: string; bypass: boolean }>;
  * agy has no ACP mode that never asks: `auto` still asks before MCP tool calls and commands that
  * leave its sandbox, and `--dangerously-skip-permissions` covers the whole process. So:
  * - a `bypass` choice is added to agy's mode option; it runs agy in `auto` and approves every
- *   permission request itself;
+ *   permission request itself. The choice is the user's and outlives agy's own mode changes: while
+ *   agy is out of `auto` (for example in plan mode) nothing is approved, and when it returns to
+ *   `auto` bypass is back;
  * - in `auto`, calls to the host's own `emjosh` MCP tools are approved without asking.
  */
 export function withPermissionModes(
@@ -51,11 +53,10 @@ export function withPermissionModes(
     return options.map((option) => {
       if (option.id !== MODE_OPTION_ID || option.type !== 'select') return option;
       state.agyMode = option.currentValue;
-      if (state.agyMode !== AGY_AUTO_MODE) state.bypass = false;
       const choices = option.options as readonly { value: string }[];
       return {
         ...option,
-        currentValue: state.bypass ? BYPASS_MODE : option.currentValue,
+        currentValue: bypassActive(state) ? BYPASS_MODE : option.currentValue,
         options: (choices.some((choice) => choice.value === BYPASS_MODE)
           ? choices
           : [...choices, bypassChoice]) as typeof option.options,
@@ -79,7 +80,6 @@ export function withPermissionModes(
         if (update.sessionUpdate === 'current_mode_update') {
           const state = session(notification.sessionId);
           state.agyMode = update.currentModeId;
-          if (state.agyMode !== AGY_AUTO_MODE) state.bypass = false;
         }
         return client.sessionUpdate(notification);
       },
@@ -139,12 +139,16 @@ function autoApproval(
   params: RequestPermissionRequest
 ): RequestPermissionResponse | null {
   const approve =
-    state?.bypass === true || (state?.agyMode === AGY_AUTO_MODE && isHostMcpCall(params.toolCall));
+    bypassActive(state) || (state?.agyMode === AGY_AUTO_MODE && isHostMcpCall(params.toolCall));
   if (!approve) return null;
   const allow =
     params.options.find((option) => option.kind === 'allow_always') ??
     params.options.find((option) => option.kind === 'allow_once');
   return allow ? { outcome: { outcome: 'selected', optionId: allow.optionId } } : null;
+}
+
+function bypassActive(state: { agyMode?: string; bypass: boolean } | undefined): boolean {
+  return state?.bypass === true && state.agyMode === AGY_AUTO_MODE;
 }
 
 function isHostMcpCall(toolCall: RequestPermissionRequest['toolCall']): boolean {
