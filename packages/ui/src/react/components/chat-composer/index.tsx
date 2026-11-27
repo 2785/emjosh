@@ -53,6 +53,8 @@ export interface ComposerNotice {
   variant: ComposerNoticeVariant;
   title?: string;
   message: string;
+  /** When provided, renders a button beside the message (e.g. "Stop"). */
+  action?: { label: string; onClick: () => void };
   /** When provided, renders a dismiss button. */
   onDismiss?: () => void;
 }
@@ -406,6 +408,11 @@ function NoticeBand({ notice }: { notice: ComposerNotice }) {
           {notice.message}
         </p>
       </div>
+      {notice.action && (
+        <button type="button" onClick={notice.action.onClick} className={styles.noticeAction}>
+          {notice.action.label}
+        </button>
+      )}
       {notice.onDismiss && (
         <button
           type="button"

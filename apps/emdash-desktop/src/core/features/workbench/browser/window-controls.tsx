@@ -7,13 +7,34 @@ import { cn } from '@core/primitives/styling/browser/cn';
 const isLinux = detectPlatformContext().os === 'linux';
 
 /**
+ * Whether the window manager tiles windows and draws no window buttons (sway, i3, Hyprland, ...),
+ * so ours would only add noise. False until the app has answered.
+ */
+function useTilingWindowManager(): boolean {
+  const [tiling, setTiling] = useState(false);
+  useEffect(() => {
+    if (!isLinux) return;
+    let disposed = false;
+    void getHostClient().then(async (client) => {
+      const answer = await client.usesTilingWindowManager();
+      if (!disposed) setTiling(answer);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  return tiling;
+}
+
+/**
  * Linux-only top overlay providing a draggable strip and window controls for
  * full-screen views that do not render the {@link Titlebar} (onboarding and the
  * welcome splash). Sits above the welcome screen's `z-50` overlay. No-op on
  * macOS/Windows, which keep their native frame or traffic lights.
  */
 export function FramelessTitlebarOverlay() {
-  if (!isLinux) return null;
+  const tiling = useTilingWindowManager();
+  if (!isLinux || tiling) return null;
   return (
     <div className="fixed inset-x-0 top-0 z-60 flex h-10 items-center justify-end [-webkit-app-region:drag]">
       <WindowControls />
@@ -28,6 +49,7 @@ export function FramelessTitlebarOverlay() {
  */
 export function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
+  const tiling = useTilingWindowManager();
 
   useEffect(() => {
     let disposed = false;
@@ -49,6 +71,7 @@ export function WindowControls() {
     };
   }, []);
 
+  if (tiling) return null;
   return (
     <div className="flex h-full items-center [-webkit-app-region:no-drag]">
       <ControlButton

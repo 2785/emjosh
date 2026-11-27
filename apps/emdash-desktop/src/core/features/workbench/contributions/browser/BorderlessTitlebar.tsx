@@ -1,5 +1,6 @@
 import { SidebarRecoveryControls } from '@core/features/workbench/browser/sidebar-recovery-controls';
 import { WindowControls } from '@core/features/workbench/browser/window-controls';
+import { useRegisterBorderlessTitlebar } from '@core/features/workbench/contributions/browser/borderless-titlebar-registry';
 import { useWorkspaceLayoutContext } from '@core/features/workbench/contributions/browser/layout-provider';
 import { detectPlatformContext } from '@core/primitives/keybindings/api';
 import { cn } from '@core/primitives/styling/browser/cn';
@@ -11,6 +12,7 @@ const isLinux = platform === 'linux';
 
 export function BorderlessTitlebar() {
   const { isLeftOpen, toggleLeftSidebar } = useWorkspaceLayoutContext();
+  useRegisterBorderlessTitlebar();
 
   return (
     <header

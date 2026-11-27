@@ -562,6 +562,61 @@ describe('SessionCell steering', () => {
   });
 });
 
+describe('SessionCell steerOrQueue', () => {
+  function makeCell(outcome: string, supportsSteering = true) {
+    const agent = new FakeAcpAgent();
+    agent.prompt = vi.fn(() => new Promise(() => {}));
+    const extMethod = vi.fn(async () => ({ outcome }));
+    Object.assign(agent, { extMethod });
+    const { cell } = makePendingCell(agent, { supportsSteering });
+    cell.applySessionReady();
+    return { cell, agent, extMethod };
+  }
+
+  it('puts the message into the running turn when the agent takes steering', async () => {
+    const { cell, agent, extMethod } = makeCell('injected');
+    void cell.prompt({ text: 'build the feature' });
+
+    const result = await cell.steerOrQueue({ text: 'merge straight to main' });
+
+    expect(result).toEqual({ success: true, data: { queued: false } });
+    expect(extMethod).toHaveBeenCalledTimes(1);
+    expect(agent.cancel).not.toHaveBeenCalled();
+    expect(cell.sessionState.queuedPrompts).toEqual([]);
+  });
+
+  it('queues behind the turn instead of cancelling it when the agent has no steering', async () => {
+    const { cell, agent, extMethod } = makeCell('injected', false);
+    void cell.prompt({ text: 'build the feature' });
+
+    const result = await cell.steerOrQueue({ text: 'merge straight to main' });
+
+    expect(result).toMatchObject({ success: true, data: { queued: true } });
+    expect(extMethod).not.toHaveBeenCalled();
+    expect(agent.cancel).not.toHaveBeenCalled();
+    expect(cell.sessionState.queuedPrompts).toMatchObject([{ text: 'merge straight to main' }]);
+  });
+
+  it('queues when the agent declines to steer, and still does not cancel', async () => {
+    const { cell, agent } = makeCell('promptRequired');
+    void cell.prompt({ text: 'build the feature' });
+
+    const result = await cell.steerOrQueue({ text: 'merge straight to main' });
+
+    expect(result).toMatchObject({ success: true, data: { queued: true } });
+    expect(agent.cancel).not.toHaveBeenCalled();
+  });
+
+  it('sends the message as a normal prompt when the agent is idle', async () => {
+    const { cell, agent } = makeCell('injected');
+
+    void cell.steerOrQueue({ text: 'hello' });
+
+    await vi.waitFor(() => expect(agent.prompt).toHaveBeenCalledTimes(1));
+    expect(cell.sessionState.queuedPrompts).toEqual([]);
+  });
+});
+
 describe('SessionCell provider results after disposal', () => {
   it('ignores a detached prompt result after disposal without starting the queue', async () => {
     const turn = deferred<{ stopReason: 'cancelled' }>();

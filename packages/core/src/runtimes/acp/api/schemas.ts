@@ -23,7 +23,7 @@ export type AcpSessionStartMode = z.infer<typeof acpSessionStartModeSchema>;
 export const sendPromptResponseSchema = z.object({ queued: z.boolean() });
 
 export const terminateCommandSchema = z.object({ conversationId: z.string() });
-export const promptPlacementSchema = z.enum(['auto', 'queue', 'interrupt']);
+export const promptPlacementSchema = z.enum(['auto', 'queue', 'interrupt', 'steer']);
 export type PromptPlacement = z.infer<typeof promptPlacementSchema>;
 export const sendPromptCommandSchema = z.object({
   conversationId: z.string(),

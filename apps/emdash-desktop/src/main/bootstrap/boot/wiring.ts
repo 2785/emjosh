@@ -97,6 +97,7 @@ export function createDesktopWireOptions(
       toggleMaximizeWindow: () => appOperations.toggleMaximizeWindow(),
       closeWindow: () => appOperations.closeWindow(),
       isWindowMaximized: () => appOperations.isWindowMaximized(),
+      usesTilingWindowManager: () => appOperations.usesTilingWindowManager(),
       getAppVersion: () => appOperations.getAppVersion(),
       getElectronVersion: () => appOperations.getElectronVersion(),
       getPlatform: () => appOperations.getPlatform(),

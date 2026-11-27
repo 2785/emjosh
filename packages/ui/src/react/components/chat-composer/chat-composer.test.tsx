@@ -138,4 +138,22 @@ describe('ChatComposer', () => {
 
     await waitFor(() => expect(onCollaborationModeChange).toHaveBeenCalledWith('plan'));
   });
+  it('shows a notice action beside the message and calls it when clicked', () => {
+    const onStop = vi.fn();
+    const { getByRole, getByText } = render(
+      <ChatComposer
+        onSubmit={() => {}}
+        notice={{
+          variant: 'info',
+          title: 'Waiting on a command',
+          message: 'glab repo create x · running 6m 12s',
+          action: { label: 'Stop', onClick: onStop },
+        }}
+      />
+    );
+
+    expect(getByText('glab repo create x · running 6m 12s')).toBeTruthy();
+    fireEvent.click(getByRole('button', { name: 'Stop' }));
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
 });

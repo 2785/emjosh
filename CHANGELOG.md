@@ -3,6 +3,21 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.27 — 2026-11-26
+
+- When an agent's turn is waiting on a shell command that has run for 20 seconds or more, the chat
+  box shows the command and how long it has run, with a Stop button. (Antigravity keeps a turn
+  open while its command runs, so a command stuck on a prompt looked like an agent still working.)
+- Initiative messages no longer wait for a busy agent's turn to end (or sit in a ten-minute hold).
+  After the short batching delay they go into the running turn when the agent supports steering
+  (Claude, Codex and Antigravity do); if not, they queue and run together when the turn ends.
+  Nothing is cancelled.
+- Linux: the projects and settings views no longer show two title bars (a plain one was stacked on
+  top of their own).
+- Linux under a tiling window manager (sway, i3, Hyprland, niri and similar; detected from the
+  session) the app no longer draws its own minimize/maximize/close buttons. Set
+  `EMJOSH_WINDOW_CONTROLS=always` or `never` to override.
+
 ## 0.1.26 — 2026-11-26
 
 - Antigravity: a message sent while it is working now steers the running turn instead of

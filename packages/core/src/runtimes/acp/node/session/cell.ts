@@ -348,6 +348,26 @@ export class SessionCell {
   }
 
   /**
+   * Like `interrupt`, but never cancels: while busy, `input` goes into the agent's running turn
+   * when the agent takes steering, and otherwise waits in the queue for the turn to end. For
+   * messages that are urgent but not worth throwing away the work in progress for.
+   */
+  async steerOrQueue(
+    input: PromptInput,
+    acceptance?: PromptAcceptance
+  ): Promise<Result<SessionPromptResult, AcpSendPromptError>> {
+    if (
+      this.machine.isForegroundBusy &&
+      this.deps.supportsSteering &&
+      this.machine.phase.kind === 'working' &&
+      (await this.steer(input, acceptance))
+    ) {
+      return ok({ queued: false });
+    }
+    return this.prompt(input, acceptance);
+  }
+
+  /**
    * Hands the queue plus `input` to the agent inside its running turn, so it decides what to
    * stop, redirect, or let finish instead of everything being cancelled. Returns false (with
    * nothing changed) when the agent doesn't take it, e.g. its turn has just ended.
