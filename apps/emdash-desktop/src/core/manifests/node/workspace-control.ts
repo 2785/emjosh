@@ -4,7 +4,6 @@ import { promisify } from 'node:util';
 import { formatHostRef, LOCAL_HOST_REF } from '@emdash/core/primitives/host/api';
 import type { Logger } from '@emdash/shared/logger';
 import type { ContractClient } from '@emdash/wire/rpc';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { AgentBrowserPort } from '@core/features/browser/api/agent-browser';
 import { conversationRegistryTable as conversations } from '@core/features/conversations/api/node/registry/conversation-registry';

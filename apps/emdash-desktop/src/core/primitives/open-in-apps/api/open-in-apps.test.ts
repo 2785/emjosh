@@ -161,9 +161,9 @@ const detectedLaunches = Object.values(OPEN_IN_APPS).flatMap((app) =>
 describe('open-in detection', () => {
   it.each(detectedLaunches)('checks exactly what $name launches', ({ config }) => {
     expect({
-      appNames: [...(config.appNames ?? [])].sort(),
-      bundleIds: [...(config.bundleIds ?? [])].sort(),
-      checkCommands: [...(config.checkCommands ?? [])].sort(),
+      appNames: [...(config.appNames ?? [])].sort((a, b) => a.localeCompare(b)),
+      bundleIds: [...(config.bundleIds ?? [])].sort((a, b) => a.localeCompare(b)),
+      checkCommands: [...(config.checkCommands ?? [])].sort((a, b) => a.localeCompare(b)),
     }).toEqual(launchTargets(config));
   });
 });
