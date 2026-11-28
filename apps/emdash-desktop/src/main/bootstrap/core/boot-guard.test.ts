@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +12,7 @@ const testUserDataPath = join(tmpdir(), `emdash-boot-guard-${process.pid}`);
 vi.mock('electron', () => ({
   app: {
     getPath: () => mocks.userDataPath,
+    getVersion: () => '1.2.3',
     once: () => {},
   },
 }));
@@ -43,6 +44,35 @@ describe('boot guard', () => {
     const crashed = { booting: false, failures: 1, lastFailure: unfinishedLaunch };
     expect(observePreviousBoot(productionConfig)).toEqual(crashed);
     expect(observePreviousBoot(productionConfig)).toEqual(crashed);
+  });
+
+  describe('after a reinstall', () => {
+    const stateFile = () => join(mocks.userDataPath, 'boot-state.json');
+    const writeState = (state: object) => writeFileSync(stateFile(), JSON.stringify(state));
+
+    it('starts clean when the failures were recorded by a different install', () => {
+      writeState({ booting: false, failures: 3, lastFailure: 'ENOENT x', build: '1.2.2@1' });
+
+      expect(observePreviousBoot(productionConfig)).toEqual({ booting: false, failures: 0 });
+      expect(existsSync(stateFile())).toBe(false);
+    });
+
+    it('starts clean for failures recorded before builds were tracked', () => {
+      writeState({ booting: false, failures: 2, lastFailure: 'ENOENT x' });
+
+      expect(observePreviousBoot(productionConfig).failures).toBe(0);
+    });
+
+    it('keeps counting failures of the same install', () => {
+      recordBootFailure(productionConfig, new Error('first'));
+      recordBootFailure(productionConfig, new Error('second'));
+
+      expect(observePreviousBoot(productionConfig)).toEqual({
+        booting: false,
+        failures: 2,
+        lastFailure: 'second',
+      });
+    });
   });
 
   it('counts consecutive dirty boots', () => {
@@ -129,10 +159,11 @@ describe('boot guard', () => {
   });
 
   it('reads boot state written before failure reasons were recorded', () => {
-    writeFileSync(
-      join(mocks.userDataPath, 'boot-state.json'),
-      JSON.stringify({ booting: false, failures: 2 })
-    );
+    recordBootFailure(productionConfig, new Error('x'));
+    recordBootFailure(productionConfig, new Error('x'));
+    const stateFile = join(mocks.userDataPath, 'boot-state.json');
+    const { build } = JSON.parse(readFileSync(stateFile, 'utf8')) as { build: string };
+    writeFileSync(stateFile, JSON.stringify({ booting: false, failures: 2, build }));
 
     const previous = observePreviousBoot(productionConfig);
     expect(previous).toEqual({ booting: false, failures: 2 });
