@@ -3,6 +3,16 @@
 Changes Emjosh makes on top of [Emdash](https://github.com/generalaction/emdash), by release.
 Upstream Emdash changes are not listed.
 
+## 0.1.38 — 2026-11-27
+
+- A reinstall or update now clears a recorded crash loop. The crash-loop guard keeps its count
+  in the user data folder, which a reinstall doesn't touch, so after one broken install the fixed
+  one still opened recovery straight away, showing the old error without trying to start. The
+  count is now tied to the install that failed (version and when the executable was written), so
+  a different install starts clean. If you're stuck in recovery on an older build, delete
+  `boot-state.json` from the data folder (`%APPDATA%\emjosh` on Windows,
+  `~/Library/Application Support/Emjosh` on macOS, `~/.config/emjosh` on Linux).
+
 ## 0.1.37 — 2026-11-27
 
 - Windows: *Reload · new build* now starts its helper properly. It used to launch PowerShell

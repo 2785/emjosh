@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
 import { PRODUCT_NAME } from '@core/primitives/app-identity/api/app-identity';
@@ -14,6 +14,8 @@ type BootState = {
    * cause survives to be shown there.
    */
   lastFailure?: string;
+  /** The install that wrote this state (see currentBuild); a different install starts clean. */
+  build?: string;
 };
 
 const EMPTY_BOOT_STATE: BootState = { booting: false, failures: 0 };
@@ -23,11 +25,35 @@ const UNFINISHED_BOOT_FAILURE =
   'restarted while still starting.';
 let quitCleanupRegistered = false;
 
+/**
+ * Identifies this installed build: its version and when its executable was written. The boot
+ * state outlives reinstalls (it lives in the user data directory), so without this a crash loop
+ * from a broken install keeps sending the fixed one straight to recovery without trying to boot.
+ */
+function currentBuild(): string {
+  let installedAt = 0;
+  try {
+    installedAt = Math.round(statSync(process.execPath).birthtimeMs);
+  } catch {
+    // The version alone then identifies the build.
+  }
+  return `${app.getVersion()}@${installedAt}`;
+}
+
+const withoutBuild = ({ build: _build, ...state }: BootState): BootState => state;
+
 export function observePreviousBoot(config: AppConfig): BootState {
   if (config.isDev) return EMPTY_BOOT_STATE;
 
   const state = readBootState();
-  if (!state.booting) return state;
+  if (state.build !== currentBuild() && (state.booting || state.failures > 0)) {
+    log.info('Boot guard: failures were recorded by a different install; starting clean', {
+      failures: state.failures,
+    });
+    clearBootFailureMarker();
+    return EMPTY_BOOT_STATE;
+  }
+  if (!state.booting) return withoutBuild(state);
 
   const observed = {
     booting: false,
@@ -98,6 +124,7 @@ function readBootState(): BootState {
       booting?: unknown;
       failures?: unknown;
       lastFailure?: unknown;
+      build?: unknown;
     };
     if (typeof parsed.booting !== 'boolean' || typeof parsed.failures !== 'number') {
       return EMPTY_BOOT_STATE;
@@ -109,6 +136,7 @@ function readBootState(): BootState {
         typeof parsed.lastFailure === 'string' && parsed.lastFailure
           ? parsed.lastFailure
           : undefined,
+      build: typeof parsed.build === 'string' ? parsed.build : undefined,
     };
   } catch (error) {
     if (isMissingFileError(error)) return EMPTY_BOOT_STATE;
@@ -128,7 +156,10 @@ function writeBootState(state: BootState): void {
   const temporaryPath = `${path}.${process.pid}.tmp`;
   try {
     mkdirSync(app.getPath('userData'), { recursive: true });
-    writeFileSync(temporaryPath, JSON.stringify(state), { encoding: 'utf8', mode: 0o600 });
+    writeFileSync(temporaryPath, JSON.stringify({ ...state, build: currentBuild() }), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
     replaceFile(temporaryPath, path);
   } catch (error) {
     try {
